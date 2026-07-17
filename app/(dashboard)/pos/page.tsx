@@ -234,6 +234,7 @@ export default function POSPage() {
   const [selling, setSelling] = useState(false)
 
   const [companyName, setCompanyName] = useState('')
+  const [maxDiscountPercent, setMaxDiscountPercent] = useState(20)
   const [currentUser, setCurrentUser] = useState<{ id: string; fullName: string } | null>(null)
   const [activeShift, setActiveShift] = useState<Shift | null>(null)
   const [shiftLoading, setShiftLoading] = useState(true)
@@ -261,8 +262,12 @@ export default function POSPage() {
   useEffect(() => { fetchShiftState() }, [fetchShiftState])
   useEffect(() => {
     const supabase = createClient()
-    supabase.from('companies').select('name').single().then(({ data }) => {
-      if (data) setCompanyName((data as { name: string }).name)
+    supabase.from('companies').select('name, max_discount_percent').single().then(({ data }) => {
+      if (data) {
+        const row = data as unknown as { name: string; max_discount_percent: number | null }
+        setCompanyName(row.name)
+        if (row.max_discount_percent != null) setMaxDiscountPercent(Number(row.max_discount_percent))
+      }
     })
   }, [])
   useEffect(() => {
@@ -597,7 +602,7 @@ export default function POSPage() {
 
   const cartCount = cart.reduce((s, l) => s + l.quantity, 0)
   const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0)
-  const discountPct = Math.min(100, Math.max(0, Number(discountPercent) || 0))
+  const discountPct = Math.min(maxDiscountPercent, Math.max(0, Number(discountPercent) || 0))
   const discountAmount = Math.round(subtotal * discountPct / 100)
   const total = subtotal - discountAmount
   const received = Number(amountReceived) || 0
@@ -613,20 +618,11 @@ export default function POSPage() {
     const today = new Date().toISOString().slice(0, 10)
     const customerName = customer?.fullName ?? t('dashboard.recentSales.guestCustomer')
 
-    const items = cart.map(line => {
-      const item = posItems.find(p => p.id === line.key)
-      return {
-        product_size_id: line.key,
-        product_id: line.productId,
-        product_name: line.productName,
-        category: item?.category ?? '',
-        size: line.size,
-        color: item?.color ?? '',
-        quantity: line.quantity,
-        unit_price: line.unitPrice,
-        purchase_price: line.purchasePrice,
-      }
-    })
+    const items = cart.map(line => ({
+      product_size_id: line.key,
+      quantity: line.quantity,
+      discount_percent: discountPct,
+    }))
 
     const { data: transactionId, error } = await supabase.rpc('sell_cart', {
       p_items: items,
@@ -636,7 +632,6 @@ export default function POSPage() {
       p_payment: {
         customer_name: customerName,
         payment_method: paymentMethod,
-        total_amount: total,
         date: today,
         shift_id: activeShift?.id ?? null,
         cashier_id: currentUser?.id ?? null,
@@ -649,6 +644,11 @@ export default function POSPage() {
     if (error || !transactionId) {
       if (error?.message.includes('forbidden')) {
         toast.error(t('common.forbidden'))
+      } else if (error?.message.includes('Discount percent') && error.message.includes('is invalid for product_size')) {
+        // sell_cart raises "Discount percent % is invalid for product_size %
+        // (must be between 0 and %)" when a line's discount exceeds the
+        // company's max_discount_percent cap.
+        toast.error(`${t('pos.discountExceedsMax')} (${maxDiscountPercent}%)`)
       } else {
         // sell_cart raises "Insufficient stock for product_size <uuid>" — pull the
         // uuid back out so the toast names the item instead of a generic error.
@@ -853,7 +853,7 @@ export default function POSPage() {
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-gray-500 dark:text-gray-400">{t('pos.discount')}</span>
                   <div className="flex items-center gap-1.5">
-                    <input type="number" min={0} max={100} value={discountPercent}
+                    <input type="number" min={0} max={maxDiscountPercent} value={discountPercent}
                       onChange={e => updateActiveTab(tab => ({ ...tab, discountPercent: e.target.value }))}
                       placeholder="0"
                       className="h-8 w-16 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 text-right text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors" />

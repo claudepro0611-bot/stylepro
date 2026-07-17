@@ -1,0 +1,42 @@
+-- Audit finding (CRITICAL): sell_cart trusted client-supplied unit_price /
+-- total_amount with zero validation against the catalog, letting any
+-- authenticated cashier record a fraudulent sale at a fabricated price while
+-- stock still correctly decremented. Part 1 of the fix: a company-level cap
+-- on how large a per-line discount a cashier may apply, so sell_cart (next
+-- migration) has a server-side bound to enforce discounts against instead of
+-- trusting a client-supplied price outright.
+--
+-- Column placement: public.companies already holds every other piece of
+-- company-wide business configuration that isn't nested JSONB
+-- (currency, status), and is where the task brief pointed first. A
+-- dedicated `company_settings` table also exists (jsonb `settings` blob,
+-- see 20260713000001_company_settings.sql) but that table's own RLS
+-- ("Owner updates settings", FOR ALL) is a fine alternative home; companies
+-- is chosen here so the interaction with check_companies_billing_column_access
+-- (20260715000005) can be verified directly against a real column on the
+-- same table, per the task's explicit ask.
+--
+-- Trigger-guard verification (read in full before writing this migration):
+-- check_companies_billing_column_access() only compares
+-- NEW.balance IS DISTINCT FROM OLD.balance and
+-- NEW.monthly_fee IS DISTINCT FROM OLD.monthly_fee — it is a named-column
+-- blocklist, not a blanket "block all non-owner column changes" check. A
+-- new column not named balance/monthly_fee is therefore automatically
+-- outside its scope; no change to the trigger function itself is required
+-- or made here. Owner-level write access instead comes entirely from the
+-- existing "Owner can update own company" RLS UPDATE policy
+-- (id = get_company_id() AND role = 'owner'), which already covers every
+-- non-billing column on this table, including this new one.
+ALTER TABLE public.companies
+  ADD COLUMN IF NOT EXISTS max_discount_percent numeric(5,2) NOT NULL DEFAULT 20
+    CHECK (max_discount_percent >= 0 AND max_discount_percent <= 100);
+
+-- No RLS/trigger changes needed:
+--   - SELECT: already covered by "Users can view own company" (any user of
+--     the company can read it, needed since sell_cart's cashier-facing
+--     discount validation happens inside a SECURITY DEFINER function that
+--     bypasses RLS anyway, but a future settings UI may want a direct read).
+--   - UPDATE: already covered by "Owner can update own company" (owner-only,
+--     scoped to id = get_company_id()).
+--   - check_companies_billing_column_access trigger: confirmed above to be
+--     scoped only to balance/monthly_fee; this column is unaffected.
