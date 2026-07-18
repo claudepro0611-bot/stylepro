@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, RefreshCw, Percent, Calendar, Activity, Edit2, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
+import { Plus, RefreshCw, Percent, Calendar, Activity, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { MiniBadge } from '@/components/ui/MiniBadge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -245,8 +245,11 @@ export default function MarketingPage() {
     return `${t('marketing.aksiya.scopeLabel.product')} (${promotionProductCounts[p.id] ?? 0})`
   }
 
-  function formatDateOrDash(value: string | null): string {
-    return value ? formatDate(value) : t('marketing.aksiya.noDate')
+  function formatPromotionRange(p: Promotion): string {
+    if (!p.startsOn && !p.endsOn) return t('marketing.aksiya.noDate')
+    const start = p.startsOn ? formatDate(p.startsOn) : t('marketing.aksiya.noDate')
+    const end = p.endsOn ? formatDate(p.endsOn) : t('marketing.aksiya.noDate')
+    return `${start} – ${end}`
   }
 
   if (featuresLoading || !features.marketing) return null
@@ -318,81 +321,93 @@ export default function MarketingPage() {
         </button>
       </div>
 
-      {/* Aksiyalar (promotions) */}
-      <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-          <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{t('marketing.aksiya.sectionTitle')}</p>
-          <button
-            onClick={openCreatePromotion}
-            className="flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-slate-800 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('marketing.aksiya.addNew')}
-          </button>
+      {/* Aksiyalar (promotions) — two-column: list table left, fixed
+          380px inline create/edit panel right (not a Dialog/modal), per
+          the approved layout. Blue accents here (button, badges, radio
+          rows in the panel) are an explicit, approved deviation from the
+          rest of the app's monochrome Floxen convention — flagged in the
+          task report, not a silent drift from the design system. */}
+      <div className="flex items-stretch rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors duration-200">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{t('marketing.aksiya.sectionTitle')}</p>
+            <button
+              onClick={openCreatePromotion}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 py-2 text-[13px] font-medium text-white transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t('marketing.aksiya.addNew')}
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-800/50">
+                <tr className="border-b border-gray-100 dark:border-gray-800">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.name')}</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.scope')}</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.discount')}</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.period')}</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.status')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {promotionsLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                      <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
+                      {t('common.loading')}
+                    </td>
+                  </tr>
+                ) : promotions.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                      {t('marketing.aksiya.notFound')}
+                    </td>
+                  </tr>
+                ) : promotions.map(p => {
+                  const active = isPromotionCurrentlyActive(p)
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => openEditPromotion(p)}
+                      className={`group border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${active ? '' : 'opacity-60'}`}
+                    >
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{p.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{scopeSummary(p)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{p.discountPercent}%</td>
+                      <td className="px-4 py-3 text-[12px] text-gray-400 dark:text-gray-500">{formatPromotionRange(p)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <MiniBadge status={active ? 'active' : 'ended'} />
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setDeleteTarget(p) }}
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 dark:hover:text-red-400 transition-opacity"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
-              <tr className="border-b border-gray-100 dark:border-gray-800">
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.name')}</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.scope')}</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.discount')}</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.start')}</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.end')}</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.status')}</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{t('marketing.aksiya.table.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {promotionsLoading ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-                    <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
-                    {t('common.loading')}
-                  </td>
-                </tr>
-              ) : promotions.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-                    {t('marketing.aksiya.notFound')}
-                  </td>
-                </tr>
-              ) : promotions.map((p, i) => (
-                <tr key={p.id} className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${i % 2 !== 0 ? 'bg-gray-50/50 dark:bg-gray-800/50' : ''}`}>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{p.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{scopeSummary(p)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                      <Percent className="h-3 w-3 text-gray-400 dark:text-gray-500" />
-                      {p.discountPercent}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-[12px] text-gray-400 dark:text-gray-500">{formatDateOrDash(p.startsOn)}</td>
-                  <td className="px-4 py-3 text-[12px] text-gray-400 dark:text-gray-500">{formatDateOrDash(p.endsOn)}</td>
-                  <td className="px-4 py-3">
-                    <MiniBadge status={isPromotionCurrentlyActive(p) ? 'active' : 'ended'} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        onClick={() => openEditPromotion(p)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(p)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+        {isPromotionPanelOpen && (
+          <PromotionPanel
+            open={isPromotionPanelOpen}
+            onClose={() => setIsPromotionPanelOpen(false)}
+            promotion={editingPromotion}
+            products={productLites}
+            productSizesByProduct={productSizesByProduct}
+            sizeIdToProductId={sizeIdToProductId}
+            groups={groupLites}
+            onSaved={fetchPromotions}
+          />
+        )}
       </div>
 
       {/* Active campaign cards */}
@@ -684,18 +699,6 @@ export default function MarketingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Create/edit promotion panel */}
-      <PromotionPanel
-        open={isPromotionPanelOpen}
-        onOpenChange={setIsPromotionPanelOpen}
-        promotion={editingPromotion}
-        products={productLites}
-        productSizesByProduct={productSizesByProduct}
-        sizeIdToProductId={sizeIdToProductId}
-        groups={groupLites}
-        onSaved={fetchPromotions}
-      />
 
       {/* Delete promotion confirmation */}
       <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null) }}>

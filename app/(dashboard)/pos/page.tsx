@@ -9,12 +9,12 @@ import { SearchSelect } from '@/components/ui/SearchSelect'
 import { VariantMatrixModal } from '@/components/pos/VariantMatrixModal'
 import { createClient } from '@/lib/supabase/client'
 import { getCompanyId } from '@/lib/supabase/helpers'
-import { formatPhone, formatDuration, formatDateTime } from '@/lib/utils/formatters'
+import { formatPhone, formatDuration, formatDateTime, formatDate } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { useFeatures } from '@/lib/features'
-import type { Shift } from '@/lib/types'
+import type { Shift, Promotion } from '@/lib/types'
 
 const CATEGORIES = ['Barchasi', "Ko'ylak", 'Shim', 'Kurtka', 'Libos']
 const PAYMENT_METHODS = ['Naqd', 'Karta', 'Click', 'Payme']
@@ -81,18 +81,49 @@ interface CartLine {
   maxStock: number
 }
 
+interface SelectedPromotion {
+  id: string
+  name: string
+  discountPercent: number
+}
+
 interface OrderTab {
   id: string
   cart: CartLine[]
   customerId: string
   paymentMethod: string
   amountReceived: string
+  selectedPromotion: SelectedPromotion | null
 }
 
 const MAX_TABS = 5
 
 function createEmptyTab(id: string): OrderTab {
-  return { id, cart: [], customerId: '', paymentMethod: '', amountReceived: '' }
+  return { id, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null }
+}
+
+interface PromotionRow {
+  id: string
+  name: string
+  discount_percent: number
+  scope_type: Promotion['scopeType']
+  category: string | null
+  starts_on: string | null
+  ends_on: string | null
+  is_active: boolean
+}
+
+function mapPromotion(row: PromotionRow): Promotion {
+  return {
+    id: row.id,
+    name: row.name,
+    discountPercent: Number(row.discount_percent),
+    scopeType: row.scope_type,
+    category: row.category,
+    startsOn: row.starts_on,
+    endsOn: row.ends_on,
+    isActive: row.is_active,
+  }
 }
 
 const pillCls = (active: boolean) =>
@@ -375,7 +406,7 @@ export default function POSPage() {
   const [activeTabId, setActiveTabId] = useState('tab-1')
 
   const activeTab = tabs.find(tb => tb.id === activeTabId) ?? tabs[0]
-  const { cart, customerId, paymentMethod, amountReceived } = activeTab
+  const { cart, customerId, paymentMethod, amountReceived, selectedPromotion } = activeTab
 
   function updateActiveTab(updater: (tab: OrderTab) => OrderTab) {
     setTabs(prev => prev.map(tb => (tb.id === activeTabId ? updater(tb) : tb)))
@@ -594,7 +625,55 @@ export default function POSPage() {
   }
 
   function resetSale() {
-    updateActiveTab(tab => ({ ...tab, cart: [], customerId: '', paymentMethod: '', amountReceived: '' }))
+    updateActiveTab(tab => ({ ...tab, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null }))
+  }
+
+  // ─── Promotion selector ("Aksiya qo'llash") ────────────────────────────
+  const [promotionModalOpen, setPromotionModalOpen] = useState(false)
+  const [promotionsLoading, setPromotionsLoading] = useState(false)
+  const [activePromotions, setActivePromotions] = useState<Promotion[]>([])
+
+  async function openPromotionModal() {
+    setPromotionModalOpen(true)
+    setPromotionsLoading(true)
+    const supabase = createClient()
+    const { data, error } = await supabase.from('promotions').select('*').eq('is_active', true)
+    if (error) {
+      toast.error(t('common.error'))
+      setPromotionsLoading(false)
+      return
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    const rows = (data as PromotionRow[])
+      .filter(r => (!r.starts_on || r.starts_on <= today) && (!r.ends_on || r.ends_on >= today))
+      .map(mapPromotion)
+    setActivePromotions(rows)
+    setPromotionsLoading(false)
+  }
+
+  function selectPromotion(p: Promotion) {
+    updateActiveTab(tab => ({ ...tab, selectedPromotion: { id: p.id, name: p.name, discountPercent: p.discountPercent } }))
+    setPromotionModalOpen(false)
+  }
+
+  function clearSelectedPromotion() {
+    updateActiveTab(tab => ({ ...tab, selectedPromotion: null }))
+  }
+
+  // Reuses the marketing.aksiya i18n namespace rather than duplicating the
+  // same scope/date-range copy under a second key — same three scope
+  // labels and "no date" string are already defined there.
+  function promotionScopeLabel(p: Promotion): string {
+    if (p.scopeType === 'store') return t('marketing.aksiya.scopeLabel.store')
+    if (p.scopeType === 'category') return `${t('marketing.aksiya.scopeLabel.category')}: ${p.category ?? ''}`
+    return t('marketing.aksiya.scopeLabel.product')
+  }
+
+  function promotionDateRange(p: Promotion): string {
+    if (!p.startsOn && !p.endsOn) return t('marketing.aksiya.noDate')
+    const start = p.startsOn ? formatDate(p.startsOn) : t('marketing.aksiya.noDate')
+    const end = p.endsOn ? formatDate(p.endsOn) : t('marketing.aksiya.noDate')
+    return `${start} – ${end}`
   }
 
   const cartCount = cart.reduce((s, l) => s + l.quantity, 0)
@@ -632,6 +711,10 @@ export default function POSPage() {
         shift_id: activeShift?.id ?? null,
         cashier_id: currentUser?.id ?? null,
         cashier_name: currentUser?.fullName ?? null,
+        // Not yet read by sell_cart (server derives discounts itself from
+        // active promotions/VIP status) — carried through for future use,
+        // e.g. attributing a sale to the promotion the cashier picked.
+        promotion_id: selectedPromotion?.id ?? null,
       },
     })
 
@@ -843,16 +926,35 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Promotion — placeholder; actual promotion-selection flow is
-                  future work, discounts are now derived server-side. */}
+              {/* Promotion selector — cashier picks from currently active
+                  promotions; the actual discount is still derived
+                  server-side by sell_cart (highest of promotion vs. VIP),
+                  this only carries the chosen promotion_id through for
+                  future attribution. */}
               {cart.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {}}
-                  className="flex h-9 w-full items-center justify-center rounded-lg border border-blue-600 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
-                >
-                  {t('pos.applyPromotion')}
-                </button>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={openPromotionModal}
+                    className="flex h-9 w-full items-center justify-center rounded-lg border border-blue-600 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
+                  >
+                    {t('pos.applyPromotion')}
+                  </button>
+                  {selectedPromotion && (
+                    <div className="flex items-center justify-between gap-2 rounded-full border border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 pl-3 pr-1.5 py-1">
+                      <span className="text-[12px] font-medium text-blue-700 dark:text-blue-400 truncate">
+                        {selectedPromotion.name} — {selectedPromotion.discountPercent}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={clearSelectedPromotion}
+                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-300 transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -903,6 +1005,40 @@ export default function POSPage() {
           </div>
         </div>
       </div>
+
+      {/* Promotion selector modal */}
+      <Dialog open={promotionModalOpen} onOpenChange={setPromotionModalOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('pos.promotionModal.title')}</DialogTitle>
+          </DialogHeader>
+          <div className="mt-2 max-h-[60vh] space-y-1.5 overflow-y-auto">
+            {promotionsLoading ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-400 dark:text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('common.loading')}
+              </div>
+            ) : activePromotions.length === 0 ? (
+              <p className="py-8 text-center text-sm text-gray-400 dark:text-gray-500">{t('pos.promotionModal.empty')}</p>
+            ) : activePromotions.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => selectPromotion(p)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{p.name}</p>
+                  <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                    {promotionScopeLabel(p)} · {promotionDateRange(p)}
+                  </p>
+                </div>
+                <span className="shrink-0 text-sm font-semibold text-blue-600 dark:text-blue-400 tabular-nums">{p.discountPercent}%</span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Variant matrix modal */}
       <VariantMatrixModal
