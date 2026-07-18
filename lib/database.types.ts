@@ -1938,6 +1938,16 @@ export type Database = {
       }
     }
     Functions: {
+      create_customer: {
+        Args: {
+          p_address: string | null
+          p_email: string | null
+          p_full_name: string
+          p_phone: string
+          p_status?: string
+        }
+        Returns: string
+      }
       create_product: { Args: { p_data: Json }; Returns: string }
       create_product_group: { Args: { p_data: Json }; Returns: string }
       create_promotion: {

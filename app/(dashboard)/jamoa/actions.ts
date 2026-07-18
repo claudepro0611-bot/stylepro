@@ -59,7 +59,6 @@ export async function getTeamData(): Promise<TeamData | { error: string }> {
     if (!user) return { error: 'Unauthorized' }
 
     const { data: companyId, error: companyIdError } = await supabase.rpc('get_company_id')
-    console.log('[jamoa/getTeamData] user:', user.id, 'companyId:', companyId, 'rpcError:', companyIdError)
 
     if (companyIdError || !companyId) {
       console.error('[jamoa/getTeamData] get_company_id() failed', companyIdError)

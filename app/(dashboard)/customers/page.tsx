@@ -11,7 +11,6 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
-import { getCompanyId } from '@/lib/supabase/helpers'
 import { formatDate, formatPhone } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
@@ -136,16 +135,13 @@ export default function CustomersPage() {
     }
     setSaving(true)
     const supabase = createClient()
-    const companyId = await getCompanyId(supabase)
-    if (!companyId) { setSaving(false); toast.error(t('common.error')); return }
 
-    const { error } = await supabase.from('customers').insert({
-      company_id: companyId,
-      full_name: form.fullName.trim(),
-      phone: form.phone.trim(),
-      email: form.email.trim() || null,
-      address: form.address.trim() || null,
-      status: form.status,
+    const { error } = await supabase.rpc('create_customer', {
+      p_full_name: form.fullName.trim(),
+      p_phone: form.phone.trim(),
+      p_email: form.email.trim() || null,
+      p_address: form.address.trim() || null,
+      p_status: form.status,
     })
 
     setSaving(false)
