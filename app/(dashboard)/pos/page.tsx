@@ -85,7 +85,6 @@ interface OrderTab {
   id: string
   cart: CartLine[]
   customerId: string
-  discountPercent: string
   paymentMethod: string
   amountReceived: string
 }
@@ -93,7 +92,7 @@ interface OrderTab {
 const MAX_TABS = 5
 
 function createEmptyTab(id: string): OrderTab {
-  return { id, cart: [], customerId: '', discountPercent: '', paymentMethod: '', amountReceived: '' }
+  return { id, cart: [], customerId: '', paymentMethod: '', amountReceived: '' }
 }
 
 const pillCls = (active: boolean) =>
@@ -234,7 +233,6 @@ export default function POSPage() {
   const [selling, setSelling] = useState(false)
 
   const [companyName, setCompanyName] = useState('')
-  const [maxDiscountPercent, setMaxDiscountPercent] = useState(20)
   const [currentUser, setCurrentUser] = useState<{ id: string; fullName: string } | null>(null)
   const [activeShift, setActiveShift] = useState<Shift | null>(null)
   const [shiftLoading, setShiftLoading] = useState(true)
@@ -262,11 +260,10 @@ export default function POSPage() {
   useEffect(() => { fetchShiftState() }, [fetchShiftState])
   useEffect(() => {
     const supabase = createClient()
-    supabase.from('companies').select('name, max_discount_percent').single().then(({ data }) => {
+    supabase.from('companies').select('name').single().then(({ data }) => {
       if (data) {
-        const row = data as unknown as { name: string; max_discount_percent: number | null }
+        const row = data as unknown as { name: string }
         setCompanyName(row.name)
-        if (row.max_discount_percent != null) setMaxDiscountPercent(Number(row.max_discount_percent))
       }
     })
   }, [])
@@ -378,7 +375,7 @@ export default function POSPage() {
   const [activeTabId, setActiveTabId] = useState('tab-1')
 
   const activeTab = tabs.find(tb => tb.id === activeTabId) ?? tabs[0]
-  const { cart, customerId, discountPercent, paymentMethod, amountReceived } = activeTab
+  const { cart, customerId, paymentMethod, amountReceived } = activeTab
 
   function updateActiveTab(updater: (tab: OrderTab) => OrderTab) {
     setTabs(prev => prev.map(tb => (tb.id === activeTabId ? updater(tb) : tb)))
@@ -597,16 +594,16 @@ export default function POSPage() {
   }
 
   function resetSale() {
-    updateActiveTab(tab => ({ ...tab, cart: [], customerId: '', discountPercent: '', paymentMethod: '', amountReceived: '' }))
+    updateActiveTab(tab => ({ ...tab, cart: [], customerId: '', paymentMethod: '', amountReceived: '' }))
   }
 
   const cartCount = cart.reduce((s, l) => s + l.quantity, 0)
+  // Catalog-price estimate only — the actual charged amount is derived
+  // server-side by sell_cart from active promotions and the customer's VIP
+  // status, so this is not a guaranteed final price.
   const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0)
-  const discountPct = Math.min(maxDiscountPercent, Math.max(0, Number(discountPercent) || 0))
-  const discountAmount = Math.round(subtotal * discountPct / 100)
-  const total = subtotal - discountAmount
   const received = Number(amountReceived) || 0
-  const change = Math.max(0, received - total)
+  const change = Math.max(0, received - subtotal)
 
   const canSell = cart.length > 0 && paymentMethod !== '' && (!features.shift_system || !!activeShift)
 
@@ -621,7 +618,6 @@ export default function POSPage() {
     const items = cart.map(line => ({
       product_size_id: line.key,
       quantity: line.quantity,
-      discount_percent: discountPct,
     }))
 
     const { data: transactionId, error } = await supabase.rpc('sell_cart', {
@@ -644,11 +640,10 @@ export default function POSPage() {
     if (error || !transactionId) {
       if (error?.message.includes('forbidden')) {
         toast.error(t('common.forbidden'))
-      } else if (error?.message.includes('Discount percent') && error.message.includes('is invalid for product_size')) {
-        // sell_cart raises "Discount percent % is invalid for product_size %
-        // (must be between 0 and %)" when a line's discount exceeds the
-        // company's max_discount_percent cap.
-        toast.error(`${t('pos.discountExceedsMax')} (${maxDiscountPercent}%)`)
+      } else if (error?.message.includes('Invalid customer_id for this company')) {
+        // sell_cart raises this when the selected customer doesn't belong
+        // to the caller's company.
+        toast.error(t('pos.invalidCustomer'), { duration: 1500 })
       } else {
         // sell_cart raises "Insufficient stock for product_size <uuid>" — pull the
         // uuid back out so the toast names the item instead of a generic error.
@@ -667,7 +662,7 @@ export default function POSPage() {
       date: new Date().toLocaleDateString('uz-UZ'),
       receiptNumber: transactionId.slice(-6).toUpperCase(),
       items: cart.map(line => ({ name: line.productName, size: line.size, quantity: line.quantity, price: line.unitPrice })),
-      total,
+      total: subtotal,
       paymentType: paymentMethod,
     })
     setReceiptOpen(true)
@@ -848,39 +843,28 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Discount */}
+              {/* Promotion — placeholder; actual promotion-selection flow is
+                  future work, discounts are now derived server-side. */}
               {cart.length > 0 && (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">{t('pos.discount')}</span>
-                  <div className="flex items-center gap-1.5">
-                    <input type="number" min={0} max={maxDiscountPercent} value={discountPercent}
-                      onChange={e => updateActiveTab(tab => ({ ...tab, discountPercent: e.target.value }))}
-                      placeholder="0"
-                      className="h-8 w-16 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 text-right text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors" />
-                    <span className="text-sm text-gray-400 dark:text-gray-500">%</span>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {}}
+                  className="flex h-9 w-full items-center justify-center rounded-lg border border-blue-600 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
+                >
+                  {t('pos.applyPromotion')}
+                </button>
               )}
             </div>
 
             {/* Summary + payment + sell */}
             {cart.length > 0 && (
               <div className="shrink-0 border-t border-gray-100 dark:border-gray-800 px-5 py-4 space-y-4">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">{t('pos.total')}</span>
-                    <span className="font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(subtotal)}</span>
-                  </div>
-                  {discountAmount > 0 && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500 dark:text-gray-400">{t('pos.discount')}</span>
-                      <span className="text-gray-500 dark:text-gray-400 tabular-nums">-{formatPrice(discountAmount)}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between pt-1.5 border-t border-gray-100 dark:border-gray-800">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
                     <span className="text-base font-bold text-gray-900 dark:text-gray-100">{t('pos.payment')}</span>
-                    <span className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(total)}</span>
+                    <span className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(subtotal)}</span>
                   </div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">{t('pos.estimateNote')}</p>
                 </div>
 
                 <div className="grid grid-cols-4 gap-2">
