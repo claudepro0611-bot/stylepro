@@ -19,6 +19,7 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/arxiv': 'pos',
   '/customers': 'customers',
   '/reports': 'reports',
+  '/marketing': 'marketing',
 }
 
 export async function updateSession(request: NextRequest) {
