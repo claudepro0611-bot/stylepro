@@ -274,6 +274,7 @@ export type Database = {
           status: string
           total_purchases: number
           updated_at: string
+          vip_discount_percent: number | null
         }
         Insert: {
           address?: string | null
@@ -288,6 +289,7 @@ export type Database = {
           status?: string
           total_purchases?: number
           updated_at?: string
+          vip_discount_percent?: number | null
         }
         Update: {
           address?: string | null
@@ -302,6 +304,7 @@ export type Database = {
           status?: string
           total_purchases?: number
           updated_at?: string
+          vip_discount_percent?: number | null
         }
         Relationships: [
           {
@@ -837,6 +840,102 @@ export type Database = {
             columns: ["warehouse_id"]
             isOneToOne: false
             referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promotion_products: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          product_size_id: string
+          promotion_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          product_size_id: string
+          promotion_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          product_size_id?: string
+          promotion_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promotion_products_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promotion_products_product_size_id_fkey"
+            columns: ["product_size_id"]
+            isOneToOne: false
+            referencedRelation: "product_sizes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promotion_products_promotion_id_fkey"
+            columns: ["promotion_id"]
+            isOneToOne: false
+            referencedRelation: "promotions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promotions: {
+        Row: {
+          category: string | null
+          company_id: string
+          created_at: string
+          discount_percent: number
+          ends_on: string | null
+          id: string
+          is_active: boolean
+          name: string
+          scope_type: string
+          starts_on: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          company_id: string
+          created_at?: string
+          discount_percent: number
+          ends_on?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          scope_type: string
+          starts_on?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          company_id?: string
+          created_at?: string
+          discount_percent?: number
+          ends_on?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          scope_type?: string
+          starts_on?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promotions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -1841,15 +1940,32 @@ export type Database = {
     Functions: {
       create_product: { Args: { p_data: Json }; Returns: string }
       create_product_group: { Args: { p_data: Json }; Returns: string }
+      create_promotion: {
+        Args: {
+          p_category: string | null
+          p_discount_percent: number
+          p_ends_on: string | null
+          p_name: string
+          p_product_size_ids: string[]
+          p_scope_type: string
+          p_starts_on: string | null
+        }
+        Returns: string
+      }
       create_warehouse: {
         Args: { p_name: string; p_type: string }
         Returns: string
       }
       delete_product: { Args: { p_id: string }; Returns: undefined }
       delete_product_group: { Args: { p_id: string }; Returns: undefined }
+      delete_promotion: { Args: { p_id: string }; Returns: undefined }
       delete_stock_in_entry: { Args: { p_id: string }; Returns: undefined }
       delete_stock_out_entry: { Args: { p_id: string }; Returns: undefined }
       delete_warehouse: { Args: { p_id: string }; Returns: undefined }
+      get_best_promotion_discount: {
+        Args: { p_date?: string; p_product_size_id: string }
+        Returns: number
+      }
       get_company_id: { Args: never; Returns: string }
       has_permission: { Args: { p_key: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
@@ -1860,6 +1976,10 @@ export type Database = {
       sell_cart: {
         Args: { p_customer_id: string; p_items: Json; p_payment: Json }
         Returns: string
+      }
+      set_customer_vip: {
+        Args: { p_customer_id: string; p_vip_discount_percent: number | null }
+        Returns: undefined
       }
       set_product_size_barcode: {
         Args: { p_barcode: string; p_id: string }
@@ -1876,6 +1996,20 @@ export type Database = {
       }
       update_product_group: {
         Args: { p_data: Json; p_id: string }
+        Returns: undefined
+      }
+      update_promotion: {
+        Args: {
+          p_category: string | null
+          p_discount_percent: number
+          p_ends_on: string | null
+          p_id: string
+          p_is_active: boolean
+          p_name: string
+          p_product_size_ids: string[]
+          p_scope_type: string
+          p_starts_on: string | null
+        }
         Returns: undefined
       }
       update_warehouse: {

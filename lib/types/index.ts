@@ -151,6 +151,17 @@ export interface Coupon {
   status: 'active' | 'inactive' | 'expired'
 }
 
+export interface Promotion {
+  id: string
+  name: string
+  discountPercent: number
+  scopeType: 'product' | 'category' | 'store'
+  category: string | null
+  startsOn: string | null
+  endsOn: string | null
+  isActive: boolean
+}
+
 export interface Request {
   id: string
   customerId: string
