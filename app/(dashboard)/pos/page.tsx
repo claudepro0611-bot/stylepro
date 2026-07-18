@@ -681,8 +681,14 @@ export default function POSPage() {
   // server-side by sell_cart from active promotions and the customer's VIP
   // status, so this is not a guaranteed final price.
   const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0)
+  // Client-side preview only: applies the selected promotion's percent
+  // uniformly across the cart (no scope_type/product/category matching —
+  // sell_cart doesn't read promotion_id yet, so this is a simplified
+  // estimate, consistent with pos.estimateNote's "may differ" framing).
+  const promoDiscountAmount = selectedPromotion ? Math.round(subtotal * selectedPromotion.discountPercent / 100) : 0
+  const total = subtotal - promoDiscountAmount
   const received = Number(amountReceived) || 0
-  const change = Math.max(0, received - subtotal)
+  const change = Math.max(0, received - total)
 
   const canSell = cart.length > 0 && paymentMethod !== '' && (!features.shift_system || !!activeShift)
 
@@ -744,8 +750,17 @@ export default function POSPage() {
       companyName,
       date: new Date().toLocaleDateString('uz-UZ'),
       receiptNumber: transactionId.slice(-6).toUpperCase(),
-      items: cart.map(line => ({ name: line.productName, size: line.size, quantity: line.quantity, price: line.unitPrice })),
-      total: subtotal,
+      // Preview-only: show the discounted per-line price on the receipt when
+      // a promotion was selected, matching the total the cashier/customer
+      // saw during the sale (the actual charged amount is still confirmed
+      // server-side by sell_cart).
+      items: cart.map(line => ({
+        name: line.productName,
+        size: line.size,
+        quantity: line.quantity,
+        price: selectedPromotion ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100)) : line.unitPrice,
+      })),
+      total,
       paymentType: paymentMethod,
     })
     setReceiptOpen(true)
@@ -898,13 +913,27 @@ export default function POSPage() {
                 </div>
               ) : (
                 <div>
-                  {cart.map((line, i) => (
+                  {cart.map((line, i) => {
+                    // Preview-only estimate — see promoDiscountAmount comment above.
+                    const discountedUnitPrice = selectedPromotion
+                      ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100))
+                      : line.unitPrice
+                    return (
                     <div key={line.key} className={cn('flex items-center justify-between gap-2 py-3', i > 0 && 'border-t border-gray-100 dark:border-gray-800')}>
                       <div className="min-w-0">
                         <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
                           {line.productName} <span className="text-gray-400 dark:text-gray-500">· {line.size}</span>
                         </p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">{formatPrice(line.unitPrice)}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                          {selectedPromotion ? (
+                            <>
+                              <span className="line-through text-gray-300 dark:text-gray-600 mr-1">{formatPrice(line.unitPrice)}</span>
+                              {formatPrice(discountedUnitPrice)}
+                            </>
+                          ) : (
+                            formatPrice(line.unitPrice)
+                          )}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="flex items-center gap-1">
@@ -916,13 +945,21 @@ export default function POSPage() {
                             <Plus className="h-3 w-3" />
                           </button>
                         </div>
-                        <span className="w-20 text-right text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
+                        {selectedPromotion ? (
+                          <div className="flex flex-col items-end min-w-20">
+                            <span className="text-[11px] line-through text-gray-300 dark:text-gray-600 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
+                            <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(discountedUnitPrice * line.quantity)}</span>
+                          </div>
+                        ) : (
+                          <span className="w-20 text-right text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
+                        )}
                         <button onClick={() => removeLine(line.key)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                           <X className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
@@ -962,9 +999,15 @@ export default function POSPage() {
             {cart.length > 0 && (
               <div className="shrink-0 border-t border-gray-100 dark:border-gray-800 px-5 py-4 space-y-4">
                 <div className="space-y-1">
+                  {selectedPromotion && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500 dark:text-gray-400">{t('pos.promotionDiscount')}</span>
+                      <span className="text-gray-900 dark:text-gray-100 tabular-nums">−{formatPrice(promoDiscountAmount)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-base font-bold text-gray-900 dark:text-gray-100">{t('pos.payment')}</span>
-                    <span className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(subtotal)}</span>
+                    <span className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(total)}</span>
                   </div>
                   <p className="text-[11px] text-gray-400 dark:text-gray-500">{t('pos.estimateNote')}</p>
                 </div>

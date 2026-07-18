@@ -823,6 +823,7 @@ export const translations = {
       invalidCustomer: "Tanlangan mijoz ushbu kompaniyaga tegishli emas",
       applyPromotion: "Aksiya qo'llash",
       estimateNote: "Aksiya yoki VIP chegirma qo'llanilsa, yakuniy summa farq qilishi mumkin",
+      promotionDiscount: "Aksiya chegirmasi",
       promotionModal: {
         title: "Aksiya tanlash",
         empty: "Faol aksiyalar topilmadi",
@@ -2210,6 +2211,7 @@ export const translations = {
       invalidCustomer: "Выбранный клиент не принадлежит этой компании",
       applyPromotion: "Применить акцию",
       estimateNote: "Итоговая сумма может отличаться при применении акции или VIP-скидки",
+      promotionDiscount: "Скидка по акции",
       promotionModal: {
         title: "Выбор акции",
         empty: "Активные акции не найдены",
@@ -3597,6 +3599,7 @@ export const translations = {
       invalidCustomer: "The selected customer does not belong to this company",
       applyPromotion: "Apply promotion",
       estimateNote: "The final amount may differ if a promotion or VIP discount applies",
+      promotionDiscount: "Promotion discount",
       promotionModal: {
         title: "Select promotion",
         empty: "No active promotions found",
