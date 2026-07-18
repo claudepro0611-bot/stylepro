@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
+import { Trash2, AlertTriangle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { MiniBadge } from '@/components/ui/MiniBadge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -185,7 +185,6 @@ export default function MarketingPage() {
               onClick={openCreatePromotion}
               className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 py-2 text-[13px] font-medium text-white transition-colors"
             >
-              <Plus className="h-3.5 w-3.5" />
               {t('marketing.aksiya.addNew')}
             </button>
           </div>
