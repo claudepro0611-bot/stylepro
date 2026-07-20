@@ -18,6 +18,8 @@ export interface Customer {
   createdAt: string
   purchases: Purchase[]
   complaints: string[]
+  vipDiscountPercent: number | null
+  vipSince: string | null
 }
 
 export interface Product {

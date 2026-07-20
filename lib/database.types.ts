@@ -275,6 +275,7 @@ export type Database = {
           total_purchases: number
           updated_at: string
           vip_discount_percent: number | null
+          vip_since: string | null
         }
         Insert: {
           address?: string | null
@@ -290,6 +291,7 @@ export type Database = {
           total_purchases?: number
           updated_at?: string
           vip_discount_percent?: number | null
+          vip_since?: string | null
         }
         Update: {
           address?: string | null
@@ -305,6 +307,7 @@ export type Database = {
           total_purchases?: number
           updated_at?: string
           vip_discount_percent?: number | null
+          vip_since?: string | null
         }
         Relationships: [
           {
@@ -551,6 +554,171 @@ export type Database = {
           price_usd?: number
         }
         Relationships: []
+      }
+      loyalty_config: {
+        Row: {
+          ball_rate: number
+          company_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          mode: string
+          redeem_rate: number
+          updated_at: string
+        }
+        Insert: {
+          ball_rate: number
+          company_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          mode: string
+          redeem_rate: number
+          updated_at?: string
+        }
+        Update: {
+          ball_rate?: number
+          company_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          mode?: string
+          redeem_rate?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_config_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_transactions: {
+        Row: {
+          amount: number
+          company_id: string
+          created_at: string
+          customer_id: string
+          id: string
+          note: string | null
+          transaction_id: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          company_id: string
+          created_at?: string
+          customer_id: string
+          id?: string
+          note?: string | null
+          transaction_id?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          company_id?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          note?: string | null
+          transaction_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_transactions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_transactions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_transactions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions_net"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nasiya_transactions: {
+        Row: {
+          amount: number
+          company_id: string
+          created_at: string
+          customer_id: string
+          id: string
+          note: string | null
+          related_transaction_id: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          company_id: string
+          created_at?: string
+          customer_id: string
+          id?: string
+          note?: string | null
+          related_transaction_id?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          company_id?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+          note?: string | null
+          related_transaction_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nasiya_transactions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nasiya_transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nasiya_transactions_related_transaction_id_fkey"
+            columns: ["related_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nasiya_transactions_related_transaction_id_fkey"
+            columns: ["related_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions_net"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       position_history: {
         Row: {
@@ -1517,7 +1685,9 @@ export type Database = {
       transaction_items: {
         Row: {
           company_id: string
+          discount_percent: number
           id: string
+          list_price: number
           price: number
           product_id: string | null
           product_name: string | null
@@ -1529,7 +1699,9 @@ export type Database = {
         }
         Insert: {
           company_id: string
+          discount_percent?: number
           id?: string
+          list_price?: number
           price?: number
           product_id?: string | null
           product_name?: string | null
@@ -1541,7 +1713,9 @@ export type Database = {
         }
         Update: {
           company_id?: string
+          discount_percent?: number
           id?: string
+          list_price?: number
           price?: number
           product_id?: string | null
           product_name?: string | null
@@ -1977,8 +2151,29 @@ export type Database = {
         Returns: number
       }
       get_company_id: { Args: never; Returns: string }
+      get_customer_loyalty_balance: {
+        Args: { p_customer_id: string }
+        Returns: number
+      }
+      get_customer_nasiya_balance: {
+        Args: { p_customer_id: string }
+        Returns: number
+      }
+      give_nasiya: {
+        Args: {
+          p_amount: number
+          p_customer_id: string
+          p_note: string | null
+          p_related_transaction_id: string | null
+        }
+        Returns: undefined
+      }
       has_permission: { Args: { p_key: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      repay_nasiya: {
+        Args: { p_amount: number; p_customer_id: string; p_note: string | null }
+        Returns: undefined
+      }
       return_items: {
         Args: { p_items: Json; p_reason: string; p_transaction_id: string }
         Returns: string

@@ -10,7 +10,7 @@ import type { TranslationKey } from '@/lib/i18n/translations'
 export const PERMISSION_KEYS = [
   'dashboard', 'pos', 'customers', 'inventory', 'kirim', 'chiqim', 'brak',
   'mahsulotlar', 'mahsulot_guruhi', 'reports', 'xarajatlar', 'marketing',
-  'requests', 'hr', 'sozlamalar', 'jamoa', 'arxiv',
+  'requests', 'hr', 'sozlamalar', 'jamoa', 'arxiv', 'nasiya',
 ] as const
 
 export type PermissionKey = typeof PERMISSION_KEYS[number]
@@ -44,4 +44,17 @@ export const PERMISSION_ITEMS: { key: PermissionKey; labelKey: TranslationKey; i
   { key: 'sozlamalar', labelKey: 'sidebar.settings', icon: Settings },
   { key: 'jamoa', labelKey: 'sidebar.jamoa', icon: UserCog },
   { key: 'arxiv', labelKey: 'sidebar.arxiv', icon: Archive },
+  // 'nasiya' intentionally NOT added here yet: PERMISSION_ITEMS entries are
+  // typed against TranslationKey = DotPaths<Translations> (a strict literal
+  // union generated from lib/i18n/translations.ts's actual keys), so adding
+  // a { key: 'nasiya', labelKey: 'sidebar.nasiya', ... } entry now — before
+  // 'sidebar.nasiya' exists in translations.ts (uz/ru/en) — would fail to
+  // typecheck / break `npm run build`. Adding that translation string is
+  // explicitly out of scope for this migration (frontend scope). Follow-up
+  // frontend task: add 'sidebar.nasiya' to translations.ts, then add
+  // { key: 'nasiya', labelKey: 'sidebar.nasiya', icon: CreditCard } (or
+  // similar credit-card-style lucide-react icon) to this array so it
+  // appears in the sidebar/permissions UI. 'nasiya' is already a valid
+  // PermissionKey (see PERMISSION_KEYS above) and DEFAULT_PERMISSIONS
+  // covers it automatically — only the UI-visibility entry is pending.
 ]
