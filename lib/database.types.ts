@@ -2221,6 +2221,10 @@ export type Database = {
         Args: { p_id: string; p_name: string; p_type: string }
         Returns: undefined
       }
+      use_cashback: {
+        Args: { p_balls: number; p_customer_id: string; p_transaction_id?: string | null }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never
