@@ -635,6 +635,12 @@ export const translations = {
           repaid: "Qaytarilgan (davr)",
           currentBalance: "Joriy jami qoldiq",
         },
+        charts: {
+          trendTitle: "Daromad va foyda dinamikasi",
+          daromad: "Daromad",
+          sofFoyda: "Sof foyda",
+          expenseTitle: "Xarajatlar taqsimoti",
+        },
       },
       inventar: {
         title: "Inventar hisoboti",
@@ -651,6 +657,15 @@ export const translations = {
           sold: "Sotuv",
           brak: "Brak",
           returned: "Qaytarish",
+        },
+        charts: {
+          movementTitle: "Davr bo'yicha ombor harakati",
+          stockIn: "Kirim",
+          sold: "Sotuv",
+          returned: "Qaytarish",
+          brak: "Brak",
+          categoryTitle: "Kategoriya bo'yicha savdo daromadi",
+          other: "Boshqa",
         },
         table: {
           title: "Mahsulotlar bo'yicha ombor harakati",
@@ -2147,6 +2162,12 @@ export const translations = {
           repaid: "Погашено (период)",
           currentBalance: "Текущий общий остаток",
         },
+        charts: {
+          trendTitle: "Динамика дохода и прибыли",
+          daromad: "Доход",
+          sofFoyda: "Чистая прибыль",
+          expenseTitle: "Распределение расходов",
+        },
       },
       inventar: {
         title: "Отчёт по складу",
@@ -2163,6 +2184,15 @@ export const translations = {
           sold: "Продажи",
           brak: "Брак",
           returned: "Возврат",
+        },
+        charts: {
+          movementTitle: "Движение склада по периодам",
+          stockIn: "Приход",
+          sold: "Продажи",
+          returned: "Возврат",
+          brak: "Брак",
+          categoryTitle: "Доход от продаж по категориям",
+          other: "Другое",
         },
         table: {
           title: "Движение склада по товарам",
@@ -3659,6 +3689,12 @@ export const translations = {
           repaid: "Repaid (period)",
           currentBalance: "Current Total Balance",
         },
+        charts: {
+          trendTitle: "Revenue & Profit Trend",
+          daromad: "Revenue",
+          sofFoyda: "Net Profit",
+          expenseTitle: "Expense Breakdown",
+        },
       },
       inventar: {
         title: "Inventory Report",
@@ -3675,6 +3711,15 @@ export const translations = {
           sold: "Sold",
           brak: "Defective",
           returned: "Returned",
+        },
+        charts: {
+          movementTitle: "Stock Movement by Period",
+          stockIn: "Stock In",
+          sold: "Sold",
+          returned: "Returned",
+          brak: "Defective",
+          categoryTitle: "Sales Revenue by Category",
+          other: "Other",
         },
         table: {
           title: "Stock Movement by Product",

@@ -65,3 +65,41 @@ export function addDays(dateStr: string, days: number): string {
 export function daysBetween(from: string, to: string): number {
   return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000)
 }
+
+// ─── Chart bucketing (shared by moliya/inventar report charts) ─────────────
+// Bucketing threshold: daily buckets for ranges of 31 days or less (today /
+// week / month / lastMonth), weekly buckets beyond that (year / long custom
+// ranges) — keeps the trend/bar charts from rendering hundreds of daily
+// points for a full year.
+
+export type BucketGranularity = 'day' | 'week'
+
+export function bucketGranularity(from: string, to: string): BucketGranularity {
+  return daysBetween(from, to) <= 31 ? 'day' : 'week'
+}
+
+// Bucket key for a given date: the day itself for daily granularity, or the
+// start date of its 7-day window (anchored at `from`, not calendar weeks)
+// for weekly granularity.
+export function bucketKey(dateStr: string, from: string, granularity: BucketGranularity): string {
+  const day = dateStr.slice(0, 10)
+  if (granularity === 'day') return day
+  const weekIndex = Math.floor(daysBetween(from, day) / 7)
+  return addDays(from, weekIndex * 7)
+}
+
+// Ordered list of bucket keys spanning [from, to] inclusive.
+export function buildBuckets(from: string, to: string, granularity: BucketGranularity): string[] {
+  const buckets: string[] = []
+  const step = granularity === 'day' ? 1 : 7
+  for (let cursor = from; cursor <= to; cursor = addDays(cursor, step)) {
+    buckets.push(cursor)
+  }
+  return buckets
+}
+
+// Short "d/m" label for a bucket's start date, used as the chart X-axis tick.
+export function bucketLabel(bucketDate: string): string {
+  const d = new Date(bucketDate + 'T00:00:00Z')
+  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`
+}

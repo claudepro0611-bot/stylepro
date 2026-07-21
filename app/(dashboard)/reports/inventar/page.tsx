@@ -5,11 +5,15 @@ import {
   Loader2, ArrowDownCircle, ShoppingBag, Undo2, Trash2, Package, type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTheme } from 'next-themes'
+import {
+  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { ReportPeriodFilterBar } from '@/components/reports/ReportPeriodFilterBar'
-import { periodRange, type Period } from '@/lib/reports/period'
+import { periodRange, bucketGranularity, buildBuckets, bucketKey, bucketLabel, type Period } from '@/lib/reports/period'
 
 // ─── KPI card (same convention as dashboard/page.tsx's KpiCard/KpiIconBox) ──
 
@@ -49,6 +53,7 @@ function KpiCard({ title, value, subValue, icon, valueClassName }: KpiCardProps)
 interface ProductRow {
   id: string
   name: string
+  category: string | null
 }
 
 interface ProductSizeRow {
@@ -92,9 +97,17 @@ const PILL_CLS = (active: boolean) =>
       : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
   }`
 
+// 5th+ categories beyond this cap are grouped into a single "Other" slice so
+// a long product catalog doesn't produce a pie chart with dozens of slivers.
+const TOP_CATEGORY_COUNT = 5
+
+const CATEGORY_COLORS = ['#2563eb', '#059669', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b']
+
 export default function InventarReportPage() {
   const { t } = useLanguage()
   const { formatPrice } = useCurrency()
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
 
   const [period, setPeriod] = useState<Period>('month')
   const [customFrom, setCustomFrom] = useState('')
@@ -111,7 +124,7 @@ export default function InventarReportPage() {
     setLoading(true)
     const supabase = createClient()
     const [productsRes, sizesRes, stockInRes, stockOutRes] = await Promise.all([
-      supabase.from('products').select('id, name'),
+      supabase.from('products').select('id, name, category'),
       supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price'),
       supabase.from('stock_in_entries').select('quantity, total_amount, date, entry_type, product_size_id'),
       supabase.from('stock_out_entries').select('quantity, total_amount, date, entry_type, product_size_id'),
@@ -140,6 +153,68 @@ export default function InventarReportPage() {
   const returnEntries = useMemo(() => filteredStockIn.filter(e => e.entry_type === 'return'), [filteredStockIn])
   const saleEntries = useMemo(() => filteredStockOut.filter(e => e.entry_type === 'sale'), [filteredStockOut])
   const brakEntries = useMemo(() => filteredStockOut.filter(e => e.entry_type === 'brak'), [filteredStockOut])
+
+  // ─── Chart A: Kirim/Sotuv/Qaytarish/Brak grouped by day or week ───────────
+  // Bucketing rule (shared with moliya's trend chart, see
+  // lib/reports/period.ts): daily buckets when the selected range is ≤31
+  // days, weekly buckets for longer ranges.
+  const granularity = useMemo(() => bucketGranularity(from, to), [from, to])
+  const buckets = useMemo(() => buildBuckets(from, to, granularity), [from, to, granularity])
+
+  const movementData = useMemo(() => {
+    interface Bucket { stockIn: number; sold: number; returned: number; brak: number }
+    const map = new Map<string, Bucket>()
+    buckets.forEach(b => map.set(b, { stockIn: 0, sold: 0, returned: 0, brak: 0 }))
+    const add = (rows: { date: string; quantity: number }[], key: keyof Bucket) => {
+      rows.forEach(e => {
+        const entry = map.get(bucketKey(e.date, from, granularity))
+        if (!entry) return
+        entry[key] += Number(e.quantity)
+      })
+    }
+    add(purchaseEntries, 'stockIn')
+    add(saleEntries, 'sold')
+    add(returnEntries, 'returned')
+    add(brakEntries, 'brak')
+    return buckets.map(b => ({ label: bucketLabel(b), ...map.get(b)! }))
+  }, [buckets, purchaseEntries, saleEntries, returnEntries, brakEntries, from, granularity])
+
+  // ─── Chart B: top categories by sale revenue ───────────────────────────────
+  const categoryByProductId = useMemo(() => {
+    const m = new Map<string, string>()
+    products.forEach(p => m.set(p.id, p.category || t('reports.inventar.charts.other')))
+    return m
+  }, [products, t])
+  const productIdBySizeId = useMemo(() => {
+    const m = new Map<string, string>()
+    productSizes.forEach(ps => m.set(ps.id, ps.product_id ?? ''))
+    return m
+  }, [productSizes])
+
+  const categoryData = useMemo(() => {
+    const totals = new Map<string, number>()
+    saleEntries.forEach(e => {
+      const productId = productIdBySizeId.get(e.product_size_id ?? '') ?? ''
+      const category = categoryByProductId.get(productId) ?? t('reports.inventar.charts.other')
+      totals.set(category, (totals.get(category) ?? 0) + Number(e.total_amount))
+    })
+    const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
+    const top = sorted.slice(0, TOP_CATEGORY_COUNT)
+    const rest = sorted.slice(TOP_CATEGORY_COUNT)
+    if (rest.length > 0) {
+      const restTotal = rest.reduce((s, [, v]) => s + v, 0)
+      if (restTotal > 0) top.push([t('reports.inventar.charts.other'), restTotal])
+    }
+    return top.filter(([, v]) => v > 0).map(([name, value], i) => ({ name, value, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }))
+  }, [saleEntries, productIdBySizeId, categoryByProductId, t])
+  const categoryTotal = useMemo(() => categoryData.reduce((s, d) => s + d.value, 0), [categoryData])
+
+  const axisColor = isDark ? '#6B7280' : '#9CA3AF'
+  const gridColor = isDark ? '#374151' : '#F3F4F6'
+  const tooltipStyle = {
+    contentStyle: { background: isDark ? '#111827' : '#fff', border: '1px solid ' + (isDark ? '#374151' : '#E5E7EB'), borderRadius: 8, fontSize: 12 },
+    labelStyle: { color: isDark ? '#D1D5DB' : '#374151' },
+  }
 
   // ─── KPI cards ────────────────────────────────────────────────────────────
 
@@ -279,6 +354,55 @@ export default function InventarReportPage() {
           value={`${remainingQty} ${t('common.unitsSuffix')}`}
           icon={Package}
         />
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.inventar.charts.movementTitle')}</p>
+          </div>
+          <div className="p-4">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={movementData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
+                <Tooltip {...tooltipStyle} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="stockIn" name={t('reports.inventar.charts.stockIn')} fill="#2563eb" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="sold" name={t('reports.inventar.charts.sold')} fill="#059669" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="returned" name={t('reports.inventar.charts.returned')} fill="#f59e0b" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="brak" name={t('reports.inventar.charts.brak')} fill="#ef4444" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.inventar.charts.categoryTitle')}</p>
+          </div>
+          <div className="p-4">
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={categoryData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={90}
+                  label={({ name, value }) => categoryTotal > 0 ? `${name} ${((Number(value) / categoryTotal) * 100).toFixed(0)}%` : name}
+                >
+                  {categoryData.map((d, i) => <Cell key={`${d.name}-${i}`} fill={d.color} />)}
+                </Pie>
+                <Tooltip {...tooltipStyle} formatter={(v) => formatPrice(Number(v))} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
 
       {/* Filter tabs */}

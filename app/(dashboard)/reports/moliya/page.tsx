@@ -3,11 +3,15 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Loader2, Wallet, TrendingUp, Undo2, CreditCard, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTheme } from 'next-themes'
+import {
+  LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { ReportPeriodFilterBar } from '@/components/reports/ReportPeriodFilterBar'
-import { periodRange, type Period } from '@/lib/reports/period'
+import { periodRange, bucketGranularity, buildBuckets, bucketKey, bucketLabel, type Period } from '@/lib/reports/period'
 
 // ─── KPI card (same convention as dashboard/page.tsx's KpiCard/KpiIconBox
 // and customers/page.tsx's Karta tab KPI cards) ─────────────────────────────
@@ -98,7 +102,9 @@ interface ExpenseRow {
 
 export default function MoliyaReportPage() {
   const { t } = useLanguage()
-  const { formatPrice } = useCurrency()
+  const { formatPrice, formatShortPrice } = useCurrency()
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
 
   const [period, setPeriod] = useState<Period>('month')
   const [customFrom, setCustomFrom] = useState('')
@@ -235,6 +241,94 @@ export default function MoliyaReportPage() {
   const netProfit = useMemo(() => netRevenue - cogs - brakLoss - opex, [netRevenue, cogs, brakLoss, opex])
   const margin = useMemo(() => grossRevenue > 0 ? (netProfit / grossRevenue) * 100 : 0, [netProfit, grossRevenue])
 
+  // ─── Chart A: Daromad / Sof foyda trend, bucketed per day or week ─────────
+  // Bucketing rule (shared with inventar's chart, see lib/reports/period.ts):
+  // daily buckets when the selected range is ≤31 days, weekly buckets for
+  // longer ranges (year / long custom range) so the chart doesn't render
+  // hundreds of daily points.
+  const granularity = useMemo(() => bucketGranularity(from, to), [from, to])
+  const buckets = useMemo(() => buildBuckets(from, to, granularity), [from, to, granularity])
+
+  const txnDateById = useMemo(() => {
+    const m = new Map<string, string>()
+    filteredTxns.forEach(t => m.set(t.id, t.date))
+    return m
+  }, [filteredTxns])
+  const returnDateById = useMemo(() => {
+    const m = new Map<string, string>()
+    filteredReturns.forEach(r => m.set(r.id, r.created_at))
+    return m
+  }, [filteredReturns])
+
+  const trendData = useMemo(() => {
+    interface Bucket { gross: number; discounts: number; cashback: number; returns: number; cogs: number; brak: number; opex: number }
+    const map = new Map<string, Bucket>()
+    buckets.forEach(b => map.set(b, { gross: 0, discounts: 0, cashback: 0, returns: 0, cogs: 0, brak: 0, opex: 0 }))
+
+    filteredItems.forEach(i => {
+      const date = txnDateById.get(i.transaction_id)
+      if (!date) return
+      const entry = map.get(bucketKey(date, from, granularity))
+      if (!entry) return
+      entry.gross += Number(i.list_price) * Number(i.quantity)
+      entry.discounts += (Number(i.list_price) - Number(i.price)) * Number(i.quantity)
+      entry.cogs += Number(i.purchase_price ?? 0) * Number(i.quantity)
+    })
+
+    loyaltyTxns.filter(l => inRange(l.created_at)).forEach(l => {
+      const entry = map.get(bucketKey(l.created_at, from, granularity))
+      if (!entry) return
+      entry.cashback += Number(l.amount) * redeemRate
+    })
+
+    returnItems.forEach(ri => {
+      const rdate = returnDateById.get(ri.return_id)
+      if (!rdate) return
+      const entry = map.get(bucketKey(rdate, from, granularity))
+      if (!entry) return
+      entry.returns += Number(ri.refund_amount)
+    })
+
+    filteredBrak.forEach(e => {
+      const entry = map.get(bucketKey(e.date, from, granularity))
+      if (!entry) return
+      entry.brak += Number(e.quantity) * (purchasePriceBySize.get(e.product_size_id ?? '') ?? 0)
+    })
+
+    filteredExpenses.forEach(e => {
+      const entry = map.get(bucketKey(e.date, from, granularity))
+      if (!entry) return
+      entry.opex += Number(e.amount)
+    })
+
+    return buckets.map(b => {
+      const e = map.get(b)!
+      const netRev = e.gross - e.discounts - e.cashback - e.returns
+      const netProf = netRev - e.cogs - e.brak - e.opex
+      return { label: bucketLabel(b), daromad: netRev, sofFoyda: netProf }
+    })
+  }, [buckets, filteredItems, txnDateById, loyaltyTxns, inRange, redeemRate, returnItems, returnDateById, filteredBrak, purchasePriceBySize, filteredExpenses, from, granularity])
+
+  // ─── Chart B: expense breakdown pie (period totals, already computed above) ─
+  // 5th slice color (returnsAmount) is a slate/gray tone — only 4 semantic
+  // colors (blue/emerald/amber/red) were specified for the 5 expense slices.
+  const expenseData = useMemo(() => ([
+    { key: 'cogs', name: t('reports.moliya.pnl.cogs'), value: cogs, color: '#2563eb' },
+    { key: 'discounts', name: t('reports.moliya.pnl.discounts'), value: discounts, color: '#f59e0b' },
+    { key: 'brakLoss', name: t('reports.moliya.pnl.brakLoss'), value: brakLoss, color: '#ef4444' },
+    { key: 'opex', name: t('reports.moliya.pnl.opex'), value: opex, color: '#059669' },
+    { key: 'returns', name: t('reports.moliya.pnl.returns'), value: returnsAmount, color: '#64748b' },
+  ].filter(s => s.value > 0)), [t, cogs, discounts, brakLoss, opex, returnsAmount])
+
+  const expenseTotal = useMemo(() => expenseData.reduce((s, d) => s + d.value, 0), [expenseData])
+
+  const axisColor = isDark ? '#6B7280' : '#9CA3AF'
+  const gridColor = isDark ? '#374151' : '#F3F4F6'
+  const tooltipStyle = {
+    contentStyle: { background: isDark ? '#111827' : '#fff', border: '1px solid ' + (isDark ? '#374151' : '#E5E7EB'), borderRadius: 8, fontSize: 12 },
+    labelStyle: { color: isDark ? '#D1D5DB' : '#374151' },
+  }
+
   // ─── Section 2: Nasiya / qarzdorlik ───────────────────────────────────────
 
   const nasiyaGivenPeriod = useMemo(() =>
@@ -300,6 +394,53 @@ export default function MoliyaReportPage() {
           icon={CreditCard}
           valueClassName={nasiyaCurrentBalance > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}
         />
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.moliya.charts.trendTitle')}</p>
+          </div>
+          <div className="p-4">
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => formatShortPrice(Number(v))} width={55} />
+                <Tooltip {...tooltipStyle} formatter={(v) => formatPrice(Number(v))} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="daromad" name={t('reports.moliya.charts.daromad')} stroke="#2563eb" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="sofFoyda" name={t('reports.moliya.charts.sofFoyda')} stroke="#059669" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.moliya.charts.expenseTitle')}</p>
+          </div>
+          <div className="p-4">
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={expenseData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={90}
+                  label={({ name, value }) => expenseTotal > 0 ? `${name} ${((Number(value) / expenseTotal) * 100).toFixed(0)}%` : name}
+                >
+                  {expenseData.map(d => <Cell key={d.key} fill={d.color} />)}
+                </Pie>
+                <Tooltip {...tooltipStyle} formatter={(v) => formatPrice(Number(v))} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
 
       {/* Section 1: P&L */}
