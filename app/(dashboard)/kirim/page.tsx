@@ -563,6 +563,12 @@ export default function KirimPage() {
     setSavedLabels(labels)
     setAddStep('done')
     fetchEntries()
+    // The rows just inserted by stock_in may include product_sizes that
+    // didn't exist before this save (new size/color combo, or a barcode
+    // the RPC just auto-generated) — sizeLookup was only ever populated
+    // once on mount, so it must be refreshed or the print-labels button
+    // for these brand-new entries stays disabled until a full page reload.
+    fetchSizeLookup()
   }
 
   async function deleteEntry(id: string) {
@@ -583,13 +589,13 @@ export default function KirimPage() {
 
   function printLabelsForEntry(e: StockInEntry) {
     const match = resolveProductSize(e)
-    if (!match) return
+    if (!match || !match.barcode) return
     setSavedLabels([{
       productName: e.productName,
       color: e.color,
       size: e.size,
       sellingPrice: e.sellingPrice,
-      barcode: match.barcode ?? '',
+      barcode: match.barcode,
       quantity: e.quantity,
     }])
     setPrintLabelsOpen(true)
@@ -754,6 +760,10 @@ export default function KirimPage() {
                 <tbody>
                   {paginated.map((e, i) => {
                   const sizeMatch = resolveProductSize(e)
+                  // A match with no barcode (legacy product_sizes rows
+                  // created before the barcode-autogen migration and never
+                  // restocked since) is just as unprintable as no match.
+                  const canPrintLabel = !!sizeMatch?.barcode
                   return (
                     <tr key={e.id} className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors ${i % 2 !== 0 ? 'bg-gray-50/50 dark:bg-gray-800/30' : ''}`}>
                       <td className="px-4 py-3 text-[12px] text-gray-400 dark:text-gray-500">{(page - 1) * ITEMS_PER_PAGE + i + 1}</td>
@@ -777,8 +787,8 @@ export default function KirimPage() {
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => printLabelsForEntry(e)}
-                            disabled={!sizeMatch}
-                            title={!sizeMatch ? t('kirim.printLabels.noBarcode') : undefined}
+                            disabled={!canPrintLabel}
+                            title={!canPrintLabel ? t('kirim.printLabels.noBarcode') : undefined}
                             className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                           >
                             <Printer className="h-3.5 w-3.5" />
