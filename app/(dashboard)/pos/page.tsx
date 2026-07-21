@@ -695,10 +695,18 @@ export default function POSPage() {
   // dialog's own field, ...) are left alone so typing there still works —
   // otherwise this would steal focus away from every other field on the
   // page and make manual typing impossible.
+  // Also left alone: any click inside an open dialog (role="dialog" — every
+  // modal on this page, incl. the manual barcode entry one, renders via the
+  // same Base UI Dialog primitive and gets this role). Dialogs render into a
+  // portal appended to <body>, so their clicks still bubble to `document`;
+  // without this exclusion, clicking anywhere in an open dialog that isn't
+  // literally the <input> itself (its title, padding, footer, ...) silently
+  // steals focus back to the hidden scanner input, and further keystrokes
+  // stop reaching the visible field the cashier is looking at.
   useEffect(() => {
     function handlePageClick(e: MouseEvent) {
       const target = e.target as HTMLElement
-      if (target.closest('input, textarea, select')) return
+      if (target.closest('input, textarea, select, [role="dialog"], [role="alertdialog"]')) return
       barcodeInputRef.current?.focus()
     }
     document.addEventListener('click', handlePageClick)
