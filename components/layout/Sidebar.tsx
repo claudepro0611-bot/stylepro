@@ -69,7 +69,13 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/hr/grafik', labelKey: 'sidebar.grafik', icon: LineChart },
     ],
   },
-  { href: '/reports', labelKey: 'sidebar.reports', icon: BarChart2, permKey: 'reports', featureKey: 'reports' },
+  {
+    href: '/reports', labelKey: 'sidebar.reports', icon: BarChart2, noLink: true, permKey: 'reports', featureKey: 'reports',
+    children: [
+      { href: '/reports/moliya', labelKey: 'sidebar.reportsMoliya', icon: BarChart2 },
+      { href: '/reports/inventar', labelKey: 'sidebar.reportsInventar', icon: Package },
+    ],
+  },
   { href: '/xarajatlar', labelKey: 'sidebar.expenses', icon: Receipt, permKey: 'xarajatlar', featureKey: 'expenses' },
   { href: '/marketing', labelKey: 'sidebar.marketing', icon: Megaphone, permKey: 'marketing', featureKey: 'marketing' },
   { href: '/requests', labelKey: 'sidebar.requests', icon: MessageSquare, permKey: 'requests' },
