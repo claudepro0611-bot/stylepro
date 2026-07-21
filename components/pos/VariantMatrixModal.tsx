@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { cn } from '@/lib/utils'
@@ -38,6 +39,22 @@ interface VariantMatrixModalProps {
 export function VariantMatrixModal({ productName, variants, open, onOpenChange, onSelect }: VariantMatrixModalProps) {
   const { t } = useLanguage()
 
+  // Guards against a single logical "tap" resulting in more than one
+  // addToCart call. The dialog's close (onOpenChange(false)) is a React
+  // state update, not an instant DOM removal — the popup (and its cell
+  // buttons) stay mounted/clickable for the exit animation (see
+  // data-closed:animate-out in components/ui/dialog.tsx). Without this
+  // guard, any extra click event that lands on the same button before the
+  // parent actually unmounts the modal — e.g. a touch/webview double-fire,
+  // or a cashier re-tapping because there's no immediate visual
+  // confirmation — calls selectVariant again and adds the item to the cart
+  // a second, third, ... time. Reset whenever the modal (re)opens so the
+  // next real selection isn't blocked.
+  const selectedRef = useRef(false)
+  useEffect(() => {
+    if (open) selectedRef.current = false
+  }, [open])
+
   // Phase 5: color is now a real tracked dimension on product_sizes, so
   // every cell below is that exact row's own stock — no more decorative
   // color guessing/duplication across rows.
@@ -50,7 +67,8 @@ export function VariantMatrixModal({ productName, variants, open, onOpenChange, 
   }
 
   function selectVariant(v: MatrixVariant | undefined) {
-    if (!v || v.stock <= 0) return
+    if (!v || v.stock <= 0 || selectedRef.current) return
+    selectedRef.current = true
     onSelect(v.id)
     onOpenChange(false)
   }

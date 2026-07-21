@@ -836,6 +836,10 @@ export const translations = {
         insufficientBalance: "Yetarli ball mavjud emas",
         line: "Cashback chegirmasi",
       },
+      lineBadge: {
+        promo: "Aksiya",
+        cashback: "Cashback",
+      },
       total: "Jami",
       payment: "To'lov",
       received: "Qabul qilindi",
@@ -2282,6 +2286,10 @@ export const translations = {
         insufficientBalance: "Недостаточно баллов",
         line: "Скидка по кэшбэку",
       },
+      lineBadge: {
+        promo: "Акция",
+        cashback: "Кэшбэк",
+      },
       total: "Итого",
       payment: "Оплата",
       received: "Получено",
@@ -3727,6 +3735,10 @@ export const translations = {
         ballsLabel: "Number of points to use",
         insufficientBalance: "Insufficient loyalty balance",
         line: "Cashback discount",
+      },
+      lineBadge: {
+        promo: "Promo",
+        cashback: "Cashback",
       },
       total: "Total",
       payment: "Payment",

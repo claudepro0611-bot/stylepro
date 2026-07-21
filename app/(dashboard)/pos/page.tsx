@@ -483,6 +483,11 @@ export default function POSPage() {
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const [scanValue, setScanValue] = useState('')
   const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Last raw scan value actually dispatched to performBarcodeLookup — lets
+  // the debounce timer and the Enter keydown handler (which both call
+  // performBarcodeLookup for the same physical scan) detect that the other
+  // one already handled it, regardless of which of the two fires first.
+  const lastDispatchedScanRef = useRef<string | null>(null)
   const [manualBarcodeOpen, setManualBarcodeOpen] = useState(false)
   const [manualBarcodeValue, setManualBarcodeValue] = useState('')
   const manualBarcodeInputRef = useRef<HTMLInputElement>(null)
@@ -635,10 +640,26 @@ export default function POSPage() {
     setManualBarcodeOpen(false)
   }
 
+  // Routes both the debounce-timer path and the Enter-keydown path through a
+  // single guard: if the timer already fired (dispatched this exact value)
+  // before Enter's keydown was processed — the race described above — the
+  // second call is dropped instead of adding the scanned item twice.
+  function dispatchBarcodeLookup(value: string) {
+    const trimmed = value.trim()
+    if (trimmed && lastDispatchedScanRef.current === trimmed) return
+    lastDispatchedScanRef.current = trimmed || null
+    performBarcodeLookup(value)
+  }
+
   function scheduleBarcodeLookup(value: string) {
-    if (scanTimerRef.current) clearTimeout(scanTimerRef.current)
+    // Clearing the timer only cancels it if it hasn't fired yet — a stale
+    // non-null ref doesn't mean there's still a pending timer to cancel, so
+    // null it out immediately (both here and when the timer itself runs)
+    // rather than leaving a dangling reference.
+    if (scanTimerRef.current) { clearTimeout(scanTimerRef.current); scanTimerRef.current = null }
     scanTimerRef.current = setTimeout(() => {
-      performBarcodeLookup(value)
+      scanTimerRef.current = null
+      dispatchBarcodeLookup(value)
       setScanValue('')
     }, 80)
   }
@@ -646,14 +667,17 @@ export default function POSPage() {
   function handleScanChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value
     setScanValue(value)
+    // A new keystroke means this is a new scan sequence — allow its own
+    // lookup through even if it happens to match a previously-dispatched value.
+    lastDispatchedScanRef.current = null
     scheduleBarcodeLookup(value)
   }
 
   function handleScanKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (scanTimerRef.current) clearTimeout(scanTimerRef.current)
-      performBarcodeLookup(scanValue)
+      if (scanTimerRef.current) { clearTimeout(scanTimerRef.current); scanTimerRef.current = null }
+      dispatchBarcodeLookup(scanValue)
       setScanValue('')
     }
   }
@@ -770,6 +794,32 @@ export default function POSPage() {
   const promoDiscountAmount = selectedPromotion ? Math.round(subtotal * selectedPromotion.discountPercent / 100) : 0
   const cashbackAmount = cashback?.amount ?? 0
   const total = subtotal - promoDiscountAmount - cashbackAmount
+  // Per-line breakdown for the cart list: each line's promo-discounted total
+  // (promoLineTotal) is computed first, then the single whole-cart cashback
+  // amount is allocated across lines proportionally to promoLineTotal — a
+  // heavily promo-discounted line gets a proportionally smaller cashback
+  // share. Shares are floored per line and the remainder (< cart.length so'm)
+  // is added to the last line, so sum(lineCashbackShare) === cashbackAmount
+  // exactly (matches the summary-panel cashback row to the so'm).
+  const cartLineDiscounts = (() => {
+    const lines = cart.map(line => {
+      const promoUnitPrice = selectedPromotion
+        ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100))
+        : line.unitPrice
+      return { promoUnitPrice, promoLineTotal: promoUnitPrice * line.quantity }
+    })
+    const sumPromoLineTotals = lines.reduce((s, l) => s + l.promoLineTotal, 0)
+    const flooredShares = lines.map(l =>
+      sumPromoLineTotals > 0 ? Math.floor(cashbackAmount * l.promoLineTotal / sumPromoLineTotals) : 0
+    )
+    const remainder = cashbackAmount - flooredShares.reduce((s, v) => s + v, 0)
+    if (flooredShares.length > 0) flooredShares[flooredShares.length - 1] += remainder
+    return lines.map((l, i) => ({
+      promoUnitPrice: l.promoUnitPrice,
+      lineCashbackShare: flooredShares[i] ?? 0,
+      finalLineTotal: l.promoLineTotal - (flooredShares[i] ?? 0),
+    }))
+  })()
   const received = Number(amountReceived) || 0
   const change = Math.max(0, received - total)
 
@@ -1017,9 +1067,8 @@ export default function POSPage() {
                 <div>
                   {cart.map((line, i) => {
                     // Preview-only estimate — see promoDiscountAmount comment above.
-                    const discountedUnitPrice = selectedPromotion
-                      ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100))
-                      : line.unitPrice
+                    const { promoUnitPrice, lineCashbackShare, finalLineTotal } = cartLineDiscounts[i]
+                    const hasLineDiscount = !!selectedPromotion || lineCashbackShare > 0
                     return (
                     <div key={line.key} className={cn('flex items-center justify-between gap-2 py-3', i > 0 && 'border-t border-gray-100 dark:border-gray-800')}>
                       <div className="min-w-0">
@@ -1030,7 +1079,7 @@ export default function POSPage() {
                           {selectedPromotion ? (
                             <>
                               <span className="line-through text-gray-300 dark:text-gray-600 mr-1">{formatPrice(line.unitPrice)}</span>
-                              {formatPrice(discountedUnitPrice)}
+                              {formatPrice(promoUnitPrice)}
                             </>
                           ) : (
                             formatPrice(line.unitPrice)
@@ -1047,10 +1096,22 @@ export default function POSPage() {
                             <Plus className="h-3 w-3" />
                           </button>
                         </div>
-                        {selectedPromotion ? (
-                          <div className="flex flex-col items-end min-w-20">
+                        {hasLineDiscount ? (
+                          <div className="flex flex-col items-end gap-1 min-w-20">
                             <span className="text-[11px] line-through text-gray-300 dark:text-gray-600 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
-                            <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(discountedUnitPrice * line.quantity)}</span>
+                            <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(finalLineTotal)}</span>
+                            <div className="flex flex-wrap justify-end gap-1">
+                              {selectedPromotion && (
+                                <span className="rounded-full border border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400 whitespace-nowrap">
+                                  {t('pos.lineBadge.promo')} −{selectedPromotion.discountPercent}%
+                                </span>
+                              )}
+                              {cashback && lineCashbackShare > 0 && (
+                                <span className="rounded-full border border-amber-100 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                                  {t('pos.lineBadge.cashback')} −{formatPrice(lineCashbackShare)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <span className="w-20 text-right text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
