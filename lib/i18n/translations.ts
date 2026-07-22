@@ -664,7 +664,9 @@ export const translations = {
           sold: "Sotuv",
           returned: "Qaytarish",
           brak: "Brak",
-          categoryTitle: "Kategoriya bo'yicha savdo daromadi",
+          salesBreakdownTitle: "Savdo taqsimoti",
+          byProduct: "Mahsulot bo'yicha",
+          byCategory: "Kategoriya bo'yicha",
           other: "Boshqa",
         },
         table: {
@@ -2191,7 +2193,9 @@ export const translations = {
           sold: "Продажи",
           returned: "Возврат",
           brak: "Брак",
-          categoryTitle: "Доход от продаж по категориям",
+          salesBreakdownTitle: "Распределение продаж",
+          byProduct: "По товару",
+          byCategory: "По категории",
           other: "Другое",
         },
         table: {
@@ -3718,7 +3722,9 @@ export const translations = {
           sold: "Sold",
           returned: "Returned",
           brak: "Defective",
-          categoryTitle: "Sales Revenue by Category",
+          salesBreakdownTitle: "Sales Breakdown",
+          byProduct: "By Product",
+          byCategory: "By Category",
           other: "Other",
         },
         table: {

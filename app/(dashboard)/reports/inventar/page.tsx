@@ -7,12 +7,13 @@ import {
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import {
-  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { ReportPeriodFilterBar } from '@/components/reports/ReportPeriodFilterBar'
+import { DonutChart, type DonutSlice } from '@/components/reports/DonutChart'
 import { periodRange, bucketGranularity, buildBuckets, bucketKey, bucketLabel, type Period } from '@/lib/reports/period'
 
 // ─── KPI card (same convention as dashboard/page.tsx's KpiCard/KpiIconBox) ──
@@ -100,8 +101,13 @@ const PILL_CLS = (active: boolean) =>
 // 5th+ categories beyond this cap are grouped into a single "Other" slice so
 // a long product catalog doesn't produce a pie chart with dozens of slivers.
 const TOP_CATEGORY_COUNT = 5
+// Top-N products shown in the "Mahsulot bo'yicha" donut tab — no "Other"
+// bucket here (unlike categories), per spec: just the top 5 by revenue.
+const TOP_PRODUCT_COUNT = 5
 
 const CATEGORY_COLORS = ['#2563eb', '#059669', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b']
+
+type PieTab = 'product' | 'category'
 
 export default function InventarReportPage() {
   const { t } = useLanguage()
@@ -114,6 +120,7 @@ export default function InventarReportPage() {
   const [customTo, setCustomTo] = useState('')
   const [loading, setLoading] = useState(true)
   const [filterTab, setFilterTab] = useState<FilterTab>('all')
+  const [pieTab, setPieTab] = useState<PieTab>('product')
 
   const [products, setProducts] = useState<ProductRow[]>([])
   const [productSizes, setProductSizes] = useState<ProductSizeRow[]>([])
@@ -179,7 +186,13 @@ export default function InventarReportPage() {
     return buckets.map(b => ({ label: bucketLabel(b), ...map.get(b)! }))
   }, [buckets, purchaseEntries, saleEntries, returnEntries, brakEntries, from, granularity])
 
-  // ─── Chart B: top categories by sale revenue ───────────────────────────────
+  const productNameMap = useMemo(() => {
+    const m = new Map<string, string>()
+    products.forEach(p => m.set(p.id, p.name))
+    return m
+  }, [products])
+
+  // ─── Chart B: top categories / top products by sale revenue ───────────────
   const categoryByProductId = useMemo(() => {
     const m = new Map<string, string>()
     products.forEach(p => m.set(p.id, p.category || t('reports.inventar.charts.other')))
@@ -191,7 +204,7 @@ export default function InventarReportPage() {
     return m
   }, [productSizes])
 
-  const categoryData = useMemo(() => {
+  const categoryData = useMemo<DonutSlice[]>(() => {
     const totals = new Map<string, number>()
     saleEntries.forEach(e => {
       const productId = productIdBySizeId.get(e.product_size_id ?? '') ?? ''
@@ -205,9 +218,27 @@ export default function InventarReportPage() {
       const restTotal = rest.reduce((s, [, v]) => s + v, 0)
       if (restTotal > 0) top.push([t('reports.inventar.charts.other'), restTotal])
     }
-    return top.filter(([, v]) => v > 0).map(([name, value], i) => ({ name, value, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }))
+    return top.filter(([, v]) => v > 0).map(([name, value], i) => ({ key: name, name, value, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }))
   }, [saleEntries, productIdBySizeId, categoryByProductId, t])
-  const categoryTotal = useMemo(() => categoryData.reduce((s, d) => s + d.value, 0), [categoryData])
+
+  // Top 5 products by sale revenue for the "Mahsulot bo'yicha" donut tab —
+  // no "Other" bucket here (unlike categories above), per spec.
+  const productRevenueData = useMemo<DonutSlice[]>(() => {
+    const totals = new Map<string, number>()
+    saleEntries.forEach(e => {
+      const productId = productIdBySizeId.get(e.product_size_id ?? '') ?? ''
+      totals.set(productId, (totals.get(productId) ?? 0) + Number(e.total_amount))
+    })
+    const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]).slice(0, TOP_PRODUCT_COUNT)
+    return sorted.filter(([, v]) => v > 0).map(([productId, value], i) => ({
+      key: productId || `unknown-${i}`,
+      name: productNameMap.get(productId) ?? t('reports.inventar.charts.other'),
+      value,
+      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    }))
+  }, [saleEntries, productIdBySizeId, productNameMap, t])
+
+  const pieData = pieTab === 'product' ? productRevenueData : categoryData
 
   const axisColor = isDark ? '#6B7280' : '#9CA3AF'
   const gridColor = isDark ? '#374151' : '#F3F4F6'
@@ -243,12 +274,6 @@ export default function InventarReportPage() {
   const remainingQty = useMemo(() => productSizes.reduce((s, ps) => s + Number(ps.stock), 0), [productSizes])
 
   // ─── Per-product table ────────────────────────────────────────────────────
-
-  const productNameMap = useMemo(() => {
-    const m = new Map<string, string>()
-    products.forEach(p => m.set(p.id, p.name))
-    return m
-  }, [products])
 
   interface ProductTableRow {
     id: string
@@ -380,27 +405,25 @@ export default function InventarReportPage() {
         </div>
 
         <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-            <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.inventar.charts.categoryTitle')}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.inventar.charts.salesBreakdownTitle')}</p>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => setPieTab('product')} className={PILL_CLS(pieTab === 'product')}>
+                {t('reports.inventar.charts.byProduct')}
+              </button>
+              <button onClick={() => setPieTab('category')} className={PILL_CLS(pieTab === 'category')}>
+                {t('reports.inventar.charts.byCategory')}
+              </button>
+            </div>
           </div>
           <div className="p-4">
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={90}
-                  label={({ name, value }) => categoryTotal > 0 ? `${name} ${((Number(value) / categoryTotal) * 100).toFixed(0)}%` : name}
-                >
-                  {categoryData.map((d, i) => <Cell key={`${d.name}-${i}`} fill={d.color} />)}
-                </Pie>
-                <Tooltip {...tooltipStyle} formatter={(v) => formatPrice(Number(v))} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <DonutChart
+              data={pieData}
+              formatValue={formatPrice}
+              isDark={isDark}
+              centerLabel={t('reports.table.total')}
+              height={280}
+            />
           </div>
         </div>
       </div>

@@ -5,12 +5,13 @@ import { Loader2, Wallet, TrendingUp, Undo2, CreditCard, type LucideIcon } from 
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import {
-  LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { ReportPeriodFilterBar } from '@/components/reports/ReportPeriodFilterBar'
+import { DonutChart, type DonutSlice } from '@/components/reports/DonutChart'
 import { periodRange, bucketGranularity, buildBuckets, bucketKey, bucketLabel, type Period } from '@/lib/reports/period'
 
 // ─── KPI card (same convention as dashboard/page.tsx's KpiCard/KpiIconBox
@@ -312,15 +313,13 @@ export default function MoliyaReportPage() {
   // ─── Chart B: expense breakdown pie (period totals, already computed above) ─
   // 5th slice color (returnsAmount) is a slate/gray tone — only 4 semantic
   // colors (blue/emerald/amber/red) were specified for the 5 expense slices.
-  const expenseData = useMemo(() => ([
+  const expenseData = useMemo<DonutSlice[]>(() => ([
     { key: 'cogs', name: t('reports.moliya.pnl.cogs'), value: cogs, color: '#2563eb' },
     { key: 'discounts', name: t('reports.moliya.pnl.discounts'), value: discounts, color: '#f59e0b' },
     { key: 'brakLoss', name: t('reports.moliya.pnl.brakLoss'), value: brakLoss, color: '#ef4444' },
     { key: 'opex', name: t('reports.moliya.pnl.opex'), value: opex, color: '#059669' },
     { key: 'returns', name: t('reports.moliya.pnl.returns'), value: returnsAmount, color: '#64748b' },
   ].filter(s => s.value > 0)), [t, cogs, discounts, brakLoss, opex, returnsAmount])
-
-  const expenseTotal = useMemo(() => expenseData.reduce((s, d) => s + d.value, 0), [expenseData])
 
   const axisColor = isDark ? '#6B7280' : '#9CA3AF'
   const gridColor = isDark ? '#374151' : '#F3F4F6'
@@ -422,23 +421,13 @@ export default function MoliyaReportPage() {
             <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.moliya.charts.expenseTitle')}</p>
           </div>
           <div className="p-4">
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={expenseData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={90}
-                  label={({ name, value }) => expenseTotal > 0 ? `${name} ${((Number(value) / expenseTotal) * 100).toFixed(0)}%` : name}
-                >
-                  {expenseData.map(d => <Cell key={d.key} fill={d.color} />)}
-                </Pie>
-                <Tooltip {...tooltipStyle} formatter={(v) => formatPrice(Number(v))} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <DonutChart
+              data={expenseData}
+              formatValue={formatPrice}
+              isDark={isDark}
+              centerLabel={t('reports.table.total')}
+              height={280}
+            />
           </div>
         </div>
       </div>
