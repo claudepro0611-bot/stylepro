@@ -82,6 +82,25 @@ interface StockOutRow {
   product_size_id: string | null
 }
 
+// Chart B (product/category donut) derives BOTH revenue and profit from
+// transaction_items so the two figures for the same slice are guaranteed
+// consistent with each other — see the module doc comment above the donut
+// memos below for why this is kept separate from the stock_out_entries-based
+// `saleEntries` used by Chart A and the per-product table.
+interface TxnRow {
+  id: string
+  date: string
+  status: string
+}
+
+interface TxnItemRow {
+  transaction_id: string
+  product_id: string | null
+  price: number
+  purchase_price: number | null
+  quantity: number
+}
+
 type FilterTab = 'all' | 'sold' | 'brak' | 'returned'
 
 const FILTER_TABS: { value: FilterTab; labelKey: 'reports.inventar.filters.all' | 'reports.inventar.filters.sold' | 'reports.inventar.filters.brak' | 'reports.inventar.filters.returned' }[] = [
@@ -101,11 +120,15 @@ const PILL_CLS = (active: boolean) =>
 // 5th+ categories beyond this cap are grouped into a single "Other" slice so
 // a long product catalog doesn't produce a pie chart with dozens of slivers.
 const TOP_CATEGORY_COUNT = 5
-// Top-N products shown in the "Mahsulot bo'yicha" donut tab — no "Other"
-// bucket here (unlike categories), per spec: just the top 5 by revenue.
-const TOP_PRODUCT_COUNT = 5
+// Top-N products shown in the "Mahsulot bo'yicha" donut tab, with the rest
+// grouped into an "Other" slice (same convention as categories above).
+const TOP_PRODUCT_COUNT = 7
 
-const CATEGORY_COLORS = ['#2563eb', '#059669', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b']
+// Cyclic palette for the donut's top-N slices. Reserved separately: slate-400
+// (OTHER_COLOR) is always used for the "Boshqalar" bucket regardless of how
+// many regular slices precede it — it is never assigned via the cyclic index.
+const CATEGORY_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#f43f5e', '#06b6d4']
+const OTHER_COLOR = '#94a3b8'
 
 type PieTab = 'product' | 'category'
 
@@ -126,24 +149,30 @@ export default function InventarReportPage() {
   const [productSizes, setProductSizes] = useState<ProductSizeRow[]>([])
   const [stockInEntries, setStockInEntries] = useState<StockInRow[]>([])
   const [stockOutEntries, setStockOutEntries] = useState<StockOutRow[]>([])
+  const [transactions, setTransactions] = useState<TxnRow[]>([])
+  const [txnItems, setTxnItems] = useState<TxnItemRow[]>([])
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const [productsRes, sizesRes, stockInRes, stockOutRes] = await Promise.all([
+    const [productsRes, sizesRes, stockInRes, stockOutRes, txnRes, txnItemRes] = await Promise.all([
       supabase.from('products').select('id, name, category'),
       supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price'),
       supabase.from('stock_in_entries').select('quantity, total_amount, date, entry_type, product_size_id'),
       supabase.from('stock_out_entries').select('quantity, total_amount, date, entry_type, product_size_id'),
+      supabase.from('transactions').select('id, date, status').eq('status', 'completed'),
+      supabase.from('transaction_items').select('transaction_id, product_id, price, purchase_price, quantity'),
     ])
 
-    if (productsRes.error || sizesRes.error || stockInRes.error || stockOutRes.error) {
+    if (productsRes.error || sizesRes.error || stockInRes.error || stockOutRes.error || txnRes.error || txnItemRes.error) {
       toast.error(t('common.error'))
     } else {
       setProducts((productsRes.data ?? []) as ProductRow[])
       setProductSizes((sizesRes.data ?? []) as ProductSizeRow[])
       setStockInEntries((stockInRes.data ?? []) as StockInRow[])
       setStockOutEntries((stockOutRes.data ?? []) as StockOutRow[])
+      setTransactions((txnRes.data ?? []) as TxnRow[])
+      setTxnItems((txnItemRes.data ?? []) as TxnItemRow[])
     }
     setLoading(false)
   }, [t])
@@ -160,6 +189,13 @@ export default function InventarReportPage() {
   const returnEntries = useMemo(() => filteredStockIn.filter(e => e.entry_type === 'return'), [filteredStockIn])
   const saleEntries = useMemo(() => filteredStockOut.filter(e => e.entry_type === 'sale'), [filteredStockOut])
   const brakEntries = useMemo(() => filteredStockOut.filter(e => e.entry_type === 'brak'), [filteredStockOut])
+
+  // Period-filtered transaction_items for Chart B (product/category donut),
+  // joined through transactions.date — same pattern as
+  // app/(dashboard)/reports/moliya/page.tsx's filteredItems/txnIdSet.
+  const filteredTxns = useMemo(() => transactions.filter(txn => inRange(txn.date)), [transactions, inRange])
+  const txnIdSet = useMemo(() => new Set(filteredTxns.map(txn => txn.id)), [filteredTxns])
+  const filteredTxnItems = useMemo(() => txnItems.filter(i => txnIdSet.has(i.transaction_id)), [txnItems, txnIdSet])
 
   // ─── Chart A: Kirim/Sotuv/Qaytarish/Brak grouped by day or week ───────────
   // Bucketing rule (shared with moliya's trend chart, see
@@ -192,51 +228,84 @@ export default function InventarReportPage() {
     return m
   }, [products])
 
-  // ─── Chart B: top categories / top products by sale revenue ───────────────
+  // ─── Chart B: top categories / top products by sale revenue + profit ──────
+  // Sourced from transaction_items (not the stock_out_entries-based
+  // saleEntries used elsewhere on this page) so revenue and profit for the
+  // same slice always reconcile — see TxnItemRow's doc comment above.
   const categoryByProductId = useMemo(() => {
     const m = new Map<string, string>()
     products.forEach(p => m.set(p.id, p.category || t('reports.inventar.charts.other')))
     return m
   }, [products, t])
-  const productIdBySizeId = useMemo(() => {
-    const m = new Map<string, string>()
-    productSizes.forEach(ps => m.set(ps.id, ps.product_id ?? ''))
-    return m
-  }, [productSizes])
+
+  interface RevenueProfit { revenue: number; profit: number }
 
   const categoryData = useMemo<DonutSlice[]>(() => {
-    const totals = new Map<string, number>()
-    saleEntries.forEach(e => {
-      const productId = productIdBySizeId.get(e.product_size_id ?? '') ?? ''
-      const category = categoryByProductId.get(productId) ?? t('reports.inventar.charts.other')
-      totals.set(category, (totals.get(category) ?? 0) + Number(e.total_amount))
+    const otherLabel = t('reports.inventar.charts.other')
+    const totals = new Map<string, RevenueProfit>()
+    filteredTxnItems.forEach(item => {
+      const category = categoryByProductId.get(item.product_id ?? '') ?? otherLabel
+      const revenue = Number(item.price) * Number(item.quantity)
+      const profit = (Number(item.price) - Number(item.purchase_price ?? 0)) * Number(item.quantity)
+      const cur = totals.get(category) ?? { revenue: 0, profit: 0 }
+      cur.revenue += revenue
+      cur.profit += profit
+      totals.set(category, cur)
     })
-    const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
+    const sorted = Array.from(totals.entries()).sort((a, b) => b[1].revenue - a[1].revenue)
     const top = sorted.slice(0, TOP_CATEGORY_COUNT)
     const rest = sorted.slice(TOP_CATEGORY_COUNT)
+    const rows = top.map(([name, v]) => ({ name, ...v }))
     if (rest.length > 0) {
-      const restTotal = rest.reduce((s, [, v]) => s + v, 0)
-      if (restTotal > 0) top.push([t('reports.inventar.charts.other'), restTotal])
+      const restRevenue = rest.reduce((s, [, v]) => s + v.revenue, 0)
+      const restProfit = rest.reduce((s, [, v]) => s + v.profit, 0)
+      if (restRevenue > 0) rows.push({ name: otherLabel, revenue: restRevenue, profit: restProfit })
     }
-    return top.filter(([, v]) => v > 0).map(([name, value], i) => ({ key: name, name, value, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }))
-  }, [saleEntries, productIdBySizeId, categoryByProductId, t])
-
-  // Top 5 products by sale revenue for the "Mahsulot bo'yicha" donut tab —
-  // no "Other" bucket here (unlike categories above), per spec.
-  const productRevenueData = useMemo<DonutSlice[]>(() => {
-    const totals = new Map<string, number>()
-    saleEntries.forEach(e => {
-      const productId = productIdBySizeId.get(e.product_size_id ?? '') ?? ''
-      totals.set(productId, (totals.get(productId) ?? 0) + Number(e.total_amount))
-    })
-    const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]).slice(0, TOP_PRODUCT_COUNT)
-    return sorted.filter(([, v]) => v > 0).map(([productId, value], i) => ({
-      key: productId || `unknown-${i}`,
-      name: productNameMap.get(productId) ?? t('reports.inventar.charts.other'),
-      value,
-      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    return rows.filter(r => r.revenue > 0).map((r, i) => ({
+      key: r.name,
+      name: r.name,
+      value: r.revenue,
+      profit: r.profit,
+      color: r.name === otherLabel ? OTHER_COLOR : CATEGORY_COLORS[i % CATEGORY_COLORS.length],
     }))
-  }, [saleEntries, productIdBySizeId, productNameMap, t])
+  }, [filteredTxnItems, categoryByProductId, t])
+
+  // Top 7 products by sale revenue for the "Mahsulot bo'yicha" donut tab,
+  // with the remainder grouped into a "Boshqalar" slice (same convention as
+  // categoryData above).
+  const productRevenueData = useMemo<DonutSlice[]>(() => {
+    const otherLabel = t('reports.inventar.charts.other')
+    const totals = new Map<string, RevenueProfit>()
+    filteredTxnItems.forEach(item => {
+      const productId = item.product_id ?? ''
+      const revenue = Number(item.price) * Number(item.quantity)
+      const profit = (Number(item.price) - Number(item.purchase_price ?? 0)) * Number(item.quantity)
+      const cur = totals.get(productId) ?? { revenue: 0, profit: 0 }
+      cur.revenue += revenue
+      cur.profit += profit
+      totals.set(productId, cur)
+    })
+    const sorted = Array.from(totals.entries()).sort((a, b) => b[1].revenue - a[1].revenue)
+    const top = sorted.slice(0, TOP_PRODUCT_COUNT)
+    const rest = sorted.slice(TOP_PRODUCT_COUNT)
+    const rows = top.map(([productId, v], i) => ({
+      key: productId || `unknown-${i}`,
+      name: productNameMap.get(productId) ?? otherLabel,
+      ...v,
+    }))
+    if (rest.length > 0) {
+      const restRevenue = rest.reduce((s, [, v]) => s + v.revenue, 0)
+      const restProfit = rest.reduce((s, [, v]) => s + v.profit, 0)
+      if (restRevenue > 0) rows.push({ key: '__other__', name: otherLabel, revenue: restRevenue, profit: restProfit })
+    }
+    return rows.filter(r => r.revenue > 0).map((r, i) => ({
+      key: r.key,
+      name: r.name,
+      value: r.revenue,
+      profit: r.profit,
+      color: r.name === otherLabel ? OTHER_COLOR : CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    }))
+  }, [filteredTxnItems, productNameMap, t])
 
   const pieData = pieTab === 'product' ? productRevenueData : categoryData
 
@@ -423,6 +492,8 @@ export default function InventarReportPage() {
               isDark={isDark}
               centerLabel={t('reports.table.total')}
               height={280}
+              valueLabel={t('reports.inventar.charts.revenueLabel')}
+              profitLabel={t('reports.inventar.charts.profitLabel')}
             />
           </div>
         </div>

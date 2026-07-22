@@ -668,6 +668,8 @@ export const translations = {
           byProduct: "Mahsulot bo'yicha",
           byCategory: "Kategoriya bo'yicha",
           other: "Boshqa",
+          revenueLabel: "Sotuv summasi",
+          profitLabel: "Sof foyda",
         },
         table: {
           title: "Mahsulotlar bo'yicha ombor harakati",
@@ -2197,6 +2199,8 @@ export const translations = {
           byProduct: "По товару",
           byCategory: "По категории",
           other: "Другое",
+          revenueLabel: "Сумма продаж",
+          profitLabel: "Чистая прибыль",
         },
         table: {
           title: "Движение склада по товарам",
@@ -3726,6 +3730,8 @@ export const translations = {
           byProduct: "By Product",
           byCategory: "By Category",
           other: "Other",
+          revenueLabel: "Sales Amount",
+          profitLabel: "Net Profit",
         },
         table: {
           title: "Stock Movement by Product",
