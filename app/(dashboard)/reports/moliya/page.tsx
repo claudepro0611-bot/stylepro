@@ -171,6 +171,17 @@ export default function MoliyaReportPage() {
   const txnIdSet = useMemo(() => new Set(filteredTxns.map(t => t.id)), [filteredTxns])
   const filteredItems = useMemo(() => txnItems.filter(i => txnIdSet.has(i.transaction_id)), [txnItems, txnIdSet])
 
+  // Fallback for legacy rows: transaction_items written before the
+  // sell_cart rewrite have list_price = 0/null (list_price wasn't captured
+  // yet), which made grossRevenue < netRevenue and produced negative
+  // "discounts" for those periods. COALESCE to `price` (the actual charged
+  // amount) whenever list_price is missing/zero, so legacy rows behave as
+  // "no discount" instead of "100% discount".
+  const effectiveListPrice = useCallback((item: TxnItemRow) =>
+    item.list_price && Number(item.list_price) > 0 ? Number(item.list_price) : Number(item.price),
+    [],
+  )
+
   // Yalpi daromad (gross revenue) must be the TRUE pre-discount catalog
   // total, i.e. SUM(list_price * quantity) over this period's line items —
   // NOT SUM(transactions.total_amount). total_amount is built by sell_cart
@@ -182,10 +193,11 @@ export default function MoliyaReportPage() {
   // understate netRevenue/netProfit by exactly the discount amount every
   // period. Sanity check: grossRevenue - discounts should equal
   // SUM(transactions.total_amount) for the same period, since both compute
-  // the same post-discount charged total two different ways.
+  // the same post-discount charged total two different ways (modulo the
+  // legacy list_price fallback above).
   const grossRevenue = useMemo(() =>
-    filteredItems.reduce((s, i) => s + Number(i.list_price) * Number(i.quantity), 0),
-    [filteredItems],
+    filteredItems.reduce((s, i) => s + effectiveListPrice(i) * Number(i.quantity), 0),
+    [filteredItems, effectiveListPrice],
   )
 
   // Deviation from the literal spec text ("SUM(list_price - price)"): both
@@ -194,8 +206,8 @@ export default function MoliyaReportPage() {
   // quantity > 1 would undercount the actual so'm discount given. Flagged
   // explicitly in the handoff report.
   const discounts = useMemo(() =>
-    filteredItems.reduce((s, i) => s + (Number(i.list_price) - Number(i.price)) * Number(i.quantity), 0),
-    [filteredItems],
+    filteredItems.reduce((s, i) => s + (effectiveListPrice(i) - Number(i.price)) * Number(i.quantity), 0),
+    [filteredItems, effectiveListPrice],
   )
   const cogs = useMemo(() =>
     filteredItems.reduce((s, i) => s + Number(i.purchase_price ?? 0) * Number(i.quantity), 0),
@@ -271,8 +283,8 @@ export default function MoliyaReportPage() {
       if (!date) return
       const entry = map.get(bucketKey(date, from, granularity))
       if (!entry) return
-      entry.gross += Number(i.list_price) * Number(i.quantity)
-      entry.discounts += (Number(i.list_price) - Number(i.price)) * Number(i.quantity)
+      entry.gross += effectiveListPrice(i) * Number(i.quantity)
+      entry.discounts += (effectiveListPrice(i) - Number(i.price)) * Number(i.quantity)
       entry.cogs += Number(i.purchase_price ?? 0) * Number(i.quantity)
     })
 
@@ -308,7 +320,7 @@ export default function MoliyaReportPage() {
       const netProf = netRev - e.cogs - e.brak - e.opex
       return { label: bucketLabel(b), daromad: netRev, sofFoyda: netProf }
     })
-  }, [buckets, filteredItems, txnDateById, loyaltyTxns, inRange, redeemRate, returnItems, returnDateById, filteredBrak, purchasePriceBySize, filteredExpenses, from, granularity])
+  }, [buckets, filteredItems, txnDateById, loyaltyTxns, inRange, redeemRate, returnItems, returnDateById, filteredBrak, purchasePriceBySize, filteredExpenses, from, granularity, effectiveListPrice])
 
   // ─── Chart B: expense breakdown pie (period totals, already computed above) ─
   // 5th slice color (returnsAmount) is a slate/gray tone — only 4 semantic
