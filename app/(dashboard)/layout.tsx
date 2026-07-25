@@ -28,7 +28,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden transition-colors duration-200">
+    <div className="flex h-screen bg-page-bg dark:bg-gray-950 overflow-hidden transition-colors duration-200">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex relative z-10 border-r border-gray-100 dark:border-gray-800">
         <Sidebar />

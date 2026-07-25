@@ -267,7 +267,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="overflow-x-auto max-h-[50vh]">
                 <table className="w-full text-[13px]">
-                  <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0">
+                  <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
                     <tr className="border-b border-gray-200 dark:border-gray-700">
                       <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">#</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Nomi</th>

@@ -196,7 +196,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
       <Icon className={cn(
         'shrink-0',
         small ? 'h-3.5 w-3.5' : 'h-4 w-4',
-        active ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500',
+        active ? 'text-sidebar-accent-foreground dark:text-gray-100' : 'text-gray-400 dark:text-gray-500',
       )} />
     )
   }
@@ -206,7 +206,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
     const itemCls = cn(
       'flex h-9 w-full items-center justify-center rounded-lg transition-colors',
       active
-        ? 'bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700'
+        ? 'bg-sidebar-accent dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border dark:border-l-gray-700'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60',
     )
 
@@ -239,7 +239,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
           'flex items-center gap-2.5 rounded-lg transition-colors',
           small ? 'py-1.5 pl-9 pr-2.5 text-[12.5px]' : 'py-2 px-2.5 text-[13.5px]',
           active
-            ? 'bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-medium'
+            ? 'bg-sidebar-accent dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border dark:border-l-gray-700 text-sidebar-accent-foreground dark:text-gray-100 font-medium'
             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60',
         )}
       >
@@ -267,7 +267,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
       const headerCls = cn(
         'flex w-full items-center gap-2.5 rounded-lg py-2 px-2.5 text-[13.5px] transition-colors',
         active
-          ? 'bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-medium'
+          ? 'bg-sidebar-accent dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border dark:border-l-gray-700 text-sidebar-accent-foreground dark:text-gray-100 font-medium'
           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60',
       )
 

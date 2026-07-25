@@ -183,7 +183,7 @@ export default function RequestsPage() {
       <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors duration-200">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
+            <thead className="bg-table-header-bg dark:bg-gray-800/50">
               <tr className="border-b border-gray-100 dark:border-gray-800">
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" className="rounded border-gray-300 dark:border-gray-600 h-3.5 w-3.5" />

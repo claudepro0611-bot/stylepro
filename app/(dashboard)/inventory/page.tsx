@@ -357,7 +357,7 @@ export default function InventoryPage() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
+            <thead className="bg-table-header-bg dark:bg-gray-800/50">
               <tr className="border-b border-gray-100 dark:border-gray-800">
                 <th className="w-10 px-4 py-3" />
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('inventory.table.product')}</th>

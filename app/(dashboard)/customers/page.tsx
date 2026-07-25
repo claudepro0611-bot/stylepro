@@ -586,7 +586,7 @@ export default function CustomersPage() {
       <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors duration-200">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
+            <thead className="bg-table-header-bg dark:bg-gray-800/50">
               <tr className="border-b border-gray-100 dark:border-gray-800">
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" className="rounded border-gray-300 dark:border-gray-600 h-3.5 w-3.5" />
@@ -863,7 +863,7 @@ export default function CustomersPage() {
                           <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
                             <div className="max-h-56 overflow-y-auto">
                               <table className="w-full">
-                                <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0">
+                                <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
                                   <tr className="border-b border-gray-100 dark:border-gray-800">
                                     <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.date')}</th>
                                     <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.reason')}</th>
@@ -927,7 +927,7 @@ export default function CustomersPage() {
                           <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
                             <div className="max-h-56 overflow-y-auto">
                               <table className="w-full">
-                                <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0">
+                                <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
                                   <tr className="border-b border-gray-100 dark:border-gray-800">
                                     <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.date')}</th>
                                     <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.type')}</th>
@@ -989,7 +989,7 @@ export default function CustomersPage() {
                               <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
                                 <div className="overflow-x-auto max-h-64 overflow-y-auto">
                                   <table className="w-full">
-                                    <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0">
+                                    <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
                                       <tr className="border-b border-gray-100 dark:border-gray-800">
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.date')}</th>
                                         <th className="px-3 py-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.productsCount')}</th>
