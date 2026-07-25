@@ -145,7 +145,7 @@ export function PaymentModal({ open, onOpenChange, monthlyFee, onSuccess }: Paym
 
               <button
                 onClick={handleCardPayment}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-3 text-sm font-medium transition-colors"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-3 text-sm font-medium transition-colors"
               >
                 To&apos;lash
               </button>

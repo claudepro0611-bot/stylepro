@@ -260,7 +260,7 @@ export default function XarajatlarPage() {
         </div>
         <button
           onClick={tab === 'xarajatlar' ? openAddExpense : openAddCategory}
-          className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
           {tab === 'xarajatlar' ? "Xarajat qo'shish" : 'Kategoriya qo\'shish'}

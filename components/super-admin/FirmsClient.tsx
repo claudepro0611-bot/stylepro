@@ -90,7 +90,7 @@ export function FirmsClient({ companies, stats }: FirmsClientProps) {
         </div>
         <button
           onClick={() => setIsAddOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-slate-800 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
           Firma qo&apos;shish

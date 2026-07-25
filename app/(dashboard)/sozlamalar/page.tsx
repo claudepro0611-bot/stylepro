@@ -41,7 +41,7 @@ const LAST_UPDATE = '2026-06-08'
 
 const inputCls = 'h-10 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 
-const saveBtnCls = 'flex h-9 items-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-800'
+const saveBtnCls = 'flex h-9 items-center rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700'
 
 type SettingsTab = 'general' | 'store' | 'goals' | 'system'
 

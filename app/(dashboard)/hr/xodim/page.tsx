@@ -279,7 +279,7 @@ export default function XodimPage() {
         </div>
         <button
           onClick={openAdd}
-          className="flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-slate-800 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <UserPlus className="h-3.5 w-3.5" />
           {t('hr.xodim.addNew')}

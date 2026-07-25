@@ -233,7 +233,7 @@ function ReceiptModal({ open, onOpenChange, data }: { open: boolean; onOpenChang
         <div className="mt-4 flex gap-2 print:hidden">
           <button
             onClick={() => window.print()}
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
           >
             <Printer className="h-3.5 w-3.5" />
             Chop etish
@@ -967,7 +967,7 @@ export default function POSPage() {
             </button>
           ))}
           {tabs.length < MAX_TABS && (
-            <button onClick={addTab} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors">
+            <button onClick={addTab} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
               <Plus className="h-4 w-4" />
             </button>
           )}
@@ -1226,7 +1226,7 @@ export default function POSPage() {
 
                 <button onClick={handleSell} disabled={!canSell || selling}
                   className={cn('flex w-full items-center justify-center rounded-xl px-4 py-3 text-lg font-semibold transition-colors',
-                    canSell && !selling ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed')}>
+                    canSell && !selling ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed')}>
                   {selling ? <Loader2 className="h-4 w-4 animate-spin" /> : t('pos.sell')}
                 </button>
               </div>

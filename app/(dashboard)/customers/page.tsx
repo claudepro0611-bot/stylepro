@@ -546,7 +546,7 @@ export default function CustomersPage() {
         </div>
         <button
           onClick={() => setIsAddOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-slate-800 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 transition-colors"
         >
           <UserPlus className="h-3.5 w-3.5" />
           {t('customers.addNew')}
@@ -829,7 +829,7 @@ export default function CustomersPage() {
                                 <button
                                   onClick={saveVipDiscount}
                                   disabled={vipSaving}
-                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors disabled:opacity-60"
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
                                 >
                                   {vipSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                                 </button>
@@ -912,7 +912,7 @@ export default function CustomersPage() {
                             <div className="flex gap-2">
                               <button
                                 onClick={() => setGiveNasiyaOpen(true)}
-                                className="rounded-lg bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 text-[13px] font-medium transition-colors"
+                                className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-[13px] font-medium transition-colors"
                               >
                                 {t('customers.karta.giveNasiya')}
                               </button>

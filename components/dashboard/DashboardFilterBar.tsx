@@ -123,7 +123,7 @@ function FilterPanel({ config, onSave }: { config: DashboardConfig; onSave: (con
           <button
             type="button"
             onClick={handleSave}
-            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
           >
             {t('common.save')}
           </button>
@@ -184,7 +184,7 @@ export function DashboardFilterBar({
               className={cn(
                 'px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors duration-150',
                 period === p.value
-                  ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                  ? 'bg-blue-600 text-white'
                   : 'text-gray-500 dark:text-gray-400 hover:bg-white/60 dark:hover:bg-gray-900/40 hover:text-gray-700 dark:hover:text-gray-300',
               )}
             >
@@ -230,7 +230,7 @@ export function DashboardFilterBar({
           </div>
           <button
             onClick={applyCustomRange}
-            className="h-9 px-4 rounded-lg bg-slate-900 text-white text-[13px] font-medium transition-colors hover:bg-slate-800"
+            className="h-9 px-4 rounded-lg bg-blue-600 text-white text-[13px] font-medium transition-colors hover:bg-blue-700"
           >
             {t('dashboard.filters.customRange.apply')}
           </button>

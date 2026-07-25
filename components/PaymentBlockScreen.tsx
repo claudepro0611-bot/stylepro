@@ -69,7 +69,7 @@ export function PaymentBlockScreen({ status, monthlyFee, penaltyDays, totalPenal
 
             <button
               onClick={() => setStep('select')}
-              className="mt-4 w-full bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-3 text-sm font-medium transition-colors"
+              className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-3 text-sm font-medium transition-colors"
             >
               To&apos;lov qilish
             </button>
@@ -179,7 +179,7 @@ export function PaymentBlockScreen({ status, monthlyFee, penaltyDays, totalPenal
 
             <button
               onClick={handleCardPayment}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-3 text-sm font-medium transition-colors mt-3"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-3 text-sm font-medium transition-colors mt-3"
             >
               To&apos;lash
             </button>

@@ -387,7 +387,7 @@ export function FeatureModal({ company, open, onOpenChange }: FeatureModalProps)
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-2 text-[13px] font-medium transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-[13px] font-medium transition-colors disabled:opacity-50"
             >
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Saqlash
