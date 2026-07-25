@@ -12,7 +12,7 @@ import {
   Trophy, BarChart3,
   MoreHorizontal, Search, Check,
   Wallet, ShoppingBag, PackageSearch, Target, CalendarCheck,
-  SlidersHorizontal, Download,
+  SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -144,6 +144,57 @@ function WidgetMenu() {
               <p className="px-3 py-4 text-center text-[12px] text-gray-400">{t('dashboard.notFound')}</p>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── TopChartMenu — product/category toggle for the Top mahsulotlar card ─────
+
+function TopChartMenu({ view, setView }: { view: 'product' | 'category'; setView: (v: 'product' | 'category') => void }) {
+  const { t } = useLanguage()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const options: { value: 'product' | 'category'; key: TranslationKey }[] = [
+    { value: 'product', key: 'dashboard.topProducts.title' },
+    { value: 'category', key: 'dashboard.topProducts.categoryTitle' },
+  ]
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+      >
+        <MoreHorizontal className="h-4 w-4 text-gray-400" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-9 z-50 w-48 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden py-1">
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => { setView(opt.value); setOpen(false) }}
+              className="flex w-full items-center justify-between px-3 py-2 text-[13px] hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <span className={view === opt.value ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}>
+                {t(opt.key)}
+              </span>
+              {view === opt.value && <Check className="h-3.5 w-3.5 text-orange-500 shrink-0" />}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -383,7 +434,8 @@ export default function DashboardPage() {
   useEffect(() => setMounted(true), [])
   const isDark = mounted && resolvedTheme === 'dark'
 
-  const [config, setConfig] = useDashboardConfig()
+  const [config] = useDashboardConfig()
+  const [topChartView, setTopChartView] = useState<'product' | 'category'>('product')
   const [monthlyGoal] = useLocalStorage<number>('stylepro-monthly-goal', 10000000)
   const [products, setProducts] = useState<Product[]>([])
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([])
@@ -508,8 +560,8 @@ export default function DashboardPage() {
     [allTransactions],
   )
 
-  // Top products by category — donut chart, reacts to the active filters
-  const topProductsChart = useMemo<TopProductSlice[]>(() => {
+  // Top categories — donut chart, reacts to the active filters
+  const topCategoriesChart = useMemo<TopProductSlice[]>(() => {
     const map: Record<string, { qty: number; revenue: number }> = {}
     filteredTransactions.forEach(tx =>
       tx.products.forEach(item => {
@@ -541,7 +593,40 @@ export default function DashboardPage() {
     }))
   }, [t, categoryById, filteredTransactions])
 
-  const topProductsTotal = topProductsChart.reduce((s, p) => s + p.qty, 0)
+  // Top products by product — donut chart, reacts to the active filters
+  const topProductsByProductChart = useMemo<TopProductSlice[]>(() => {
+    const map: Record<string, { name: string; qty: number; revenue: number }> = {}
+    filteredTransactions.forEach(tx =>
+      tx.products.forEach(item => {
+        const key = item.productId
+        if (!map[key]) map[key] = { name: item.productName, qty: 0, revenue: 0 }
+        map[key].qty += item.quantity
+        map[key].revenue += item.price * item.quantity
+      }),
+    )
+    const sorted = Object.values(map)
+      .sort((a, b) => b.qty - a.qty)
+
+    const top = sorted.slice(0, 4)
+    const rest = sorted.slice(4)
+    const restTotal = rest.reduce(
+      (acc, r) => ({ qty: acc.qty + r.qty, revenue: acc.revenue + r.revenue }),
+      { qty: 0, revenue: 0 },
+    )
+
+    const slices = [...top]
+    if (restTotal.qty > 0) slices.push({ name: t('dashboard.topProducts.others'), ...restTotal })
+
+    const total = slices.reduce((s, x) => s + x.qty, 0)
+    return slices.map((s, i) => ({
+      ...s,
+      pct: total > 0 ? Math.round((s.qty / total) * 100) : 0,
+      color: SLICE_COLORS[i % SLICE_COLORS.length],
+    }))
+  }, [t, filteredTransactions])
+
+  const activeChart = topChartView === 'product' ? topProductsByProductChart : topCategoriesChart
+  const topProductsTotal = activeChart.reduce((s, p) => s + p.qty, 0)
 
   // Comparison chart — granularity adapts to the selected period
   const weekdayLabels = WEEKDAY_KEYS.map(t)
@@ -579,19 +664,11 @@ export default function DashboardPage() {
             <SlidersHorizontal className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
             Filtr
           </button>
-          <button
-            type="button"
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 text-sm font-medium transition-colors"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Eksport
-          </button>
         </div>
       </div>
 
       {/* ── Filter bar ── */}
       <DashboardFilterBar
-        config={config} onCustomizeSave={setConfig}
         period={period} setPeriod={setPeriod}
         customStart={customStart} setCustomStart={setCustomStart}
         customEnd={customEnd} setCustomEnd={setCustomEnd}
@@ -759,9 +836,9 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between mb-6">
             <p className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
               <Trophy className="h-4 w-4 text-gray-400 dark:text-gray-500" />
-              {t('dashboard.topProducts.title')}
+              {topChartView === 'product' ? t('dashboard.topProducts.title') : t('dashboard.topProducts.categoryTitle')}
             </p>
-            <WidgetMenu />
+            <TopChartMenu view={topChartView} setView={setTopChartView} />
           </div>
 
           {isPending ? (
@@ -773,6 +850,8 @@ export default function DashboardPage() {
                 {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[16px] w-full" />)}
               </div>
             </>
+          ) : activeChart.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400 dark:text-gray-500">{t('dashboard.recentSales.empty')}</p>
           ) : (
             <>
               <div className="relative" style={{ height: 200 }}>
@@ -780,7 +859,7 @@ export default function DashboardPage() {
                   <PieChart>
                     <Tooltip content={<TopProductsTooltip />} />
                     <Pie
-                      data={topProductsChart}
+                      data={activeChart}
                       dataKey="qty"
                       nameKey="name"
                       innerRadius={55}
@@ -789,7 +868,7 @@ export default function DashboardPage() {
                       stroke={isDark ? '#111827' : '#FFFFFF'}
                       strokeWidth={2}
                     >
-                      {topProductsChart.map(slice => (
+                      {activeChart.map(slice => (
                         <Cell key={slice.name} fill={slice.color} />
                       ))}
                     </Pie>
@@ -804,7 +883,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="mt-5 space-y-2.5">
-                {topProductsChart.map(p => (
+                {activeChart.map(p => (
                   <div key={p.name} className="flex items-center justify-between text-[13px]">
                     <div className="flex items-center gap-2 min-w-0">
                       <span

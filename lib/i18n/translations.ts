@@ -107,6 +107,7 @@ export const translations = {
       popularProducts: "Top mahsulotlar",
       topProducts: {
         title: "Top mahsulotlar",
+        categoryTitle: "Top kategoriyalar",
         centerLabel: "Top 5",
         others: "Boshqalar",
         tooltipSales: "Sotuvlar",
@@ -1638,6 +1639,7 @@ export const translations = {
       popularProducts: "Топ товары",
       topProducts: {
         title: "Топ товары",
+        categoryTitle: "Топ категории",
         centerLabel: "Топ 5",
         others: "Прочее",
         tooltipSales: "Продажи",
@@ -3169,6 +3171,7 @@ export const translations = {
       popularProducts: "Top products",
       topProducts: {
         title: "Top products",
+        categoryTitle: "Top categories",
         centerLabel: "Top 5",
         others: "Others",
         tooltipSales: "Sales",

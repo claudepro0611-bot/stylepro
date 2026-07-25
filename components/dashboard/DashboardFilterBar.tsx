@@ -1,12 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CalendarDays, X } from 'lucide-react'
+import { CalendarDays, Download, X } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { cn } from '@/lib/utils'
 import { FILTER_ALL, type DashboardPeriod } from '@/hooks/useDashboardFilter'
-import type { DashboardConfig } from '@/hooks/useDashboardConfig'
-import { DashboardCustomizeModal } from '@/components/dashboard/DashboardCustomizeModal'
 import type { TranslationKey } from '@/lib/i18n/translations'
 
 const PERIODS: { value: DashboardPeriod; key: TranslationKey }[] = [
@@ -21,8 +19,6 @@ const PERIODS: { value: DashboardPeriod; key: TranslationKey }[] = [
 const dateInputCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 pl-8 pr-2.5 text-[13px] text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-600 transition-colors'
 
 interface DashboardFilterBarProps {
-  config: DashboardConfig
-  onCustomizeSave: (config: DashboardConfig) => void
   period: DashboardPeriod
   setPeriod: (p: DashboardPeriod) => void
   customStart: string
@@ -38,7 +34,6 @@ interface DashboardFilterBarProps {
 }
 
 export function DashboardFilterBar({
-  config, onCustomizeSave,
   period, setPeriod,
   customStart, setCustomStart,
   customEnd, setCustomEnd,
@@ -61,7 +56,7 @@ export function DashboardFilterBar({
 
   return (
     <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 transition-colors duration-200 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Period tabs */}
         <div className="flex flex-wrap gap-1 rounded-lg bg-gray-100 dark:bg-gray-800 p-1">
           {PERIODS.map(p => (
@@ -80,7 +75,13 @@ export function DashboardFilterBar({
           ))}
         </div>
 
-        <DashboardCustomizeModal config={config} onSave={onCustomizeSave} />
+        <button
+          type="button"
+          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 text-sm font-medium transition-colors"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Eksport
+        </button>
       </div>
 
       {/* Custom range */}
