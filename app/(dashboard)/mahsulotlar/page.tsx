@@ -373,7 +373,7 @@ export default function MahsulotlarPage() {
               <div className="flex flex-wrap gap-1.5">
                 {COLORS_LIST.map(c => (
                   <button key={c} type="button" onClick={() => setAddForm(f => ({ ...f, colors: toggleColor(f.colors, c) }))}
-                    className={`px-3 py-1 rounded-md text-[13px] font-medium border transition-colors ${addForm.colors.includes(c) ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                    className={`px-3 py-1 rounded-md text-[13px] font-medium border transition-colors ${addForm.colors.includes(c) ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
                     {c}
                   </button>
                 ))}
@@ -449,7 +449,7 @@ export default function MahsulotlarPage() {
               <div className="flex flex-wrap gap-1.5">
                 {COLORS_LIST.map(c => (
                   <button key={c} type="button" onClick={() => setEditForm(f => ({ ...f, colors: toggleColor(f.colors, c) }))}
-                    className={`px-3 py-1 rounded-md text-[13px] font-medium border transition-colors ${editForm.colors.includes(c) ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                    className={`px-3 py-1 rounded-md text-[13px] font-medium border transition-colors ${editForm.colors.includes(c) ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
                     {c}
                   </button>
                 ))}
