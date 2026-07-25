@@ -12,7 +12,6 @@ import {
   Trophy, BarChart3,
   MoreHorizontal, Search, Check,
   Wallet, ShoppingBag,
-  SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -639,15 +638,6 @@ export default function DashboardPage() {
       {/* Header + toolbar row */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('dashboard.title')}</h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
-            Filtr
-          </button>
-        </div>
       </div>
 
       {/* ── Filter bar ── */}

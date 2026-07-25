@@ -1,12 +1,21 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { CalendarDays, Download, Settings, X } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { cn } from '@/lib/utils'
 import { FILTER_ALL, type DashboardPeriod } from '@/hooks/useDashboardFilter'
 import type { DashboardConfig } from '@/hooks/useDashboardConfig'
 import { Switch } from '@/components/ui/switch'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import type { TranslationKey } from '@/lib/i18n/translations'
 
 const PERIODS: { value: DashboardPeriod; key: TranslationKey }[] = [
@@ -50,19 +59,10 @@ function FilterPanel({ config, onSave }: { config: DashboardConfig; onSave: (con
   const { t } = useLanguage()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<DashboardConfig>(config)
-  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) setDraft(config)
   }, [open, config])
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
 
   const toggle = (key: keyof DashboardConfig) => {
     setDraft(prev => ({ ...prev, [key]: !prev[key] }))
@@ -74,55 +74,62 @@ function FilterPanel({ config, onSave }: { config: DashboardConfig; onSave: (con
   }
 
   return (
-    <div className="relative shrink-0" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <button
+            type="button"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          />
+        }
       >
         <Settings className="h-4 w-4" />
         {t('dashboard.filterButton')}
-      </button>
+      </DialogTrigger>
 
-      {open && (
-        <div className="absolute left-0 top-10 z-50 w-72 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl p-4">
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-            {FILTER_SECTIONS.map((section, i) => (
-              <div key={section.titleKey}>
-                {i > 0 && <div className="border-t border-gray-100 dark:border-gray-800 mb-4" />}
-                <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 tracking-wide uppercase mb-2">
-                  {t(section.titleKey)}
-                </p>
-                <div className="space-y-2.5">
-                  {section.rows.map(row => (
-                    <div key={row.key} className="flex items-center justify-between">
-                      <span className="text-[13px] text-gray-700 dark:text-gray-300">{t(row.labelKey)}</span>
-                      <Switch checked={draft[row.key]} onCheckedChange={() => toggle(row.key)} />
-                    </div>
-                  ))}
-                </div>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('dashboard.customize.title')}</DialogTitle>
+          <DialogDescription>{t('dashboard.customize.subtitle')}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+          {FILTER_SECTIONS.map((section, i) => (
+            <div key={section.titleKey}>
+              {i > 0 && <div className="border-t border-gray-100 dark:border-gray-800 mb-4" />}
+              <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 tracking-wide uppercase mb-2">
+                {t(section.titleKey)}
+              </p>
+              <div className="space-y-2.5">
+                {section.rows.map(row => (
+                  <div key={row.key} className="flex items-center justify-between">
+                    <span className="text-[13px] text-gray-700 dark:text-gray-300">{t(row.labelKey)}</span>
+                    <Switch checked={draft[row.key]} onCheckedChange={() => toggle(row.key)} />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3 mt-1 border-t border-gray-100 dark:border-gray-800">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="px-3 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition-colors"
-            >
-              {t('common.save')}
-            </button>
-          </div>
+            </div>
+          ))}
         </div>
-      )}
-    </div>
+
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="px-3 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition-colors"
+          >
+            {t('common.save')}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
