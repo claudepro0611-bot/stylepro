@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CalendarDays, Download, Settings, X } from 'lucide-react'
+import { CalendarDays, Download, Filter, X } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { cn } from '@/lib/utils'
 import { FILTER_ALL, type DashboardPeriod } from '@/hooks/useDashboardFilter'
@@ -83,7 +83,7 @@ function FilterPanel({ config, onSave }: { config: DashboardConfig; onSave: (con
           />
         }
       >
-        <Settings className="h-4 w-4" />
+        <Filter className="h-4 w-4" />
         {t('dashboard.filterButton')}
       </DialogTrigger>
 
