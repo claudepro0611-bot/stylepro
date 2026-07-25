@@ -201,6 +201,7 @@ export const translations = {
       vsPrevPeriod: "oldingi davrga nisbatan",
       current: "Joriy davr",
       previous: "Oldingi davr",
+      filterButton: "Filtr",
       customize: {
         button: "Sozlash",
         title: "Bosh sahifani sozlash",
@@ -1733,6 +1734,7 @@ export const translations = {
       vsPrevPeriod: "по сравнению с предыдущим периодом",
       current: "Текущий период",
       previous: "Предыдущий период",
+      filterButton: "Фильтр",
       customize: {
         button: "Настроить",
         title: "Настройка главной страницы",
@@ -3265,6 +3267,7 @@ export const translations = {
       vsPrevPeriod: "vs previous period",
       current: "Current period",
       previous: "Previous period",
+      filterButton: "Filter",
       customize: {
         button: "Customize",
         title: "Customize dashboard",

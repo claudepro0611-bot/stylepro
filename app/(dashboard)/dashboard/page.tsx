@@ -11,7 +11,7 @@ import { useTheme } from 'next-themes'
 import {
   Trophy, BarChart3,
   MoreHorizontal, Search, Check,
-  Wallet, ShoppingBag, PackageSearch, Target, CalendarCheck,
+  Wallet, ShoppingBag,
   SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react'
@@ -32,14 +32,6 @@ import type { Product, Transaction } from '@/lib/types'
 // ─── constants ────────────────────────────────────────────────────────────────
 
 const SLICE_COLORS = ['#6366F1', '#F97316', '#10B981', '#3B82F6', '#F59E0B', '#EC4899']
-
-function KpiIconBox({ icon: Icon }: { icon: LucideIcon }) {
-  return (
-    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-800">
-      <Icon className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
-    </div>
-  )
-}
 
 function TrendBadge({ value }: { value: number }) {
   const up = value >= 0
@@ -287,14 +279,13 @@ interface KpiCardProps {
   isPending?: boolean
 }
 
-function KpiCard({ title, value, change, changeLabel, icon, isPending }: KpiCardProps) {
+function KpiCard({ title, value, change, changeLabel, isPending }: KpiCardProps) {
   return (
     <div className={KPI_CARD_CLS}>
-      <div className="flex items-start justify-between mb-3">
-        <KpiIconBox icon={icon} />
+      <div className="flex items-start justify-end mb-3">
         {!isPending && <TrendBadge value={change} />}
       </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">{title}</p>
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5">{title}</p>
       {isPending ? (
         <Skeleton className="h-[22px] w-24" />
       ) : (
@@ -315,15 +306,14 @@ function LowStockCard({ count, isPending }: { count: number; isPending?: boolean
   return (
     <Link href="/inventory" className="block h-full">
       <div className={cn(KPI_CARD_CLS, 'h-full hover:border-gray-200 dark:hover:border-gray-700')}>
-        <div className="flex items-start justify-between mb-3">
-          <KpiIconBox icon={PackageSearch} />
+        <div className="flex items-start justify-end mb-3">
           {!isPending && hasLow && (
             <span className="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400 shrink-0">
               {t('dashboard.kpiLowStockSub')}
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">{t('dashboard.kpi.lowStock')}</p>
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5 truncate">{t('dashboard.kpi.lowStock')}</p>
         {isPending ? (
           <Skeleton className="h-[22px] w-12" />
         ) : (
@@ -342,10 +332,7 @@ function MonthlyGoalCard({ current, goal, isPending }: { current: number; goal: 
   const pctVal = Math.min(100, goal > 0 ? Math.round((current / goal) * 100) : 0)
   return (
     <div className={KPI_CARD_CLS}>
-      <div className="flex items-start justify-between mb-3">
-        <KpiIconBox icon={Target} />
-      </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">{t('dashboard.kpi.monthlyGoal')}</p>
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('dashboard.kpi.monthlyGoal')}</p>
       {isPending ? (
         <>
           <Skeleton className="h-[22px] w-14" />
@@ -380,11 +367,10 @@ function TodaySalesCard({ title, count, revenue, prevCount, changeLabel, isPendi
   const changeVal = prevCount > 0 ? ((count - prevCount) / prevCount) * 100 : 0
   return (
     <div className={KPI_CARD_CLS}>
-      <div className="flex items-start justify-between mb-3">
-        <KpiIconBox icon={CalendarCheck} />
+      <div className="flex items-start justify-end mb-3">
         {!isPending && prevCount > 0 && <TrendBadge value={changeVal} />}
       </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">{title}</p>
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5">{title}</p>
       {isPending ? (
         <>
           <Skeleton className="h-[22px] w-16" />
@@ -408,10 +394,7 @@ function NetProfitCard({ amount, isPending }: { amount: number; isPending?: bool
   const positive = amount >= 0
   return (
     <div className={KPI_CARD_CLS}>
-      <div className="flex items-start justify-between mb-3">
-        <KpiIconBox icon={Wallet} />
-      </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Sof foyda</p>
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5">Sof foyda</p>
       {isPending ? (
         <Skeleton className="h-[22px] w-24" />
       ) : (
@@ -434,7 +417,7 @@ export default function DashboardPage() {
   useEffect(() => setMounted(true), [])
   const isDark = mounted && resolvedTheme === 'dark'
 
-  const [config] = useDashboardConfig()
+  const [config, setConfig] = useDashboardConfig()
   const [topChartView, setTopChartView] = useState<'product' | 'category'>('product')
   const [monthlyGoal] = useLocalStorage<number>('stylepro-monthly-goal', 10000000)
   const [products, setProducts] = useState<Product[]>([])
@@ -676,6 +659,8 @@ export default function DashboardPage() {
         paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod}
         hasActiveFilters={hasActiveFilters}
         reset={reset}
+        config={config}
+        onCustomizeSave={setConfig}
       />
 
       {/* KPI cards */}

@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { CalendarDays, Download, X } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { CalendarDays, Download, Settings, X } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { cn } from '@/lib/utils'
 import { FILTER_ALL, type DashboardPeriod } from '@/hooks/useDashboardFilter'
+import type { DashboardConfig } from '@/hooks/useDashboardConfig'
+import { Switch } from '@/components/ui/switch'
 import type { TranslationKey } from '@/lib/i18n/translations'
 
 const PERIODS: { value: DashboardPeriod; key: TranslationKey }[] = [
@@ -16,7 +18,113 @@ const PERIODS: { value: DashboardPeriod; key: TranslationKey }[] = [
   { value: 'custom', key: 'dashboard.filters.periods.custom' },
 ]
 
+const FILTER_SECTIONS: { titleKey: TranslationKey; rows: { key: keyof DashboardConfig; labelKey: TranslationKey }[] }[] = [
+  {
+    titleKey: 'dashboard.customize.sections.kpiCards',
+    rows: [
+      { key: 'showMonthlyRevenue', labelKey: 'dashboard.kpi.revenue' },
+      { key: 'showTotalSales', labelKey: 'dashboard.kpi.sales' },
+      { key: 'showLowStock', labelKey: 'dashboard.kpi.lowStock' },
+      { key: 'showMonthlyGoal', labelKey: 'dashboard.kpi.monthlyGoal' },
+      { key: 'showTodaySales', labelKey: 'dashboard.kpi.todaySales' },
+    ],
+  },
+  {
+    titleKey: 'dashboard.customize.sections.charts',
+    rows: [
+      { key: 'showDailyChart', labelKey: 'dashboard.customize.items.dailyChart' },
+      { key: 'showTopProducts', labelKey: 'dashboard.topProducts.title' },
+    ],
+  },
+  {
+    titleKey: 'dashboard.customize.sections.tables',
+    rows: [
+      { key: 'showRecentSales', labelKey: 'dashboard.recentSales.title' },
+    ],
+  },
+]
+
 const dateInputCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 pl-8 pr-2.5 text-[13px] text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-600 transition-colors'
+
+function FilterPanel({ config, onSave }: { config: DashboardConfig; onSave: (config: DashboardConfig) => void }) {
+  const { t } = useLanguage()
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState<DashboardConfig>(config)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) setDraft(config)
+  }, [open, config])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const toggle = (key: keyof DashboardConfig) => {
+    setDraft(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const handleSave = () => {
+    onSave(draft)
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+      >
+        <Settings className="h-4 w-4" />
+        {t('dashboard.filterButton')}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-10 z-50 w-72 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl p-4">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            {FILTER_SECTIONS.map((section, i) => (
+              <div key={section.titleKey}>
+                {i > 0 && <div className="border-t border-gray-100 dark:border-gray-800 mb-4" />}
+                <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 tracking-wide uppercase mb-2">
+                  {t(section.titleKey)}
+                </p>
+                <div className="space-y-2.5">
+                  {section.rows.map(row => (
+                    <div key={row.key} className="flex items-center justify-between">
+                      <span className="text-[13px] text-gray-700 dark:text-gray-300">{t(row.labelKey)}</span>
+                      <Switch checked={draft[row.key]} onCheckedChange={() => toggle(row.key)} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-3 mt-1 border-t border-gray-100 dark:border-gray-800">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="px-3 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition-colors"
+            >
+              {t('common.save')}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface DashboardFilterBarProps {
   period: DashboardPeriod
@@ -31,6 +139,8 @@ interface DashboardFilterBarProps {
   setPaymentMethod: (p: string) => void
   hasActiveFilters: boolean
   reset: () => void
+  config: DashboardConfig
+  onCustomizeSave: (config: DashboardConfig) => void
 }
 
 export function DashboardFilterBar({
@@ -40,6 +150,7 @@ export function DashboardFilterBar({
   category, setCategory,
   paymentMethod, setPaymentMethod,
   hasActiveFilters, reset,
+  config, onCustomizeSave,
 }: DashboardFilterBarProps) {
   const { t } = useLanguage()
 
@@ -75,13 +186,16 @@ export function DashboardFilterBar({
           ))}
         </div>
 
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 text-sm font-medium transition-colors"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Eksport
-        </button>
+        <div className="flex items-center gap-2">
+          <FilterPanel config={config} onSave={onCustomizeSave} />
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 text-sm font-medium transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Eksport
+          </button>
+        </div>
       </div>
 
       {/* Custom range */}

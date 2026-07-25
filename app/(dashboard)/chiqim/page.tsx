@@ -580,7 +580,7 @@ export default function ChiqimPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-gray-800/50">
+                <thead className="bg-table-header-bg dark:bg-gray-800/50">
                   <tr className="border-b border-gray-100 dark:border-gray-800">
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">№</th>
                     <SortHeader label={t('chiqim.table.date')} active={sortKey === 'date'} dir={sortDir} onClick={() => toggleSort('date')} />
@@ -607,7 +607,7 @@ export default function ChiqimPage() {
                       <td className="px-4 py-3"><span className="inline-block rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] font-semibold text-gray-600 dark:text-gray-300">{e.size}</span></td>
                       <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{e.color}</td>
                       <td className="px-4 py-3 text-right">
-                        <span className="inline-flex items-center gap-1 rounded-md bg-red-50 dark:bg-red-950/40 px-2 py-1 text-[12px] font-semibold text-red-700 dark:text-red-400">
+                        <span className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-semibold text-red-700 dark:text-red-400">
                           <Minus className="h-3 w-3" />{e.quantity} {t('chiqim.unitsSuffix')}
                         </span>
                       </td>
