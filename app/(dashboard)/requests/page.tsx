@@ -308,7 +308,7 @@ export default function RequestsPage() {
                         onClick={() => setNewStatus(s)}
                         className={`flex-1 rounded-lg py-2 text-[12px] font-medium border transition-colors ${
                           newStatus === s
-                            ? 'bg-gray-900 text-white border-gray-900 dark:bg-gray-100 dark:text-gray-900 dark:border-gray-100'
+                            ? 'bg-blue-600 text-white border-blue-600'
                             : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
                         }`}
                       >

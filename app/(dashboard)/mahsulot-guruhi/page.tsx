@@ -229,7 +229,7 @@ export default function MahsulotGuruhlariPage() {
                       <button
                         onClick={() => toggleStatus(g)}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
-                          g.status === 'active' ? 'bg-gray-900 dark:bg-gray-100' : 'bg-gray-200 dark:bg-gray-700'
+                          g.status === 'active' ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
                         }`}
                         aria-label="toggle status"
                       >

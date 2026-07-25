@@ -238,7 +238,7 @@ function ProductNameSearch({
               onClick={() => { onChange(p.id); setSearch(p.name) }}
               className={cn(
                 'flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0',
-                p.id === value && 'bg-gray-50 border-l-2 border-gray-900',
+                p.id === value && 'bg-gray-50 border-l-2 border-blue-600',
               )}
             >
               <div className="flex items-center min-w-0">

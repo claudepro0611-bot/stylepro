@@ -1202,7 +1202,7 @@ export default function POSPage() {
                   {PAYMENT_METHODS.map(method => (
                     <button key={method} onClick={() => updateActiveTab(tab => ({ ...tab, paymentMethod: method }))}
                       className={cn('h-9 rounded-lg border text-[12px] font-medium transition-colors',
-                        paymentMethod === method ? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600')}>
+                        paymentMethod === method ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600')}>
                       {method}
                     </button>
                   ))}

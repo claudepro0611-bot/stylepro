@@ -220,7 +220,7 @@ export function PromotionPanel({
                   className={cn(
                     'flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-left transition-colors',
                     selected
-                      ? 'border-[1.5px] border-blue-500 dark:border-blue-500 bg-blue-50/40 dark:bg-blue-950/20'
+                      ? 'border-[1.5px] border-blue-600 dark:border-blue-600 bg-blue-50/40 dark:bg-blue-950/20'
                       : 'border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
                   )}
                 >
