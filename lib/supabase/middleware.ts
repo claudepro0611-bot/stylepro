@@ -5,12 +5,11 @@ import type { PermissionKey } from '@/lib/permissions'
 const PUBLIC_PATHS = ['/login']
 const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 
-// Route-prefix -> PERMISSION_KEY. Only the modules named in the Phase 4
-// brief are gated here; /dashboard, /sozlamalar, /pos stay role-based-only
-// (every authenticated company user can reach them). Other permission-
-// gated pages (e.g. /mahsulot-guruhi, /xarajatlar, /hr) are not in this
-// list and remain guarded only by the sidebar's visibility check, not this
-// middleware — flagged as out of this migration's literal scope.
+// Route-prefix -> PERMISSION_KEY. /dashboard, /sozlamalar, /pos stay
+// role-based-only (every authenticated company user can reach them).
+// All other permission-gated pages are now covered here as well, closing
+// the earlier gap where they were guarded only by the sidebar's
+// visibility check and not this middleware.
 const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/mahsulotlar': 'mahsulotlar',
   '/kirim': 'kirim',
@@ -20,6 +19,12 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/customers': 'customers',
   '/reports': 'reports',
   '/marketing': 'marketing',
+  '/mahsulot-guruhi': 'mahsulot_guruhi',
+  '/xarajatlar': 'xarajatlar',
+  '/requests': 'requests',
+  '/hr': 'hr',
+  '/jamoa': 'jamoa',
+  '/inventory': 'inventory',
 }
 
 export async function updateSession(request: NextRequest) {
