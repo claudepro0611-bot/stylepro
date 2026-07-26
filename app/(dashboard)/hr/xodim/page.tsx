@@ -225,10 +225,8 @@ export default function XodimPage() {
     const companyId = await getCompanyId(supabase)
     if (!companyId) { setSaving(false); toast.error(t('common.error')); return }
     const startDate = form.startDate || new Date().toISOString().split('T')[0]
-    const { data: emp, error: empError } = await supabase
-      .from('employees')
-      .insert({
-        company_id: companyId,
+    const { error: empError } = await supabase.rpc('create_employee', {
+      p_data: {
         first_name: form.firstName,
         last_name: form.lastName,
         phone: form.phone,
@@ -241,25 +239,14 @@ export default function XodimPage() {
         salary: Number(form.salary),
         start_date: startDate,
         status: form.status,
-      })
-      .select()
-      .single()
+      },
+    })
 
-    if (empError || !emp) {
+    if (empError) {
       setSaving(false)
       toast.error(t('common.error'))
       return
     }
-
-    await supabase.from('position_history').insert({
-      company_id: companyId,
-      employee_id: emp.id,
-      date: startDate,
-      position_name: form.positionName,
-      department_name: form.departmentName,
-      salary: Number(form.salary),
-      note: 'Ishga qabul qilindi',
-    })
 
     setSaving(false)
     setIsAddOpen(false)

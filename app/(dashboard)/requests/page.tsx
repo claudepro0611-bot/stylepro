@@ -114,10 +114,10 @@ export default function RequestsPage() {
     if (!selectedRequest) return
     setSaving(true)
     const supabase = createClient()
-    const { error } = await supabase
-      .from('requests')
-      .update({ notes, status: newStatus })
-      .eq('id', selectedRequest.id)
+    const { error } = await supabase.rpc('update_request', {
+      p_id: selectedRequest.id,
+      p_data: { notes, status: newStatus },
+    })
     setSaving(false)
     if (error) {
       toast.error(t('common.error'))

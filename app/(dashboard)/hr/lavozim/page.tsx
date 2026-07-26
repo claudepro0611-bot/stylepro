@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { createClient } from '@/lib/supabase/client'
-import { getCompanyId } from '@/lib/supabase/helpers'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import type { Position } from '@/lib/types'
 
@@ -115,7 +114,7 @@ export default function LavozimPage() {
       status: form.status,
     }
     if (editPosition) {
-      const { error } = await supabase.from('positions').update(payload).eq('id', editPosition.id)
+      const { error } = await supabase.rpc('update_position', { p_id: editPosition.id, p_data: payload })
       setSaving(false)
       if (error) {
         toast.error(t('common.error'))
@@ -123,9 +122,7 @@ export default function LavozimPage() {
       }
       toast.success(t('hr.lavozim.toasts.updateSuccess'))
     } else {
-      const companyId = await getCompanyId(supabase)
-      if (!companyId) { setSaving(false); toast.error(t('common.error')); return }
-      const { error } = await supabase.from('positions').insert({ ...payload, company_id: companyId })
+      const { error } = await supabase.rpc('create_position', { p_data: payload })
       setSaving(false)
       if (error) {
         toast.error(t('common.error'))
@@ -140,7 +137,7 @@ export default function LavozimPage() {
   async function toggleStatus(p: Position) {
     const supabase = createClient()
     const newStatus = p.status === 'active' ? 'inactive' : 'active'
-    const { error } = await supabase.from('positions').update({ status: newStatus }).eq('id', p.id)
+    const { error } = await supabase.rpc('update_position', { p_id: p.id, p_data: { status: newStatus } })
     if (error) {
       toast.error(t('common.error'))
       return
@@ -155,7 +152,7 @@ export default function LavozimPage() {
   async function executeDelete() {
     if (!deleteTarget) return
     const supabase = createClient()
-    const { error } = await supabase.from('positions').delete().eq('id', deleteTarget.id)
+    const { error } = await supabase.rpc('delete_position', { p_id: deleteTarget.id })
     if (error) {
       toast.error(t('common.error'))
       return

@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { StatCard } from '@/components/ui/StatCard'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { createClient } from '@/lib/supabase/client'
-import { getCompanyId } from '@/lib/supabase/helpers'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import type { Department } from '@/lib/types'
 
@@ -146,7 +145,7 @@ export default function BolimlarPage() {
       status: form.status,
     }
     if (editDept) {
-      const { error } = await supabase.from('departments').update(payload).eq('id', editDept.id)
+      const { error } = await supabase.rpc('update_department', { p_id: editDept.id, p_data: payload })
       setSaving(false)
       if (error) {
         toast.error(t('common.error'))
@@ -154,9 +153,7 @@ export default function BolimlarPage() {
       }
       toast.success(t('hr.bolimlar.toasts.updateSuccess'))
     } else {
-      const companyId = await getCompanyId(supabase)
-      if (!companyId) { setSaving(false); toast.error(t('common.error')); return }
-      const { error } = await supabase.from('departments').insert({ ...payload, company_id: companyId })
+      const { error } = await supabase.rpc('create_department', { p_data: payload })
       setSaving(false)
       if (error) {
         toast.error(t('common.error'))
@@ -171,7 +168,7 @@ export default function BolimlarPage() {
   async function toggleStatus(d: Department) {
     const supabase = createClient()
     const newStatus = d.status === 'active' ? 'inactive' : 'active'
-    const { error } = await supabase.from('departments').update({ status: newStatus }).eq('id', d.id)
+    const { error } = await supabase.rpc('update_department', { p_id: d.id, p_data: { status: newStatus } })
     if (error) {
       toast.error(t('common.error'))
       return
@@ -186,7 +183,7 @@ export default function BolimlarPage() {
   async function executeDelete() {
     if (!deleteTarget) return
     const supabase = createClient()
-    const { error } = await supabase.from('departments').delete().eq('id', deleteTarget.id)
+    const { error } = await supabase.rpc('delete_department', { p_id: deleteTarget.id })
     if (error) {
       toast.error(t('common.error'))
       return

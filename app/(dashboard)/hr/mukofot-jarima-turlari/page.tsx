@@ -6,7 +6,6 @@ import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
-import { getCompanyId } from '@/lib/supabase/helpers'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import type { RewardPenaltyTypeDef, RewardPenaltyKind } from '@/lib/types'
@@ -107,7 +106,7 @@ export default function MukofotJarimaTurlariPage() {
       description: form.description,
     }
     if (editType) {
-      const { error } = await supabase.from('reward_penalty_types').update(payload).eq('id', editType.id)
+      const { error } = await supabase.rpc('update_reward_penalty_type', { p_id: editType.id, p_data: payload })
       setSaving(false)
       if (error) {
         toast.error(t('common.error'))
@@ -115,9 +114,7 @@ export default function MukofotJarimaTurlariPage() {
       }
       toast.success(t('hr.turlari.toasts.updateSuccess'))
     } else {
-      const companyId = await getCompanyId(supabase)
-      if (!companyId) { setSaving(false); toast.error(t('common.error')); return }
-      const { error } = await supabase.from('reward_penalty_types').insert({ ...payload, company_id: companyId })
+      const { error } = await supabase.rpc('create_reward_penalty_type', { p_data: payload })
       setSaving(false)
       if (error) {
         toast.error(t('common.error'))
@@ -136,7 +133,7 @@ export default function MukofotJarimaTurlariPage() {
   async function executeDelete() {
     if (!deleteTarget) return
     const supabase = createClient()
-    const { error } = await supabase.from('reward_penalty_types').delete().eq('id', deleteTarget.item.id)
+    const { error } = await supabase.rpc('delete_reward_penalty_type', { p_id: deleteTarget.item.id })
     if (error) {
       toast.error(t('common.error'))
       return

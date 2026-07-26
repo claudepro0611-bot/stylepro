@@ -10,7 +10,6 @@ import { Pagination } from '@/components/ui/Pagination'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { StatCard } from '@/components/ui/StatCard'
 import { createClient } from '@/lib/supabase/client'
-import { getCompanyId } from '@/lib/supabase/helpers'
 import { formatDate } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
@@ -229,19 +228,14 @@ export default function MukofotJarimalarPage() {
     if (!emp || !type) return
     setSavingReward(true)
     const supabase = createClient()
-    const companyId = await getCompanyId(supabase)
-    if (!companyId) { setSavingReward(false); toast.error(t('common.error')); return }
-    const { error } = await supabase.from('reward_penalty_entries').insert({
-      company_id: companyId,
-      employee_id: emp.id,
-      employee_name: `${emp.firstName} ${emp.lastName}`,
-      department_name: emp.departmentName,
-      type: 'reward',
-      type_id: type.id,
-      type_name: type.name,
-      amount: Number(rewardForm.amount),
-      date: rewardForm.date || new Date().toISOString().split('T')[0],
-      note: rewardForm.note,
+    const { error } = await supabase.rpc('create_reward_penalty_entry', {
+      p_data: {
+        employee_id: emp.id,
+        type_id: type.id,
+        amount: Number(rewardForm.amount),
+        date: rewardForm.date || new Date().toISOString().split('T')[0],
+        note: rewardForm.note,
+      },
     })
     setSavingReward(false)
     if (error) {
@@ -263,19 +257,14 @@ export default function MukofotJarimalarPage() {
     if (!emp || !type) return
     setSavingPenalty(true)
     const supabase = createClient()
-    const companyId = await getCompanyId(supabase)
-    if (!companyId) { setSavingPenalty(false); toast.error(t('common.error')); return }
-    const { error } = await supabase.from('reward_penalty_entries').insert({
-      company_id: companyId,
-      employee_id: emp.id,
-      employee_name: `${emp.firstName} ${emp.lastName}`,
-      department_name: emp.departmentName,
-      type: 'penalty',
-      type_id: type.id,
-      type_name: type.name,
-      amount: Number(penaltyForm.amount),
-      date: penaltyForm.date || new Date().toISOString().split('T')[0],
-      note: penaltyForm.reason,
+    const { error } = await supabase.rpc('create_reward_penalty_entry', {
+      p_data: {
+        employee_id: emp.id,
+        type_id: type.id,
+        amount: Number(penaltyForm.amount),
+        date: penaltyForm.date || new Date().toISOString().split('T')[0],
+        note: penaltyForm.reason,
+      },
     })
     setSavingPenalty(false)
     if (error) {

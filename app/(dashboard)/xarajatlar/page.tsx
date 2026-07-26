@@ -171,16 +171,14 @@ export default function XarajatlarPage() {
     const companyId = await getCompanyId(supabase)
     if (!companyId) { setSaving(false); toast.error('Xatolik yuz berdi'); return }
 
-    const { data: { user } } = await supabase.auth.getUser()
-
-    const { error } = await supabase.from('expenses').insert({
-      company_id: companyId,
-      category_id: form.categoryId,
-      amount: Number(form.amount),
-      payment_method: form.paymentMethod,
-      date: form.date,
-      note: form.note.trim() || null,
-      created_by: user?.id ?? null,
+    const { error } = await supabase.rpc('create_expense', {
+      p_data: {
+        category_id: form.categoryId,
+        amount: Number(form.amount),
+        payment_method: form.paymentMethod,
+        date: form.date,
+        note: form.note.trim() || null,
+      },
     })
 
     setSaving(false)
@@ -196,7 +194,7 @@ export default function XarajatlarPage() {
   async function deleteExpense(id: string) {
     if (!window.confirm("Xarajatni o'chirishni tasdiqlaysizmi?")) return
     const supabase = createClient()
-    const { error } = await supabase.from('expenses').delete().eq('id', id)
+    const { error } = await supabase.rpc('delete_expense', { p_id: id })
     if (error) {
       toast.error('Xatolik yuz berdi')
       return
@@ -220,10 +218,8 @@ export default function XarajatlarPage() {
     const companyId = await getCompanyId(supabase)
     if (!companyId) { setSavingCategory(false); toast.error('Xatolik yuz berdi'); return }
 
-    const { error } = await supabase.from('expense_categories').insert({
-      company_id: companyId,
-      name: categoryForm.name.trim(),
-      color: categoryForm.color,
+    const { error } = await supabase.rpc('create_expense_category', {
+      p_data: { name: categoryForm.name.trim(), color: categoryForm.color },
     })
 
     setSavingCategory(false)
@@ -240,7 +236,7 @@ export default function XarajatlarPage() {
     if ((categoryExpenseCounts.get(cat.id) ?? 0) > 0) return
     if (!window.confirm(`"${cat.name}" kategoriyasini o'chirishni tasdiqlaysizmi?`)) return
     const supabase = createClient()
-    const { error } = await supabase.from('expense_categories').delete().eq('id', cat.id)
+    const { error } = await supabase.rpc('delete_expense_category', { p_id: cat.id })
     if (error) {
       toast.error("Bu kategoriyada xarajatlar mavjud, o'chirib bo'lmaydi")
       return

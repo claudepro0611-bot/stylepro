@@ -2122,6 +2122,11 @@ export type Database = {
         }
         Returns: string
       }
+      create_department: { Args: { p_data: Json }; Returns: string }
+      create_employee: { Args: { p_data: Json }; Returns: string }
+      create_expense: { Args: { p_data: Json }; Returns: string }
+      create_expense_category: { Args: { p_data: Json }; Returns: string }
+      create_position: { Args: { p_data: Json }; Returns: string }
       create_product: { Args: { p_data: Json }; Returns: string }
       create_product_group: { Args: { p_data: Json }; Returns: string }
       create_promotion: {
@@ -2136,13 +2141,20 @@ export type Database = {
         }
         Returns: string
       }
+      create_reward_penalty_entry: { Args: { p_data: Json }; Returns: string }
+      create_reward_penalty_type: { Args: { p_data: Json }; Returns: string }
       create_warehouse: {
         Args: { p_name: string; p_type: string }
         Returns: string
       }
+      delete_department: { Args: { p_id: string }; Returns: undefined }
+      delete_expense: { Args: { p_id: string }; Returns: undefined }
+      delete_expense_category: { Args: { p_id: string }; Returns: undefined }
+      delete_position: { Args: { p_id: string }; Returns: undefined }
       delete_product: { Args: { p_id: string }; Returns: undefined }
       delete_product_group: { Args: { p_id: string }; Returns: undefined }
       delete_promotion: { Args: { p_id: string }; Returns: undefined }
+      delete_reward_penalty_type: { Args: { p_id: string }; Returns: undefined }
       delete_stock_in_entry: { Args: { p_id: string }; Returns: undefined }
       delete_stock_out_entry: { Args: { p_id: string }; Returns: undefined }
       delete_warehouse: { Args: { p_id: string }; Returns: undefined }
@@ -2195,6 +2207,14 @@ export type Database = {
         Args: { p_entries: Json; p_entry_type: string }
         Returns: undefined
       }
+      update_department: {
+        Args: { p_data: Json; p_id: string }
+        Returns: undefined
+      }
+      update_position: {
+        Args: { p_data: Json; p_id: string }
+        Returns: undefined
+      }
       update_product: {
         Args: { p_data: Json; p_id: string }
         Returns: undefined
@@ -2215,6 +2235,14 @@ export type Database = {
           p_scope_type: string
           p_starts_on: string | null
         }
+        Returns: undefined
+      }
+      update_request: {
+        Args: { p_data: Json; p_id: string }
+        Returns: undefined
+      }
+      update_reward_penalty_type: {
+        Args: { p_data: Json; p_id: string }
         Returns: undefined
       }
       update_warehouse: {
