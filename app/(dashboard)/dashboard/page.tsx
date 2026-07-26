@@ -48,7 +48,7 @@ function TrendBadge({ value }: { value: number }) {
 
 const CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200'
 
-const KPI_CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4'
+const KPI_CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4 min-h-[110px]'
 
 const WIDGET_OPTION_KEYS: TranslationKey[] = [
   'dashboard.widgets.revenue', 'dashboard.widgets.avgCheck', 'dashboard.widgets.newOrders',
@@ -281,16 +281,16 @@ interface KpiCardProps {
 function KpiCard({ title, value, change, changeLabel, isPending }: KpiCardProps) {
   return (
     <div className={KPI_CARD_CLS}>
-      <div className="flex items-start justify-end mb-3">
-        {!isPending && <TrendBadge value={change} />}
-      </div>
-      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5">{title}</p>
+      <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400 mb-1.5">{title}</p>
       {isPending ? (
         <Skeleton className="h-[22px] w-24" />
       ) : (
         <>
           <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{value}</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{changeLabel}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <TrendBadge value={change} />
+            <p className="text-xs text-gray-400 dark:text-gray-500">{changeLabel}</p>
+          </div>
         </>
       )}
     </div>
@@ -305,18 +305,18 @@ function LowStockCard({ count, isPending }: { count: number; isPending?: boolean
   return (
     <Link href="/inventory" className="block h-full">
       <div className={cn(KPI_CARD_CLS, 'h-full hover:border-gray-200 dark:hover:border-gray-700')}>
-        <div className="flex items-start justify-end mb-3">
-          {!isPending && hasLow && (
-            <span className="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400 shrink-0">
-              {t('dashboard.kpiLowStockSub')}
-            </span>
-          )}
-        </div>
-        <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5 truncate">{t('dashboard.kpi.lowStock')}</p>
+        <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400 mb-1.5 truncate">{t('dashboard.kpi.lowStock')}</p>
         {isPending ? (
           <Skeleton className="h-[22px] w-12" />
         ) : (
-          <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{count}</p>
+          <>
+            <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{count}</p>
+            {hasLow && (
+              <span className="mt-1 inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400 shrink-0">
+                {t('dashboard.kpiLowStockSub')}
+              </span>
+            )}
+          </>
         )}
       </div>
     </Link>
@@ -331,7 +331,7 @@ function MonthlyGoalCard({ current, goal, isPending }: { current: number; goal: 
   const pctVal = Math.min(100, goal > 0 ? Math.round((current / goal) * 100) : 0)
   return (
     <div className={KPI_CARD_CLS}>
-      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5">{t('dashboard.kpi.monthlyGoal')}</p>
+      <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400 mb-1.5">{t('dashboard.kpi.monthlyGoal')}</p>
       {isPending ? (
         <>
           <Skeleton className="h-[22px] w-14" />
@@ -366,10 +366,7 @@ function TodaySalesCard({ title, count, revenue, prevCount, changeLabel, isPendi
   const changeVal = prevCount > 0 ? ((count - prevCount) / prevCount) * 100 : 0
   return (
     <div className={KPI_CARD_CLS}>
-      <div className="flex items-start justify-end mb-3">
-        {!isPending && prevCount > 0 && <TrendBadge value={changeVal} />}
-      </div>
-      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5">{title}</p>
+      <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400 mb-1.5">{title}</p>
       {isPending ? (
         <>
           <Skeleton className="h-[22px] w-16" />
@@ -378,7 +375,10 @@ function TodaySalesCard({ title, count, revenue, prevCount, changeLabel, isPendi
       ) : (
         <>
           <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{count} {t('dashboard.unitsSuffix')}</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{changeLabel}</p>
+          <div className="flex items-center gap-2 mt-1">
+            {prevCount > 0 && <TrendBadge value={changeVal} />}
+            <p className="text-xs text-gray-400 dark:text-gray-500">{changeLabel}</p>
+          </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 tabular-nums">{formatPrice(revenue)}</p>
         </>
       )}
@@ -393,7 +393,7 @@ function NetProfitCard({ amount, isPending }: { amount: number; isPending?: bool
   const positive = amount >= 0
   return (
     <div className={KPI_CARD_CLS}>
-      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1.5">Sof foyda</p>
+      <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400 mb-1.5">Sof foyda</p>
       {isPending ? (
         <Skeleton className="h-[22px] w-24" />
       ) : (
