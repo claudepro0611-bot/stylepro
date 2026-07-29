@@ -38,7 +38,7 @@ function TrendBadge({ value }: { value: number }) {
     <span className={cn(
       'text-xs font-medium rounded-md px-1.5 py-0.5 shrink-0',
       up
-        ? 'text-teal-700 bg-teal-50 dark:text-teal-400 dark:bg-teal-500/10'
+        ? 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10'
         : 'text-red-500 bg-red-50 dark:text-red-400 dark:bg-red-500/10',
     )}>
       {up ? '↑' : '↓'} {Math.abs(value).toFixed(1)}%
@@ -46,10 +46,9 @@ function TrendBadge({ value }: { value: number }) {
   )
 }
 
-// rounded-2xl / shadow-sm restyle scoped to this page only — see task spec.
-const CARD_CLS = 'rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200'
+const CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200'
 
-const KPI_CARD_CLS = 'rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4 min-h-[110px]'
+const KPI_CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4 min-h-[110px]'
 
 const WIDGET_OPTION_KEYS: TranslationKey[] = [
   'dashboard.widgets.revenue', 'dashboard.widgets.avgCheck', 'dashboard.widgets.newOrders',
@@ -214,7 +213,7 @@ function DailySalesTooltip({ active, payload, label }: {
       </p>
       <div className="space-y-1">
         <p className="text-[12px] text-gray-900 dark:text-gray-100 font-medium flex items-center gap-1.5">
-          <span className="inline-block h-2 w-4 rounded-sm bg-teal-700 shrink-0" />
+          <span className="inline-block h-2 w-4 rounded-sm bg-gray-900 dark:bg-gray-100 shrink-0" />
           {t('dashboard.current')}: {formatPrice(curVal)}
         </p>
         <p className="text-[12px] text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
@@ -344,7 +343,7 @@ function MonthlyGoalCard({ current, goal, isPending }: { current: number; goal: 
           <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{pctVal}%</p>
           <div className="mt-2 h-1 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
             <div
-              className="h-full rounded-full bg-teal-600 transition-all duration-500"
+              className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all duration-500"
               style={{ width: `${pctVal}%` }}
             />
           </div>
@@ -516,9 +515,7 @@ export default function DashboardPage() {
 
   const axisTick = { fill: isDark ? '#6B7280' : '#9CA3AF', fontSize: 11 }
   const gridProps = { strokeDasharray: '3 3', stroke: isDark ? '#374151' : '#F3F4F6', vertical: false } as const
-  // Teal accent restyle (this page only) — "current"/primary series color,
-  // replacing the previous theme-toggling mono black/white.
-  const monoStrong = '#0e7490'
+  const monoStrong = isDark ? '#F3F4F6' : '#111827'
   const monoSoft   = isDark ? '#4B5563' : '#D1D5DB'
   const cursorArea = isDark ? '#374151' : '#F3F4F6'
 
