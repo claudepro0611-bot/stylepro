@@ -25,7 +25,7 @@ function KpiIconBox({ icon: Icon }: { icon: LucideIcon }) {
   )
 }
 
-const KPI_CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4'
+const KPI_CARD_CLS = 'rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4'
 
 interface KpiCardProps {
   title: string
@@ -396,7 +396,7 @@ export default function MoliyaReportPage() {
           title={t('reports.moliya.kpi.netProfit')}
           value={formatPrice(netProfit)}
           icon={TrendingUp}
-          valueClassName={netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}
+          valueClassName={netProfit >= 0 ? 'text-teal-700 dark:text-teal-400' : 'text-red-600 dark:text-red-400'}
         />
         <KpiCard title={t('reports.moliya.kpi.returns')} value={formatPrice(returnsAmount)} icon={Undo2} />
         <KpiCard
@@ -409,7 +409,7 @@ export default function MoliyaReportPage() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
             <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.moliya.charts.trendTitle')}</p>
           </div>
@@ -421,14 +421,14 @@ export default function MoliyaReportPage() {
                 <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => formatShortPrice(Number(v))} width={55} />
                 <Tooltip {...tooltipStyle} formatter={(v) => formatPrice(Number(v))} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="daromad" name={t('reports.moliya.charts.daromad')} stroke="#2563eb" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="daromad" name={t('reports.moliya.charts.daromad')} stroke="#0e7490" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                 <Line type="monotone" dataKey="sofFoyda" name={t('reports.moliya.charts.sofFoyda')} stroke="#059669" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
             <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.moliya.charts.expenseTitle')}</p>
           </div>
@@ -445,7 +445,7 @@ export default function MoliyaReportPage() {
       </div>
 
       {/* Section 1: P&L */}
-      <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.moliya.pnl.title')}</p>
         </div>
@@ -471,7 +471,7 @@ export default function MoliyaReportPage() {
         </div>
         <div className={pnlTotalRowCls}>
           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('reports.moliya.pnl.netRevenue')}</span>
-          <span className={`text-sm font-bold tabular-nums ${netRevenue >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+          <span className={`text-sm font-bold tabular-nums ${netRevenue >= 0 ? 'text-teal-700 dark:text-teal-400' : 'text-red-600 dark:text-red-400'}`}>
             {formatPrice(netRevenue)}
           </span>
         </div>
@@ -491,7 +491,7 @@ export default function MoliyaReportPage() {
         <div className={pnlTotalRowCls}>
           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('reports.moliya.pnl.netProfit')}</span>
           <div className="text-right">
-            <p className={`text-sm font-bold tabular-nums ${netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+            <p className={`text-sm font-bold tabular-nums ${netProfit >= 0 ? 'text-teal-700 dark:text-teal-400' : 'text-red-600 dark:text-red-400'}`}>
               {formatPrice(netProfit)}
             </p>
             <p className="text-[11px] text-gray-400 dark:text-gray-500">{t('reports.moliya.pnl.margin')}: {margin.toFixed(1)}%</p>
@@ -500,7 +500,7 @@ export default function MoliyaReportPage() {
       </div>
 
       {/* Section 2: Nasiya / qarzdorlik */}
-      <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.moliya.nasiya.title')}</p>
         </div>

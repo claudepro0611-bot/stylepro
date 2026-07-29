@@ -26,7 +26,7 @@ function KpiIconBox({ icon: Icon }: { icon: LucideIcon }) {
   )
 }
 
-const KPI_CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4'
+const KPI_CARD_CLS = 'rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4'
 
 interface KpiCardProps {
   title: string
@@ -113,7 +113,7 @@ const FILTER_TABS: { value: FilterTab; labelKey: 'reports.inventar.filters.all' 
 const PILL_CLS = (active: boolean) =>
   `px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
     active
-      ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+      ? 'bg-teal-700 text-white'
       : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
   }`
 
@@ -452,7 +452,7 @@ export default function InventarReportPage() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
             <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.inventar.charts.movementTitle')}</p>
           </div>
@@ -464,7 +464,7 @@ export default function InventarReportPage() {
                 <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
                 <Tooltip {...tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="stockIn" name={t('reports.inventar.charts.stockIn')} fill="#2563eb" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="stockIn" name={t('reports.inventar.charts.stockIn')} fill="#0e7490" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="sold" name={t('reports.inventar.charts.sold')} fill="#059669" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="returned" name={t('reports.inventar.charts.returned')} fill="#f59e0b" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="brak" name={t('reports.inventar.charts.brak')} fill="#ef4444" radius={[2, 2, 0, 0]} />
@@ -473,7 +473,7 @@ export default function InventarReportPage() {
           </div>
         </div>
 
-        <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
             <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.inventar.charts.salesBreakdownTitle')}</p>
             <div className="flex items-center gap-1.5">
@@ -509,7 +509,7 @@ export default function InventarReportPage() {
       </div>
 
       {/* Per-product table */}
-      <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('reports.inventar.table.title')}</p>
         </div>
