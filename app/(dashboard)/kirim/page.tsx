@@ -5,11 +5,13 @@ import {
   Plus, Search, X, Download, Package,
   PackageSearch, ArrowUpDown, Printer, Trash2, Loader2,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { StatsPanel } from '@/components/ui/StatsPanel'
 import { Pagination } from '@/components/ui/Pagination'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { DatePickerField } from '@/components/ui/date-picker-field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
 import { PrintLabelsModal, type LabelRow } from '@/components/kirim/PrintLabelsModal'
 import { formatDateTime } from '@/lib/utils/formatters'
@@ -673,9 +675,9 @@ export default function KirimPage() {
           {datePreset === 'custom' && (
             <div className="flex flex-wrap items-center gap-2 ml-1">
               <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('kirim.from')}</span>
-              <input type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setPage(1) }} className={dateInputCls} />
+              <DatePickerField className={dateInputCls} onChange={v => { setCustomFrom(v); setPage(1) }} value={customFrom} />
               <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('kirim.to')}</span>
-              <input type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setPage(1) }} className={dateInputCls} />
+              <DatePickerField className={dateInputCls} onChange={v => { setCustomTo(v); setPage(1) }} value={customTo} />
             </div>
           )}
         </div>
@@ -923,12 +925,17 @@ export default function KirimPage() {
                         {columns.map(col => (
                           <th key={col.id} className="px-2 py-2 border-b border-gray-200 dark:border-gray-700">
                             <div className="flex items-center gap-1">
-                              <select value={col.size}
-                                onChange={e => setColumnSize(col.id, e.target.value)}
-                                className="h-9 w-24 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-emerald-400">
-                                <option value="">—</option>
-                                {activeSizes.map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
+                              <Select
+                                onValueChange={value => setColumnSize(col.id, value ?? '')}
+                                value={col.size || null}
+                              >
+                                <SelectTrigger className="h-9 w-24 min-w-0 px-1.5 text-sm">
+                                  <SelectValue placeholder="—" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {activeSizes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
                               {columns.length > 1 && (
                                 <button type="button" onClick={() => removeColumn(col.id)}
                                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-300 hover:text-red-400 transition-colors">
@@ -997,9 +1004,10 @@ export default function KirimPage() {
                 <Button
                   onClick={addEntry}
                   disabled={saving || !form.purchasePrice || Number(form.purchasePrice) <= 0}
+                  loading={saving}
                   className={`bg-emerald-500 text-white hover:bg-emerald-600 ${!form.purchasePrice ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+                  {t('common.save')}
                 </Button>
               </>
             )}

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, CheckCircle2, Copy } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { CompanyFormFields, emptyCompanyForm, type CompanyFormValues } from '@/components/super-admin/CompanyFormFields'
 import { createCompany } from '@/app/(dashboard)/super-admin/actions'
@@ -96,8 +96,8 @@ export default function NewFirmPage() {
         <CompanyFormFields values={form} onChange={setForm} mode="create" />
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="outline" onClick={() => router.push('/super-admin/firms')}>Bekor qilish</Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Saqlanmoqda...' : "Qo'shish"}
+          <Button onClick={handleSubmit} disabled={submitting} loading={submitting}>
+            Qo&apos;shish
           </Button>
         </div>
       </div>

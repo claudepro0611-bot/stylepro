@@ -3,10 +3,11 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { EChartsDonut } from '@/components/charts/EChartsDonut'
 import { useTheme } from 'next-themes'
 import {
   Trophy, BarChart3,
@@ -230,7 +231,7 @@ function DailySalesTooltip({ active, payload, label }: {
   )
 }
 
-// ─── Top products donut tooltip ──────────────────────────────────────────────
+// ─── Top products donut slice type ───────────────────────────────────────────
 
 interface TopProductSlice {
   name: string
@@ -238,33 +239,6 @@ interface TopProductSlice {
   revenue: number
   pct: number
   color: string
-}
-
-function TopProductsTooltip({ active, payload }: {
-  active?: boolean
-  payload?: Array<{ payload: TopProductSlice }>
-}) {
-  const { t } = useLanguage()
-  const { formatPrice } = useCurrency()
-  if (!active || !payload?.length) return null
-  const d = payload[0].payload
-  return (
-    <div className="rounded-xl bg-white border border-gray-200 shadow-xl p-3 min-w-[170px] space-y-1">
-      <p className="flex items-center gap-1.5 text-[12px] font-semibold text-gray-900">
-        <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-        {d.name}
-      </p>
-      <p className="text-[12px] text-gray-500">
-        {t('dashboard.topProducts.tooltipRevenue')}: <span className="font-medium text-gray-700">{formatPrice(d.revenue)}</span>
-      </p>
-      <p className="text-[12px] text-gray-500">
-        {t('dashboard.topProducts.tooltipSales')}: <span className="font-medium text-gray-700">{d.qty} {t('dashboard.unitsSuffix')}</span>
-      </p>
-      <p className="text-[12px] text-gray-500">
-        {t('dashboard.topProducts.tooltipShare')}: <span className="font-medium text-gray-700">{d.pct}%</span>
-      </p>
-    </div>
-  )
 }
 
 // ─── KPI card (cards 1 & 2) ───────────────────────────────────────────────────
@@ -518,6 +492,8 @@ export default function DashboardPage() {
   const monoStrong = isDark ? '#F3F4F6' : '#111827'
   const monoSoft   = isDark ? '#4B5563' : '#D1D5DB'
   const cursorArea = isDark ? '#374151' : '#F3F4F6'
+  // Primary series of the "Jami daromad" area chart — fixed accent color (not theme-toggling).
+  const primaryLineColor = '#2563eb'
 
   const curRevenue = useMemo(() => filteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [filteredTransactions])
   const prvRevenue = useMemo(() => prevFilteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [prevFilteredTransactions])
@@ -702,7 +678,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4 shrink-0">
             <div className="flex items-center gap-4 mt-1">
               <span className="flex items-center gap-1.5 text-[12px] text-gray-500 dark:text-gray-400">
-                <span className="inline-block h-2 w-4 rounded-sm shrink-0" style={{ background: monoStrong }} />
+                <span className="inline-block h-2 w-4 rounded-sm shrink-0" style={{ background: primaryLineColor }} />
                 {t('dashboard.current')}
               </span>
               <span className="flex items-center gap-1.5 text-[12px] text-gray-400 dark:text-gray-500">
@@ -722,8 +698,8 @@ export default function DashboardPage() {
               <AreaChart data={chartBuckets} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
                 <defs>
                   <linearGradient id="gradCur" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={monoStrong} stopOpacity={0.15} />
-                    <stop offset="95%" stopColor={monoStrong} stopOpacity={0.01} />
+                    <stop offset="5%"  stopColor={primaryLineColor} stopOpacity={0.15} />
+                    <stop offset="95%" stopColor={primaryLineColor} stopOpacity={0.01} />
                   </linearGradient>
                   <linearGradient id="gradPrv" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%"  stopColor={monoSoft} stopOpacity={0.10} />
@@ -739,7 +715,7 @@ export default function DashboardPage() {
                   cursor={{ stroke: cursorArea, strokeWidth: 1 }}
                 />
                 <Area type="monotone" dataKey="previous" stroke={monoSoft} strokeWidth={1.5} fill="url(#gradPrv)" dot={false} />
-                <Area type="monotone" dataKey="current"  stroke={monoStrong} strokeWidth={2} fill="url(#gradCur)" dot={false} activeDot={{ r: 4, fill: monoStrong, stroke: isDark ? '#1F2937' : '#fff', strokeWidth: 2 }} />
+                <Area type="monotone" dataKey="current"  stroke={primaryLineColor} strokeWidth={2} fill="url(#gradCur)" dot={false} activeDot={{ r: 4, fill: primaryLineColor, stroke: isDark ? '#1F2937' : '#fff', strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -830,31 +806,20 @@ export default function DashboardPage() {
           ) : (
             <>
               <div className="relative" style={{ height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Tooltip content={<TopProductsTooltip />} />
-                    <Pie
-                      data={activeChart}
-                      dataKey="qty"
-                      nameKey="name"
-                      innerRadius={55}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      stroke={isDark ? '#111827' : '#FFFFFF'}
-                      strokeWidth={2}
-                    >
-                      {activeChart.map(slice => (
-                        <Cell key={slice.name} fill={slice.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500">{t('dashboard.topProducts.centerLabel')}</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">
-                    {topProductsTotal} {t('dashboard.unitsSuffix')}
-                  </p>
-                </div>
+                <EChartsDonut
+                  data={activeChart.map(slice => ({ key: slice.name, name: slice.name, value: slice.qty, color: slice.color }))}
+                  isDark={isDark}
+                  height={200}
+                  formatValue={n => `${n} ${t('dashboard.unitsSuffix')}`}
+                  valueLabel={t('dashboard.topProducts.tooltipSales')}
+                  centerLabel={t('dashboard.topProducts.centerLabel')}
+                  centerValue={`${topProductsTotal} ${t('dashboard.unitsSuffix')}`}
+                  tooltipExtra={index => {
+                    const p = activeChart[index]
+                    if (!p) return null
+                    return { label: t('dashboard.topProducts.tooltipRevenue'), value: formatPrice(p.revenue) }
+                  }}
+                />
               </div>
 
               <div className="mt-5 space-y-2.5">

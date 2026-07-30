@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -97,7 +97,7 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
+          <TabsList variant="underline">
             <TabsTrigger value="info">{t('jamoa.editModal.tabs.info')}</TabsTrigger>
             <TabsTrigger value="access">{t('jamoa.editModal.tabs.access')}</TabsTrigger>
           </TabsList>
@@ -189,8 +189,8 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
           ) : <span />}
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? t('common.loading') : t('common.save')}
+            <Button onClick={handleSubmit} disabled={submitting} loading={submitting}>
+              {t('common.save')}
             </Button>
           </div>
         </DialogFooter>

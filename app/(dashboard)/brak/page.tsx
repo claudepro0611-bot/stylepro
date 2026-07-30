@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Plus, Trash2, Loader2, PackageSearch,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { StatsPanel } from '@/components/ui/StatsPanel'
 import { Pagination } from '@/components/ui/Pagination'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -293,7 +293,7 @@ export default function BrakPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('brak.subtitle')}</p>
         </div>
         <Tabs value={activeWarehouseId} onValueChange={setActiveWarehouseId}>
-          <TabsList>
+          <TabsList variant="underline">
             {warehouses.map(w => (
               <TabsTrigger key={w.id} value={w.id}>{w.name}</TabsTrigger>
             ))}
@@ -472,9 +472,10 @@ export default function BrakPage() {
             <Button
               onClick={addEntry}
               disabled={saving || !productPurchasePrice || productPurchasePrice <= 0}
+              loading={saving}
               className={`bg-red-500 text-white hover:bg-red-600 ${!productPurchasePrice ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

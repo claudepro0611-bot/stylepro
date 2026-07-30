@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Gift, ShieldAlert, Wallet, CalendarDays, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Pagination } from '@/components/ui/Pagination'
@@ -491,7 +491,7 @@ export default function MukofotJarimalarPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsRewardOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={saveReward} disabled={savingReward} className="bg-green-600 text-white hover:bg-green-700">{savingReward ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}</Button>
+            <Button onClick={saveReward} disabled={savingReward} loading={savingReward} className="bg-green-600 text-white hover:bg-green-700">{t('common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -557,7 +557,7 @@ export default function MukofotJarimalarPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsPenaltyOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={savePenalty} disabled={savingPenalty} className="bg-red-600 text-white hover:bg-red-700">{savingPenalty ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}</Button>
+            <Button onClick={savePenalty} disabled={savingPenalty} loading={savingPenalty} className="bg-red-600 text-white hover:bg-red-700">{t('common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

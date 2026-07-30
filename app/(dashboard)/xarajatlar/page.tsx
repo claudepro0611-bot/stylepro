@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Pagination } from '@/components/ui/Pagination'
@@ -493,8 +493,7 @@ export default function XarajatlarPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Bekor qilish</Button>
-            <Button onClick={saveExpense} disabled={saving}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            <Button onClick={saveExpense} disabled={saving} loading={saving}>
               Saqlash
             </Button>
           </DialogFooter>
@@ -537,8 +536,7 @@ export default function XarajatlarPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsCategoryOpen(false)}>Bekor qilish</Button>
-            <Button onClick={saveCategory} disabled={savingCategory}>
-              {savingCategory ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            <Button onClick={saveCategory} disabled={savingCategory} loading={savingCategory}>
               Saqlash
             </Button>
           </DialogFooter>

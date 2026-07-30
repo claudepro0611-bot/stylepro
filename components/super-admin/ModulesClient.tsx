@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Package, Edit2, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { Plus, Package, Edit2, Trash2, AlertTriangle } from 'lucide-react'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -238,8 +238,8 @@ export function ModulesClient({ modules }: ModulesClientProps) {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Bekor qilish</Button>
-            <Button onClick={handleAdd} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Qo'shish"}
+            <Button onClick={handleAdd} disabled={saving} loading={saving}>
+              Qo&apos;shish
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -292,8 +292,8 @@ export function ModulesClient({ modules }: ModulesClientProps) {
           )}
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => { setEditTarget(null); setEditForm(null) }}>Bekor qilish</Button>
-            <Button onClick={handleEditSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Saqlash'}
+            <Button onClick={handleEditSave} disabled={saving} loading={saving}>
+              Saqlash
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -315,8 +315,8 @@ export function ModulesClient({ modules }: ModulesClientProps) {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Bekor qilish</Button>
-            <Button variant="destructive" onClick={executeDelete} disabled={deleting}>
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "O'chirish"}
+            <Button variant="destructive" onClick={executeDelete} disabled={deleting} loading={deleting}>
+              O&apos;chirish
             </Button>
           </DialogFooter>
         </DialogContent>

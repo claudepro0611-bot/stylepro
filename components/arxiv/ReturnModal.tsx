@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Minus, Plus, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { Minus, Plus } from 'lucide-react'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
@@ -145,8 +145,8 @@ export function ReturnModal({ transactionId, items, onOpenChange, onReturned }: 
 
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
-          <Button onClick={handleSubmit} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('arxiv.returnModal.submit')}
+          <Button onClick={handleSubmit} disabled={saving} loading={saving}>
+            {t('arxiv.returnModal.submit')}
           </Button>
         </DialogFooter>
       </DialogContent>

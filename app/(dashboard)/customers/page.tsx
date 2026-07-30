@@ -5,7 +5,7 @@ import {
   UserPlus, Search, Eye, Loader2, Gift, Wallet, ShoppingBag, Percent, Pencil, Check, X,
   type LucideIcon,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Pagination } from '@/components/ui/Pagination'
 import { MiniBadge } from '@/components/ui/MiniBadge'
 import {
@@ -693,7 +693,7 @@ export default function CustomersPage() {
               </DialogHeader>
 
               <Tabs value={detailTab} onValueChange={setDetailTab} className="flex-1 min-h-0 flex flex-col">
-                <TabsList className="shrink-0">
+                <TabsList className="shrink-0" variant="underline">
                   <TabsTrigger value="kontakt">{t('customers.tabs.contact')}</TabsTrigger>
                   <TabsTrigger value="xaridlar">{t('customers.tabs.purchases')}</TabsTrigger>
                   <TabsTrigger value="murojaatlar">{t('customers.tabs.complaints')}</TabsTrigger>
@@ -1104,8 +1104,7 @@ export default function CustomersPage() {
             </div>
           </div>
           <DialogFooter className="mt-4">
-            <Button onClick={addCustomer} disabled={saving}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            <Button onClick={addCustomer} disabled={saving} loading={saving}>
               {t('common.save')}
             </Button>
           </DialogFooter>
@@ -1143,8 +1142,7 @@ export default function CustomersPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setGiveNasiyaOpen(false)}>{t('customers.karta.cancel')}</Button>
-            <Button onClick={submitGiveNasiya} disabled={giving}>
-              {giving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            <Button onClick={submitGiveNasiya} disabled={giving} loading={giving}>
               {t('customers.karta.save')}
             </Button>
           </DialogFooter>
@@ -1185,8 +1183,7 @@ export default function CustomersPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setRepayNasiyaOpen(false)}>{t('customers.karta.cancel')}</Button>
-            <Button onClick={submitRepayNasiya} disabled={repaying}>
-              {repaying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            <Button onClick={submitRepayNasiya} disabled={repaying} loading={repaying}>
               {t('customers.karta.save')}
             </Button>
           </DialogFooter>

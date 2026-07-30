@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { FILTER_ALL, type DashboardPeriod } from '@/hooks/useDashboardFilter'
 import type { DashboardConfig } from '@/hooks/useDashboardConfig'
 import { Switch } from '@/components/ui/switch'
+import { DatePickerField } from '@/components/ui/date-picker-field'
 import {
   Dialog,
   DialogContent,
@@ -52,8 +53,6 @@ const FILTER_SECTIONS: { titleKey: TranslationKey; rows: { key: keyof DashboardC
     ],
   },
 ]
-
-const dateInputCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 pl-8 pr-2.5 text-[13px] text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-600 transition-colors'
 
 function FilterPanel({ config, onSave }: { config: DashboardConfig; onSave: (config: DashboardConfig) => void }) {
   const { t } = useLanguage()
@@ -208,26 +207,16 @@ export function DashboardFilterBar({
       {/* Custom range */}
       {period === 'custom' && (
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <CalendarDays className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-            <input
-              type="date"
-              value={draftStart}
-              onChange={e => setDraftStart(e.target.value)}
-              placeholder={t('dashboard.filters.customRange.start')}
-              className={dateInputCls}
-            />
-          </div>
-          <div className="relative">
-            <CalendarDays className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-            <input
-              type="date"
-              value={draftEnd}
-              onChange={e => setDraftEnd(e.target.value)}
-              placeholder={t('dashboard.filters.customRange.end')}
-              className={dateInputCls}
-            />
-          </div>
+          <DatePickerField
+            onChange={setDraftStart}
+            placeholder={t('dashboard.filters.customRange.start')}
+            value={draftStart}
+          />
+          <DatePickerField
+            onChange={setDraftEnd}
+            placeholder={t('dashboard.filters.customRange.end')}
+            value={draftEnd}
+          />
           <button
             onClick={applyCustomRange}
             className="h-9 px-4 rounded-lg bg-blue-600 text-white text-[13px] font-medium transition-colors hover:bg-blue-700"

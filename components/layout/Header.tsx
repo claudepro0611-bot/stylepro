@@ -1,12 +1,23 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useRef, useState, Fragment } from 'react'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
 import { Bell, Menu, LogOut } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { PaymentModal } from '@/components/PaymentModal'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
+import { NAV_ITEMS, ADMIN_NAV_ITEM, SETTINGS_NAV_ITEM } from '@/components/layout/Sidebar'
+import type { TranslationKey } from '@/lib/i18n/translations'
 
 interface HeaderProps {
   onMenuClick?: () => void
@@ -14,9 +25,45 @@ interface HeaderProps {
 
 const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 
+interface Crumb {
+  label: string
+  href?: string
+}
+
+const BREADCRUMB_NAV_ITEMS = [...NAV_ITEMS, ADMIN_NAV_ITEM, SETTINGS_NAV_ITEM]
+
+// Reuses the sidebar nav config (components/layout/Sidebar.tsx) as the single
+// source of truth for route labels, so breadcrumb text never drifts from the
+// sidebar. Only "root + section" is derived here — a page-specific detail
+// crumb (e.g. a selected customer's name) would need each page to own that
+// state and isn't wired up by this shared Header.
+function buildBreadcrumbTrail(pathname: string, t: (key: TranslationKey) => string): Crumb[] {
+  const home: Crumb = { label: t('sidebar.dashboard'), href: '/dashboard' }
+
+  for (const item of BREADCRUMB_NAV_ITEMS) {
+    if (item.children) {
+      for (const child of item.children) {
+        if (pathname === child.href || pathname.startsWith(child.href + '/')) {
+          const trail: Crumb[] = [home]
+          if (item.href !== child.href) trail.push({ label: t(item.labelKey) })
+          trail.push({ label: t(child.labelKey), href: child.href })
+          return trail
+        }
+      }
+    } else if (pathname === item.href || pathname.startsWith(item.href + '/')) {
+      if (item.href === '/dashboard') return [home]
+      return [home, { label: t(item.labelKey), href: item.href }]
+    }
+  }
+
+  return [home]
+}
+
 export function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { t } = useLanguage()
+  const breadcrumbTrail = buildBreadcrumbTrail(pathname, t)
   const [companyName, setCompanyName] = useState('')
   const [userName, setUserName] = useState('')
   const [userRole, setUserRole] = useState('')
@@ -88,14 +135,35 @@ export function Header({ onMenuClick }: HeaderProps) {
       className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-6 shrink-0 transition-colors duration-200"
       style={{ height: '64px' }}
     >
-      {/* Left — mobile menu */}
-      <div className="flex items-center gap-3">
+      {/* Left — mobile menu + breadcrumb */}
+      <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onMenuClick}
-          className="flex lg:hidden h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="flex lg:hidden h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
         >
           <Menu className="h-4 w-4 text-gray-500 dark:text-gray-400" />
         </button>
+        <Breadcrumb className="hidden sm:block min-w-0">
+          <BreadcrumbList>
+            {breadcrumbTrail.map((crumb, i) => {
+              const isLast = i === breadcrumbTrail.length - 1
+              return (
+                <Fragment key={`${crumb.label}-${i}`}>
+                  <BreadcrumbItem>
+                    {isLast || !crumb.href ? (
+                      <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                    ) : (
+                      <BreadcrumbLink render={<Link href={crumb.href} />}>
+                        {crumb.label}
+                      </BreadcrumbLink>
+                    )}
+                  </BreadcrumbItem>
+                  {!isLast && <BreadcrumbSeparator />}
+                </Fragment>
+              )
+            })}
+          </BreadcrumbList>
+        </Breadcrumb>
       </div>
 
       {/* Right — notifications + profile */}

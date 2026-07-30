@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { UserPlus, Users, UserCheck, Gauge, Edit2, Trash2, Loader2, AlertTriangle, AlertCircle } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { StatCard } from '@/components/ui/StatCard'

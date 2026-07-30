@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { Download, Upload, FileSpreadsheet, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'

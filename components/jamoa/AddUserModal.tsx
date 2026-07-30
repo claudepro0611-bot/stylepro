@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -123,8 +123,8 @@ export function AddUserModal({ open, onOpenChange, onCreated, limitReached }: Ad
 
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={() => handleOpenChange(false)}>{t('common.cancel')}</Button>
-          <Button onClick={handleSubmit} disabled={submitting || limitReached}>
-            {submitting ? `${t('common.loading')}` : t('common.add')}
+          <Button onClick={handleSubmit} disabled={submitting || limitReached} loading={submitting}>
+            {t('common.add')}
           </Button>
         </DialogFooter>
       </DialogContent>

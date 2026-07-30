@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Printer, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { BarcodeLabel } from '@/components/barcode/BarcodeLabel'

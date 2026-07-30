@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { CheckCircle2, Copy } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { CompanyFormFields, emptyCompanyForm, type CompanyFormValues } from '@/components/super-admin/CompanyFormFields'
@@ -106,8 +106,8 @@ export function AddCompanyModal({ open, onOpenChange, onCreated }: AddCompanyMod
             <CompanyFormFields values={form} onChange={setForm} mode="create" />
             <DialogFooter className="mt-4">
               <Button variant="outline" onClick={() => handleOpenChange(false)}>Bekor qilish</Button>
-              <Button onClick={handleSubmit} disabled={submitting}>
-                {submitting ? 'Saqlanmoqda...' : "Qo'shish"}
+              <Button onClick={handleSubmit} disabled={submitting} loading={submitting}>
+                Qo&apos;shish
               </Button>
             </DialogFooter>
           </>

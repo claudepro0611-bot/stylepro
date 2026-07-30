@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Plus, Edit2, Trash2, AlertTriangle, Building2, Users, Briefcase, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { StatCard } from '@/components/ui/StatCard'
@@ -364,8 +364,8 @@ export default function BolimlarPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsFormOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={saveDepartment} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editDept ? t('common.edit') : t('common.add')}
+            <Button onClick={saveDepartment} disabled={saving} loading={saving}>
+              {editDept ? t('common.edit') : t('common.add')}
             </Button>
           </DialogFooter>
         </DialogContent>

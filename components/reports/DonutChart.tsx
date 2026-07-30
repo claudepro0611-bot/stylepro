@@ -1,15 +1,13 @@
 'use client'
 
 // Shared donut chart for the reports module (moliya's expense breakdown,
-// inventar's product/category breakdown) — modern donut with hover-enlarge
-// slices, a center total label, and a custom legend row (recharts' default
-// Legend is dropped in favor of this so we control the value+%+foyda layout).
+// inventar's product/category breakdown) — Apache ECharts donut (rounded
+// slice corners, gaps between slices, top category legend) via the shared
+// EChartsDonut wrapper, plus a custom legend row below it (so we keep
+// control of the value+%+foyda layout, which ECharts' own legend can't show).
 
 import { useState } from 'react'
-import {
-  PieChart, Pie, Cell, Sector, Tooltip, ResponsiveContainer,
-} from 'recharts'
-import type { PieSectorDataItem, PieLabelRenderProps } from 'recharts/types/polar/Pie'
+import { EChartsDonut } from '@/components/charts/EChartsDonut'
 
 export interface DonutSlice {
   key: string
@@ -39,89 +37,8 @@ interface DonutChartProps {
   profitLabel?: string
 }
 
-// recharts 3.8.1 removed the old public `activeIndex` prop from Pie (see
-// types/polar/Pie.d.ts — only `activeShape`/`inactiveShape` remain, both
-// marked @deprecated in favor of a `shape` render prop, but still the only
-// mechanism available for a per-slice hover-enlarge effect on this version).
-// Pie internally tracks which slice is hovered via its own state and swaps
-// in `activeShape` for that slice automatically — no external activeIndex
-// wiring is needed (or possible) for the enlarge effect itself. We still
-// track our own `hoveredIndex` via onMouseEnter/onMouseLeave below, but for
-// a different purpose: syncing the legend row highlight to the hovered
-// slice, which recharts has no built-in hook for.
-function renderActiveShape(props: PieSectorDataItem) {
-  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props
-  return (
-    <Sector
-      cx={cx}
-      cy={cy}
-      innerRadius={innerRadius}
-      outerRadius={(outerRadius ?? 0) + 10}
-      startAngle={startAngle}
-      endAngle={endAngle}
-      fill={fill}
-      style={{ transition: 'd 200ms ease-out' }}
-    />
-  )
-}
-
-const RADIAN = Math.PI / 180
-
-// Custom label renderer — replaces the previous `label={({percent}) => ...}`
-// callback (which relied on recharts' default outside-label positioning and
-// could overlap the legend below the chart at typical card widths). This
-// computes an explicit point at the slice's mid-angle, half-way between the
-// inner and outer radius, so the % text always sits inside its own slice.
-function renderSliceLabel(props: PieLabelRenderProps) {
-  const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props
-  if (!percent || percent <= 0.08) return null
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.5
-  const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN)
-  const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN)
-  return (
-    <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  )
-}
-
-function DonutTooltip({ active, payload, formatValue, total, valueLabel, profitLabel }: {
-  active?: boolean
-  payload?: { payload: DonutSlice }[]
-  formatValue: (n: number) => string
-  total: number
-  valueLabel?: string
-  profitLabel?: string
-}) {
-  if (!active || !payload?.[0]) return null
-  const d = payload[0].payload
-  const pct = total > 0 ? (d.value / total) * 100 : 0
-  return (
-    <div className="rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-sm px-3 py-2 min-w-[160px]">
-      <p className="text-[12px] font-semibold text-gray-900 dark:text-gray-100 mb-1">{d.name}</p>
-      <div className="flex items-center justify-between gap-4 text-[12px] text-gray-500 dark:text-gray-400 py-0.5">
-        <span>{valueLabel}</span>
-        <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">{formatValue(d.value)}</span>
-      </div>
-      {d.profit !== undefined && (
-        <div className="flex items-center justify-between gap-4 text-[12px] text-gray-500 dark:text-gray-400 py-0.5">
-          <span>{profitLabel}</span>
-          <span className={`font-medium tabular-nums ${d.profit < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
-            {formatValue(d.profit)}
-          </span>
-        </div>
-      )}
-      <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">{pct.toFixed(0)}%</div>
-    </div>
-  )
-}
-
-// `isDark` is accepted for API compatibility with existing callers (both
-// moliya and inventar pass it) but isn't read here: the legend/tooltip below
-// are styled with Tailwind's `dark:` variants directly rather than JS-side
-// isDark branching.
 export function DonutChart({
-  data, formatValue, centerLabel, height = 280, valueLabel, profitLabel,
+  data, formatValue, isDark, centerLabel, height = 280, valueLabel, profitLabel,
 }: DonutChartProps) {
   const total = data.reduce((s, d) => s + d.value, 0)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
@@ -129,35 +46,21 @@ export function DonutChart({
   return (
     <div>
       <div className="relative">
-        <ResponsiveContainer width="100%" height={height}>
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={60}
-              outerRadius={100}
-              labelLine={false}
-              label={renderSliceLabel}
-              activeShape={renderActiveShape}
-              onMouseEnter={(_, index) => setHoveredIndex(index)}
-              onMouseLeave={() => setHoveredIndex(null)}
-              isAnimationActive={true}
-              animationBegin={0}
-              animationDuration={600}
-              animationEasing="ease-out"
-            >
-              {data.map(d => <Cell key={d.key} fill={d.color} />)}
-            </Pie>
-            <Tooltip content={<DonutTooltip formatValue={formatValue} total={total} valueLabel={valueLabel} profitLabel={profitLabel} />} />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <p className="text-[11px] text-gray-400 dark:text-gray-500">{centerLabel}</p>
-          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{formatValue(total)}</p>
-        </div>
+        <EChartsDonut
+          data={data}
+          isDark={isDark}
+          height={height}
+          formatValue={formatValue}
+          valueLabel={valueLabel}
+          centerLabel={centerLabel}
+          centerValue={formatValue(total)}
+          onHoverChange={setHoveredIndex}
+          tooltipExtra={index => {
+            const d = data[index]
+            if (!d || d.profit === undefined) return null
+            return { label: profitLabel ?? '', value: formatValue(d.profit), negative: d.profit < 0 }
+          }}
+        />
       </div>
 
       {/* Custom legend — a 2nd line with "foyda" appears per row only when

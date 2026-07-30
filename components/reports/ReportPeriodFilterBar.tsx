@@ -2,6 +2,7 @@
 
 import { DATE_PERIODS, type Period } from '@/lib/reports/period'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { DatePickerField } from '@/components/ui/date-picker-field'
 
 // Shared period-filter bar for the two reports pages (moliya/inventar) —
 // same pill/date-input conventions as the original reports/page.tsx and
@@ -40,9 +41,9 @@ export function ReportPeriodFilterBar({
       ))}
       {period === 'custom' && (
         <div className="flex flex-wrap items-center gap-2 ml-1">
-          <input type="date" value={customFrom} onChange={e => onCustomFromChange(e.target.value)} className={DATE_INPUT_CLS} />
+          <DatePickerField className={DATE_INPUT_CLS} onChange={onCustomFromChange} value={customFrom} />
           <span className="text-[12px] text-gray-400">—</span>
-          <input type="date" value={customTo} onChange={e => onCustomToChange(e.target.value)} className={DATE_INPUT_CLS} />
+          <DatePickerField className={DATE_INPUT_CLS} onChange={onCustomToChange} value={customTo} />
         </div>
       )}
     </div>

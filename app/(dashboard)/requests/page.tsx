@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { MessageSquare, CheckCircle, Clock, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { StatCard } from '@/components/ui/StatCard'
 import { Pagination } from '@/components/ui/Pagination'
 import { MiniBadge } from '@/components/ui/MiniBadge'
@@ -320,8 +320,8 @@ export default function RequestsPage() {
               </div>
 
               <DialogFooter className="mt-4">
-                <Button onClick={saveRequest} disabled={saving}>
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+                <Button onClick={saveRequest} disabled={saving} loading={saving}>
+                  {t('common.save')}
                 </Button>
               </DialogFooter>
             </>

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Plus, Edit2, Trash2, AlertTriangle, Layers, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
@@ -331,8 +331,8 @@ export default function MahsulotGuruhlariPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsFormOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={saveGroup} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editGroup ? t('common.edit') : t('common.add')}
+            <Button onClick={saveGroup} disabled={saving} loading={saving}>
+              {editGroup ? t('common.edit') : t('common.add')}
             </Button>
           </DialogFooter>
         </DialogContent>

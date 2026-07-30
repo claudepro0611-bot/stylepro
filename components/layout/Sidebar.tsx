@@ -21,7 +21,7 @@ import type { TranslationKey } from '@/lib/i18n/translations'
 
 const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 
-interface NavLeaf {
+export interface NavLeaf {
   href: string
   labelKey: TranslationKey
   icon: LucideIcon
@@ -29,7 +29,7 @@ interface NavLeaf {
   featureKey?: string
 }
 
-interface NavEntry extends NavLeaf {
+export interface NavEntry extends NavLeaf {
   children?: NavLeaf[]
   noLink?: boolean
 }
@@ -38,7 +38,7 @@ interface SidebarProps {
   forceExpanded?: boolean
 }
 
-const NAV_ITEMS: NavEntry[] = [
+export const NAV_ITEMS: NavEntry[] = [
   { href: '/dashboard', labelKey: 'sidebar.dashboard', icon: LayoutDashboard, permKey: 'dashboard' },
   { href: '/pos', labelKey: 'sidebar.pos', icon: ShoppingCart, permKey: 'pos' },
   { href: '/customers', labelKey: 'sidebar.customers', icon: Users, permKey: 'customers' },
@@ -83,7 +83,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/arxiv', labelKey: 'sidebar.arxiv', icon: Archive, permKey: 'arxiv' },
 ]
 
-const ADMIN_NAV_ITEM: NavEntry = {
+export const ADMIN_NAV_ITEM: NavEntry = {
   href: '/super-admin', labelKey: 'sidebar.adminPanel', icon: Crown, noLink: true,
   children: [
     { href: '/super-admin/firms', labelKey: 'sidebar.firmalar', icon: Building2 },
@@ -91,7 +91,7 @@ const ADMIN_NAV_ITEM: NavEntry = {
   ],
 }
 
-const SETTINGS_NAV_ITEM: NavEntry = {
+export const SETTINGS_NAV_ITEM: NavEntry = {
   href: '/sozlamalar', labelKey: 'sidebar.settings', icon: Settings, permKey: 'sozlamalar',
 }
 

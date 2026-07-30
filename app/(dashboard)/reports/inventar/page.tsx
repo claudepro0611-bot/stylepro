@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   Loader2, ArrowDownCircle, ShoppingBag, Undo2, Trash2, Package, type LucideIcon,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { useTheme } from 'next-themes'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -15,6 +15,9 @@ import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { ReportPeriodFilterBar } from '@/components/reports/ReportPeriodFilterBar'
 import { DonutChart, type DonutSlice } from '@/components/reports/DonutChart'
 import { periodRange, bucketGranularity, buildBuckets, bucketKey, bucketLabel, type Period } from '@/lib/reports/period'
+import { Pagination } from '@/components/ui/Pagination'
+
+const TABLE_ITEMS_PER_PAGE = 15
 
 // ─── KPI card (same convention as dashboard/page.tsx's KpiCard/KpiIconBox) ──
 
@@ -144,6 +147,7 @@ export default function InventarReportPage() {
   const [loading, setLoading] = useState(true)
   const [filterTab, setFilterTab] = useState<FilterTab>('all')
   const [pieTab, setPieTab] = useState<PieTab>('product')
+  const [tablePage, setTablePage] = useState(1)
 
   const [products, setProducts] = useState<ProductRow[]>([])
   const [productSizes, setProductSizes] = useState<ProductSizeRow[]>([])
@@ -392,6 +396,16 @@ export default function InventarReportPage() {
     revenue: productTable.reduce((s, r) => s + r.revenue, 0),
   }), [productTable])
 
+  const tableTotalPages = Math.max(1, Math.ceil(productTable.length / TABLE_ITEMS_PER_PAGE))
+  const pagedProductTable = useMemo(
+    () => productTable.slice((tablePage - 1) * TABLE_ITEMS_PER_PAGE, tablePage * TABLE_ITEMS_PER_PAGE),
+    [productTable, tablePage],
+  )
+  useEffect(() => { setTablePage(1) }, [filterTab])
+  useEffect(() => {
+    if (tablePage > tableTotalPages) setTablePage(tableTotalPages)
+  }, [tablePage, tableTotalPages])
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center gap-2 text-sm text-gray-400">
@@ -532,9 +546,9 @@ export default function InventarReportPage() {
                 </tr>
               </thead>
               <tbody>
-                {productTable.map((row, i) => (
+                {pagedProductTable.map((row, i) => (
                   <tr key={row.id} className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors ${i % 2 !== 0 ? 'bg-gray-50/50 dark:bg-gray-800/30' : ''}`}>
-                    <td className="px-4 py-3 text-[12px] text-gray-400">{i + 1}</td>
+                    <td className="px-4 py-3 text-[12px] text-gray-400">{(tablePage - 1) * TABLE_ITEMS_PER_PAGE + i + 1}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{row.name}</td>
                     <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{row.colorSize || '—'}</td>
                     <td className="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-400 tabular-nums">{row.stockIn}</td>
@@ -560,6 +574,13 @@ export default function InventarReportPage() {
             </table>
           </div>
         )}
+        <Pagination
+          currentPage={tablePage}
+          totalPages={tableTotalPages}
+          totalItems={productTable.length}
+          itemsPerPage={TABLE_ITEMS_PER_PAGE}
+          onPageChange={setTablePage}
+        />
       </div>
     </div>
   )

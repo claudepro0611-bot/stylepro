@@ -6,7 +6,7 @@ import {
   ComposedChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { Wallet, Trophy, Activity, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { StatCard } from '@/components/ui/StatCard'
 import { createClient } from '@/lib/supabase/client'

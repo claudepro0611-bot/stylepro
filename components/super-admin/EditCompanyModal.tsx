@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { CompanyFormFields, emptyCompanyForm, type CompanyFormValues } from '@/components/super-admin/CompanyFormFields'
@@ -64,8 +64,8 @@ export function EditCompanyModal({ company, onOpenChange, onUpdated }: EditCompa
         <CompanyFormFields values={form} onChange={setForm} mode="edit" />
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Bekor qilish</Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Saqlanmoqda...' : 'Saqlash'}
+          <Button onClick={handleSubmit} disabled={submitting} loading={submitting}>
+            Saqlash
           </Button>
         </DialogFooter>
       </DialogContent>

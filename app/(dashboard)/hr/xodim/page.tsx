@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { UserPlus, Users, UserCheck, UserX, Clock3, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -372,7 +372,7 @@ export default function XodimPage() {
               </DialogHeader>
 
               <Tabs value={detailTab} onValueChange={setDetailTab}>
-                <TabsList>
+                <TabsList variant="underline">
                   <TabsTrigger value="info">{t('hr.xodim.detail.tabs.info')}</TabsTrigger>
                   <TabsTrigger value="rewards">{t('hr.xodim.detail.tabs.rewards')}</TabsTrigger>
                   <TabsTrigger value="history">{t('hr.xodim.detail.tabs.history')}</TabsTrigger>
@@ -582,8 +582,8 @@ export default function XodimPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={addEmployee} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+            <Button onClick={addEmployee} disabled={saving} loading={saving}>
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

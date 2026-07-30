@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Plus, Grid, List, Edit2, Tag, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Pagination } from '@/components/ui/Pagination'
 import { MiniBadge } from '@/components/ui/MiniBadge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -383,8 +383,8 @@ export default function MahsulotlarPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={saveAdd} disabled={saving || !addForm.warehouseId}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+            <Button onClick={saveAdd} disabled={saving || !addForm.warehouseId} loading={saving}>
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -459,8 +459,8 @@ export default function MahsulotlarPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setEditProduct(null)}>{t('common.cancel')}</Button>
-            <Button onClick={saveEdit} disabled={saving || !editForm.warehouseId}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('products.modal.update')}
+            <Button onClick={saveEdit} disabled={saving || !editForm.warehouseId} loading={saving}>
+              {t('products.modal.update')}
             </Button>
           </DialogFooter>
         </DialogContent>

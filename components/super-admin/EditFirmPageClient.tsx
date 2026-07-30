@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { CompanyFormFields, type CompanyFormValues } from '@/components/super-admin/CompanyFormFields'
 import { updateCompany, type CompanyRow } from '@/app/(dashboard)/super-admin/actions'
@@ -60,8 +60,8 @@ export function EditFirmPageClient({ company }: { company: CompanyRow }) {
         <CompanyFormFields values={form} onChange={setForm} mode="edit" />
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="outline" onClick={() => router.push('/super-admin/firms')}>Bekor qilish</Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Saqlanmoqda...' : 'Saqlash'}
+          <Button onClick={handleSubmit} disabled={submitting} loading={submitting}>
+            Saqlash
           </Button>
         </div>
       </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useTheme } from 'next-themes'
 import { SlidersHorizontal, Store, Target, Info, Sun, Moon, AlertTriangle } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { useLocalStorage } from '@/hooks/useLocalStorage'

@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Package, AlertCircle, AlertTriangle, Loader2, ChevronRight, ChevronDown, Plus, Pencil, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Pagination } from '@/components/ui/Pagination'
 import { StatCard } from '@/components/ui/StatCard'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -445,8 +445,8 @@ export default function InventoryPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsAddWarehouseOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={createWarehouse} disabled={savingWarehouse || !newWarehouseName.trim()}>
-              {savingWarehouse ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+            <Button onClick={createWarehouse} disabled={savingWarehouse || !newWarehouseName.trim()} loading={savingWarehouse}>
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -490,8 +490,8 @@ export default function InventoryPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setEditWarehouseTarget(null)}>{t('common.cancel')}</Button>
-            <Button onClick={saveEditWarehouse} disabled={savingEditWarehouse || !editWarehouseName.trim()}>
-              {savingEditWarehouse ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+            <Button onClick={saveEditWarehouse} disabled={savingEditWarehouse || !editWarehouseName.trim()} loading={savingEditWarehouse}>
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

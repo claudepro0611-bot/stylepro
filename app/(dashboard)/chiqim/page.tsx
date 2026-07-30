@@ -5,13 +5,14 @@ import {
   Plus, Minus, Search, X, Download,
   PackageSearch, ArrowUpDown, Pencil, Trash2, AlertTriangle, Loader2,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { StatsPanel } from '@/components/ui/StatsPanel'
 import { Pagination } from '@/components/ui/Pagination'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { DatePickerField } from '@/components/ui/date-picker-field'
 import { createClient } from '@/lib/supabase/client'
 import { formatDateTime } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -460,7 +461,7 @@ export default function ChiqimPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('chiqim.subtitle')}</p>
         </div>
         <Tabs value={activeWarehouseId} onValueChange={setActiveWarehouseId}>
-          <TabsList>
+          <TabsList variant="underline">
             {warehouses.map(w => (
               <TabsTrigger key={w.id} value={w.id}>{w.name}</TabsTrigger>
             ))}
@@ -510,9 +511,9 @@ export default function ChiqimPage() {
           {datePreset === 'custom' && (
             <div className="flex flex-wrap items-center gap-2 ml-1">
               <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.from')}</span>
-              <input type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setPage(1) }} className={dateInputCls} />
+              <DatePickerField className={dateInputCls} onChange={v => { setCustomFrom(v); setPage(1) }} value={customFrom} />
               <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.to')}</span>
-              <input type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setPage(1) }} className={dateInputCls} />
+              <DatePickerField className={dateInputCls} onChange={v => { setCustomTo(v); setPage(1) }} value={customTo} />
             </div>
           )}
         </div>
@@ -738,9 +739,10 @@ export default function ChiqimPage() {
             <Button
               onClick={addEntry}
               disabled={exceedsStock || saving || !form.price || Number(form.price) <= 0}
+              loading={saving}
               className={`bg-red-500 text-white hover:bg-red-600 ${!form.price ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save')}
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
