@@ -1,10 +1,9 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Package, AlertCircle, AlertTriangle, Loader2, ChevronRight, ChevronDown, Plus, Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, Loader2, ChevronRight, ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Pagination } from '@/components/ui/Pagination'
-import { StatCard } from '@/components/ui/StatCard'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -98,10 +97,6 @@ export default function InventoryPage() {
   const [newWarehouseType, setNewWarehouseType] = useState<WarehouseType>('clothing')
   const [savingWarehouse, setSavingWarehouse] = useState(false)
   const [deleteWarehouseTarget, setDeleteWarehouseTarget] = useState<WarehouseRow | null>(null)
-  const [editWarehouseTarget, setEditWarehouseTarget] = useState<WarehouseRow | null>(null)
-  const [editWarehouseName, setEditWarehouseName] = useState('')
-  const [editWarehouseType, setEditWarehouseType] = useState<WarehouseType>('clothing')
-  const [savingEditWarehouse, setSavingEditWarehouse] = useState(false)
 
   function toggleRow(productId: string) {
     setExpandedRows(prev => {
@@ -176,10 +171,6 @@ export default function InventoryPage() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [products, activeSizeRows])
 
-  const lowStock = useMemo(() => groups.filter(g => g.total > 0 && g.total <= g.minStock).length, [groups])
-  const outOfStock = useMemo(() => activeSizeRows.filter(s => s.stock === 0).length, [activeSizeRows])
-  const hasAlert = groups.some(g => g.total === 0 || Object.values(g.sizeStock).some(s => s === 0))
-
   const totalPages = Math.ceil(groups.length / ITEMS_PER_PAGE)
   const paginated = groups.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
@@ -203,31 +194,6 @@ export default function InventoryPage() {
     setNewWarehouseName('')
     setNewWarehouseType('clothing')
     toast.success(t('inventory.warehouses.addSuccess'))
-  }
-
-  function openEditWarehouse(w: WarehouseRow) {
-    setEditWarehouseTarget(w)
-    setEditWarehouseName(w.name)
-    setEditWarehouseType(w.type)
-  }
-
-  async function saveEditWarehouse() {
-    if (!editWarehouseTarget || !editWarehouseName.trim()) return
-    setSavingEditWarehouse(true)
-    const supabase = createClient()
-    const { error } = await supabase.rpc('update_warehouse', {
-      p_id: editWarehouseTarget.id,
-      p_name: editWarehouseName.trim(),
-      p_type: editWarehouseType,
-    })
-    setSavingEditWarehouse(false)
-    if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
-      return
-    }
-    setWarehouses(prev => prev.map(w => (w.id === editWarehouseTarget.id ? { ...w, name: editWarehouseName.trim(), type: editWarehouseType } : w)))
-    setEditWarehouseTarget(null)
-    toast.success(t('inventory.warehouses.updateSuccess'))
   }
 
   async function executeDeleteWarehouse() {
@@ -306,14 +272,6 @@ export default function InventoryPage() {
                   {w.name}
                   <span className="ml-1.5 text-[11px] opacity-60">({t(WAREHOUSE_TYPE_LABEL_KEYS[w.type])})</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => openEditWarehouse(w)}
-                  aria-label={t('inventory.warehouses.editTitle')}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
                 {refCount === 0 ? (
                   <button
                     type="button"
@@ -329,7 +287,6 @@ export default function InventoryPage() {
                     className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] text-gray-300 dark:text-gray-600 cursor-not-allowed"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    {refCount} {t('inventory.warehouses.linkedSuffix')}
                   </span>
                 )}
               </div>
@@ -337,19 +294,6 @@ export default function InventoryPage() {
           })}
         </div>
       </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard title={t('inventory.stats.totalProducts')} value={groups.length} icon={<Package className="h-4 w-4" />} description={t('inventory.stats.totalProductsDesc')} />
-        <StatCard title={t('inventory.stats.lowStock')} value={lowStock} icon={<AlertCircle className="h-4 w-4" />} description={t('inventory.stats.lowStockDesc')} />
-        <StatCard title={t('inventory.stats.outOfStock')} value={outOfStock} description={t('inventory.stats.outOfStockDesc')} />
-      </div>
-
-      {hasAlert && (
-        <div className="flex items-center gap-2.5 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-4 py-3">
-          <AlertCircle className="h-4 w-4 text-red-500 dark:text-red-400 shrink-0" />
-          <p className="text-[13px] font-medium text-red-700 dark:text-red-300">{t('inventory.lowStockSizesAlert')}</p>
-        </div>
-      )}
 
       <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
@@ -446,51 +390,6 @@ export default function InventoryPage() {
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsAddWarehouseOpen(false)}>{t('common.cancel')}</Button>
             <Button onClick={createWarehouse} disabled={savingWarehouse || !newWarehouseName.trim()} loading={savingWarehouse}>
-              {t('common.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!editWarehouseTarget} onOpenChange={open => { if (!open) setEditWarehouseTarget(null) }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t('inventory.warehouses.editTitle')}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div>
-              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('inventory.warehouses.nameLabel')}</label>
-              <input
-                value={editWarehouseName}
-                onChange={e => setEditWarehouseName(e.target.value)}
-                className={inputCls}
-                placeholder={t('inventory.warehouses.namePlaceholder')}
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('inventory.warehouses.typeLabel')}</label>
-              <div className="flex gap-2 flex-wrap">
-                {CREATABLE_WAREHOUSE_TYPES.map(type => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setEditWarehouseType(type)}
-                    className={cn(
-                      'flex-1 h-9 rounded-lg text-[13px] font-medium border transition-colors',
-                      editWarehouseType === type
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
-                    )}
-                  >
-                    {t(WAREHOUSE_TYPE_LABEL_KEYS[type])}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setEditWarehouseTarget(null)}>{t('common.cancel')}</Button>
-            <Button onClick={saveEditWarehouse} disabled={savingEditWarehouse || !editWarehouseName.trim()} loading={savingEditWarehouse}>
               {t('common.save')}
             </Button>
           </DialogFooter>
