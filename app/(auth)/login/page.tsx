@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ShoppingBag, User, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { ShimmerButton } from '@/components/ui/shimmer-button'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -93,10 +94,13 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <button
+        <ShimmerButton
           type="submit"
           disabled={loading}
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 dark:bg-gray-100 text-sm font-medium text-white dark:text-gray-900 transition-colors hover:bg-blue-700 dark:hover:bg-gray-200 disabled:opacity-50"
+          shimmerColor="#2563eb"
+          background="#1e3a8a"
+          borderRadius="0.5rem"
+          className="flex w-full h-11 items-center justify-center gap-2 text-sm font-medium disabled:opacity-50"
         >
           {loading ? (
             <>
@@ -106,7 +110,7 @@ export default function LoginPage() {
           ) : (
             'Kirish'
           )}
-        </button>
+        </ShimmerButton>
 
         {error && (
           <p className="text-center text-sm text-red-500">{error}</p>
