@@ -98,7 +98,9 @@ export default function LoginPage() {
           type="submit"
           disabled={loading}
           shimmerColor="#2563eb"
-          background="#1e3a8a"
+          background="rgba(0, 0, 0, 0.9)"
+          shimmerDuration="2s"
+          shimmerSize="0.1em"
           borderRadius="0.5rem"
           className="flex w-full h-11 items-center justify-center gap-2 text-sm font-medium disabled:opacity-50"
         >
