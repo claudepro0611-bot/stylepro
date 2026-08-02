@@ -139,7 +139,7 @@ function generateTransactions(): Transaction[] {
       id: `TXN-${String(i + 1).padStart(4, '0')}`,
       customerId: customer.id,
       customerName: customer.fullName,
-      products: [{ productId: product.id, productName: product.name, quantity: qty, price: product.price }],
+      products: [{ productId: product.id, productName: product.name, quantity: qty, price: product.price, purchasePrice: 0 }],
       totalAmount: product.price * qty,
       date: addDays(startDate, dayOffset),
       paymentMethod: PAYMENT_METHODS[i % 4],

@@ -60,6 +60,7 @@ export interface TransactionItem {
   productName: string
   quantity: number
   price: number
+  purchasePrice: number
 }
 
 export interface Transaction {

@@ -363,7 +363,7 @@ function TodaySalesCard({ title, count, revenue, prevCount, changeLabel, isPendi
   )
 }
 
-// ─── Card 6: Net profit (revenue - expenses for the selected period) ─────────
+// ─── Card 6: Net profit (gross line-item sales - COGS for the selected period) ─
 
 function NetProfitCard({ amount, isPending }: { amount: number; isPending?: boolean }) {
   const { formatPrice } = useCurrency()
@@ -397,7 +397,6 @@ export default function DashboardPage() {
   const [monthlyGoal] = useLocalStorage<number>('stylepro-monthly-goal', 10000000)
   const [products, setProducts] = useState<Product[]>([])
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([])
-  const [allExpenses, setAllExpenses] = useState<{ amount: number; date: string }[]>([])
   const [lowStockCount2, setLowStockCount2] = useState(0)
   const [dataLoading, setDataLoading] = useState(true)
   const [companyBalance, setCompanyBalance] = useState<number | null>(null)
@@ -407,15 +406,14 @@ export default function DashboardPage() {
     const supabase = createClient()
 
     async function load() {
-      const [{ data: productRows }, { data: transactionRows }, { data: productSizeRows }, { data: companyRow }, { data: expenseRows }] = await Promise.all([
+      const [{ data: productRows }, { data: transactionRows }, { data: productSizeRows }, { data: companyRow }] = await Promise.all([
         supabase.from('products').select('*'),
         supabase
           .from('transactions_net')
-          .select('*, transaction_items(product_id, product_name, quantity, price)')
+          .select('*, transaction_items(product_id, product_name, quantity, price, purchase_price)')
           .order('created_at', { ascending: false }),
         supabase.from('product_sizes').select('product_id, stock'),
         supabase.from('companies').select('balance').maybeSingle(),
-        supabase.from('expenses').select('amount, date'),
       ])
 
       if (!active) return
@@ -445,11 +443,12 @@ export default function DashboardPage() {
         id: tx.id ?? '',
         customerId: tx.customer_id ?? '',
         customerName: tx.customer_name ?? '',
-        products: (tx.transaction_items ?? []).map((i: { product_id: string | null; product_name: string | null; quantity: number; price: number }) => ({
+        products: (tx.transaction_items ?? []).map((i: { product_id: string | null; product_name: string | null; quantity: number; price: number; purchase_price: number | null }) => ({
           productId: i.product_id ?? '',
           productName: i.product_name ?? '',
           quantity: i.quantity,
           price: Number(i.price),
+          purchasePrice: Number(i.purchase_price ?? 0),
         })),
         // Net of returns (transactions_net.net_amount = total_amount - returned_amount),
         // not the gross sale total — see supabase/migrations/20260717000001_returns_flow.sql.
@@ -460,8 +459,6 @@ export default function DashboardPage() {
         invoiceId: tx.invoice_id ?? '',
         status: tx.status as Transaction['status'],
       })))
-
-      setAllExpenses((expenseRows ?? []).map(e => ({ amount: Number(e.amount), date: e.date })))
 
       setDataLoading(false)
     }
@@ -500,15 +497,22 @@ export default function DashboardPage() {
   const curRevenue = useMemo(() => filteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [filteredTransactions])
   const prvRevenue = useMemo(() => prevFilteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [prevFilteredTransactions])
 
-  // Same date range as the revenue KPI cards, so "Sof foyda" reflects the
-  // currently selected period rather than all-time expenses.
-  const curExpenses = useMemo(
-    () => allExpenses
-      .filter(e => e.date >= range.start && e.date <= range.end)
-      .reduce((s, e) => s + e.amount, 0),
-    [allExpenses, range],
+  // Sof foyda (net profit) = gross line-item sales minus COGS, over the
+  // currently filtered period's transaction items:
+  //   SUM(transaction_items.price * quantity) - SUM(transaction_items.purchase_price * quantity)
+  // Note: unlike curRevenue (tx.totalAmount = net_amount, already adjusted for
+  // returns), curGrossSales is the raw line-item total and does not net out
+  // returns the same way — for periods with returns, this KPI and the revenue
+  // KPI cards are on slightly different bases.
+  const curGrossSales = useMemo(
+    () => filteredTransactions.reduce((s, tx) => s + tx.products.reduce((s2, p) => s2 + p.price * p.quantity, 0), 0),
+    [filteredTransactions],
   )
-  const netProfit = curRevenue - curExpenses
+  const curCOGS = useMemo(
+    () => filteredTransactions.reduce((s, tx) => s + tx.products.reduce((s2, p) => s2 + (p.purchasePrice ?? 0) * p.quantity, 0), 0),
+    [filteredTransactions],
+  )
+  const netProfit = curGrossSales - curCOGS
 
 
   // Recent sales — most recent completed transactions
