@@ -666,33 +666,54 @@ export default function CustomersPage() {
         />
       </div>
 
-      {/* Customer Detail Modal */}
-      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        {/* Judgment call: widened from sm:max-w-lg to sm:max-w-3xl to fit the
-            Karta tab's 4-card KPI row + 3 tables — matches the widest
-            existing precedent in this codebase (components/mahsulotlar/ImportModal.tsx),
-            and reuses FeatureModal's max-h-[85vh] overflow-hidden flex flex-col
-            pattern so a tall Karta tab scrolls internally instead of
-            overflowing the viewport. The other 3 tabs are short enough that
-            this has no visible effect on them. */}
-        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+      {/* Customer Detail — right-side slide-over drawer (converted from a
+          centered modal; width/backdrop/close-button per the drawer spec
+          below, all inner tab content is unchanged from the modal version). */}
+      <div
+        className={cn(
+          'fixed inset-0 z-50 transition-opacity duration-300',
+          isDetailOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+        )}
+        aria-hidden={!isDetailOpen}
+      >
+        {/* Dimmed backdrop — clicking it closes the panel */}
+        <div
+          className="absolute inset-0 bg-black/30"
+          onClick={() => setIsDetailOpen(false)}
+        />
+
+        {/* Panel — slides in from the right edge */}
+        <div
+          className={cn(
+            'absolute inset-y-0 right-0 flex h-full w-1/2 flex-col overflow-hidden border-l border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg transition-transform duration-300 ease-in-out',
+            isDetailOpen ? 'translate-x-0' : 'translate-x-full',
+          )}
+        >
           {selectedCustomer && (
             <>
-              <DialogHeader className="shrink-0">
+              <button
+                onClick={() => setIsDetailOpen(false)}
+                className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                <X className="h-4 w-4" />
+                <span className="sr-only">Close</span>
+              </button>
+
+              <div className="shrink-0 p-4 pr-12">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-sm font-semibold text-gray-700 dark:text-gray-300">
                     {initials(selectedCustomer.fullName)}
                   </div>
                   <div>
-                    <DialogTitle className="text-base">{selectedCustomer.fullName}</DialogTitle>
+                    <p className="text-base font-medium text-gray-900 dark:text-gray-100">{selectedCustomer.fullName}</p>
                     <div className="mt-1">
                       <MiniBadge status={selectedCustomer.status} />
                     </div>
                   </div>
                 </div>
-              </DialogHeader>
+              </div>
 
-              <Tabs value={detailTab} onValueChange={setDetailTab} className="flex-1 min-h-0 flex flex-col">
+              <Tabs value={detailTab} onValueChange={setDetailTab} className="flex-1 min-h-0 flex flex-col px-4 pb-4">
                 <TabsList className="shrink-0" variant="underline">
                   <TabsTrigger value="kontakt">{t('customers.tabs.contact')}</TabsTrigger>
                   <TabsTrigger value="xaridlar">{t('customers.tabs.purchases')}</TabsTrigger>
@@ -1059,12 +1080,10 @@ export default function CustomersPage() {
                   </TabsContent>
                 </div>
               </Tabs>
-
-              <DialogFooter showCloseButton />
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </div>
+      </div>
 
       {/* Add Customer Modal */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
