@@ -196,7 +196,7 @@ export function DashboardFilterBar({
           <FilterPanel config={config} onSave={onCustomizeSave} />
           <button
             type="button"
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 text-sm font-medium transition-colors shadow-lg shadow-blue-600/20"
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 text-sm font-medium transition-colors shadow-lg shadow-indigo-600/20"
           >
             <Download className="h-3.5 w-3.5" />
             Eksport

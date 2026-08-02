@@ -51,6 +51,9 @@ const CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 da
 
 const KPI_CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 p-4 min-h-[110px]'
 
+// Hero variant for the "Sof foyda" KPI card — dark blue gradient, no border (bg supplies the surface).
+const KPI_HERO_CARD_CLS = 'rounded-xl border-0 shadow-sm hover:shadow-md transition-all duration-200 p-4 min-h-[110px]'
+
 const WIDGET_OPTION_KEYS: TranslationKey[] = [
   'dashboard.widgets.revenue', 'dashboard.widgets.avgCheck', 'dashboard.widgets.newOrders',
   'dashboard.widgets.activeCustomers', 'dashboard.widgets.stockStatus', 'dashboard.widgets.campaigns',
@@ -364,14 +367,13 @@ function TodaySalesCard({ title, count, revenue, prevCount, changeLabel, isPendi
 
 function NetProfitCard({ amount, isPending }: { amount: number; isPending?: boolean }) {
   const { formatPrice } = useCurrency()
-  const positive = amount >= 0
   return (
-    <div className={KPI_CARD_CLS}>
-      <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400 mb-1.5">Sof foyda</p>
+    <div className={KPI_HERO_CARD_CLS} style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)' }}>
+      <p className="text-[15px] font-medium text-blue-100/80 mb-1.5">Sof foyda</p>
       {isPending ? (
         <Skeleton className="h-[22px] w-24" />
       ) : (
-        <p className={cn('text-lg font-semibold tabular-nums whitespace-nowrap', positive ? 'text-gray-900 dark:text-gray-100' : 'text-red-600 dark:text-red-400')}>
+        <p className="text-lg font-semibold tabular-nums whitespace-nowrap text-white">
           {formatPrice(amount)}
         </p>
       )}
@@ -493,7 +495,7 @@ export default function DashboardPage() {
   const monoSoft   = isDark ? '#4B5563' : '#D1D5DB'
   const cursorArea = isDark ? '#374151' : '#F3F4F6'
   // Primary series of the "Jami daromad" area chart — fixed accent color (not theme-toggling).
-  const primaryLineColor = '#2563eb'
+  const primaryLineColor = '#1d4ed8'
 
   const curRevenue = useMemo(() => filteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [filteredTransactions])
   const prvRevenue = useMemo(() => prevFilteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [prevFilteredTransactions])
@@ -698,8 +700,8 @@ export default function DashboardPage() {
               <AreaChart data={chartBuckets} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
                 <defs>
                   <linearGradient id="gradCur" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={primaryLineColor} stopOpacity={0.15} />
-                    <stop offset="95%" stopColor={primaryLineColor} stopOpacity={0.01} />
+                    <stop offset="5%"  stopColor={primaryLineColor} stopOpacity={0.18} />
+                    <stop offset="95%" stopColor={primaryLineColor} stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="gradPrv" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%"  stopColor={monoSoft} stopOpacity={0.10} />
