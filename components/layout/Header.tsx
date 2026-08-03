@@ -166,6 +166,14 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Right — notifications + profile */}
       <div className="flex items-center gap-2">
+        {/* Dolphy brand mark */}
+        <div className="flex items-center gap-2">
+          <svg viewBox="0 0 24 24" fill="#2563eb" width="20" height="20">
+            <path d="M21 8c-1.5 0-2.5.5-3.5 1.5C16 8 14.5 7 13 7c-1 0-2 .3-2.8.8L8 6.5C6.5 5.5 4.5 5 2.5 5.5L2 6l2 2c-1 1-1.5 2.5-1 4 .5 1.5 2 3 4 3.5 1 .3 2 .2 3-.2l1.5 1.5c.5.5 1 .7 1.5.7s1-.2 1.5-.7l.5-.5c1 .3 2 .2 3-.5 1.5-1 2-2.5 2-4 0-.5 0-1-.2-1.5.7-.5 1.2-1.3 1.2-2.3z" />
+          </svg>
+          <span className="text-sm font-semibold text-[#2563eb]">Dolphy</span>
+        </div>
+
         {/* Notification bell */}
         <button className="relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
