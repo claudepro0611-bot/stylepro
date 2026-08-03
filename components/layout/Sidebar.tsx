@@ -8,7 +8,7 @@ import {
   ShoppingBag, BarChart2, Megaphone,
   MessageSquare, Settings, ArrowDownCircle, ArrowUpCircle, Trash2, ChevronDown, ShoppingCart,
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
-  Receipt, Search,
+  Receipt,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -95,10 +95,6 @@ export const SETTINGS_NAV_ITEM: NavEntry = {
   href: '/sozlamalar', labelKey: 'sidebar.settings', icon: Settings, permKey: 'sozlamalar',
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'Owner', admin: 'Admin', manager: 'Manager', staff: 'Staff',
-}
-
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + '/')
 }
@@ -129,7 +125,6 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
   const [permissions, setPermissions] = useState<Permissions>(DEFAULT_PERMISSIONS)
   const [isOwner, setIsOwner] = useState(true)
   const [companyName, setCompanyName] = useState('')
-  const [userRole, setUserRole] = useState('')
   const [storedCollapsed, setStoredCollapsed] = useLocalStorage<boolean>('sidebar-collapsed', false)
   const { features } = useFeatures()
 
@@ -147,7 +142,6 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
         .single()
       if (data) {
         setIsOwner(data.role === 'owner')
-        setUserRole(data.role ?? '')
         setPermissions(withDefaultPermissions(data.permissions as Partial<Permissions> | null))
         if (data.company_id) {
           const { data: company } = await supabase
@@ -306,8 +300,6 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
     return renderExpandedLeaf(item.href, item.href, Icon, t(item.labelKey), active, false)
   }
 
-  const planLabel = ROLE_LABEL[userRole] ?? ''
-
   return (
     <aside
       className={cn(
@@ -326,7 +318,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
             title={t('sidebar.expand')}
           >
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold text-[13px]">
-              {companyName ? companyName[0].toUpperCase() : 'S'}
+              {companyName ? companyName[0].toUpperCase() : 'D'}
             </span>
           </button>
         ) : (
@@ -337,33 +329,15 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
             className="flex w-full items-center gap-2.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold text-sm">
-              {companyName ? companyName[0].toUpperCase() : 'S'}
+              {companyName ? companyName[0].toUpperCase() : 'D'}
             </span>
             <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[13.5px] font-semibold text-gray-900 dark:text-gray-100">{companyName || 'StylePro'}</span>
-              {planLabel && <span className="block truncate text-[11px] text-gray-400 dark:text-gray-500">{planLabel}</span>}
+              <span className="block truncate text-[13.5px] font-semibold text-gray-900 dark:text-gray-100">{companyName || 'Dolphy'}</span>
             </span>
             <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
           </button>
         )}
       </div>
-
-      {/* ── Search ───────────────────────────────────────────────────────────── */}
-      {!collapsed && (
-        <div className="shrink-0 px-3 pt-2.5 pb-1">
-          <div className="flex items-center gap-2 rounded-lg bg-gray-50 dark:bg-gray-800 px-2.5 py-2">
-            <Search className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
-            <input
-              type="text"
-              placeholder={t('header.searchPlaceholder')}
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-gray-600 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none"
-            />
-            <kbd className="hidden sm:inline-flex shrink-0 items-center rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-0.5 text-[10px] font-medium text-gray-400 dark:text-gray-500">
-              ⌘K
-            </kbd>
-          </div>
-        </div>
-      )}
 
       {/* ── Nav ──────────────────────────────────────────────────────────────── */}
       <nav className={cn('flex-1 py-2 space-y-0.5 overflow-y-auto', collapsed ? 'px-2' : 'px-2.5')}>
