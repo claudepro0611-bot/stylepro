@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import {
   UserPlus, Search, Eye, Loader2, Wallet, ShoppingBag, Percent, Pencil, Check, X,
   type LucideIcon,
@@ -22,17 +23,6 @@ import type { Customer, Purchase } from '@/lib/types'
 
 const ITEMS_PER_PAGE = 10
 const STATUS_FILTERS = ['Barchasi', 'VIP', 'Regular', 'New'] as const
-const SALES_PAYMENT_FILTERS = ['Barchasi', 'Naqd', 'Karta', 'Click', 'Payme', 'Nasiya'] as const
-
-const PILL_CLS = (active: boolean) =>
-  cn(
-    'px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors',
-    active
-      ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
-      : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
-  )
-
-const DATE_INPUT_CLS = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 text-[13px] text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 
 const KARTA_KPI_CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4'
 
@@ -79,14 +69,6 @@ function mapCustomer(row: CustomerRow): Customer {
   }
 }
 
-interface NasiyaTxnRow {
-  id: string
-  created_at: string
-  type: 'given' | 'repaid'
-  amount: number
-  note: string | null
-}
-
 interface SalesHistoryRow {
   id: string
   date: string
@@ -123,25 +105,11 @@ export default function CustomersPage() {
   const [kartaLoading, setKartaLoading] = useState(false)
   const [kartaLoadedFor, setKartaLoadedFor] = useState<string | null>(null)
   const [nasiyaBalance, setNasiyaBalance] = useState(0)
-  const [nasiyaHistory, setNasiyaHistory] = useState<NasiyaTxnRow[]>([])
   const [salesHistory, setSalesHistory] = useState<SalesHistoryRow[]>([])
-  const [salesDateFrom, setSalesDateFrom] = useState('')
-  const [salesDateTo, setSalesDateTo] = useState('')
-  const [salesPaymentFilter, setSalesPaymentFilter] = useState<typeof SALES_PAYMENT_FILTERS[number]>('Barchasi')
 
   const [vipEditing, setVipEditing] = useState(false)
   const [vipEditValue, setVipEditValue] = useState('')
   const [vipSaving, setVipSaving] = useState(false)
-
-  const [giveNasiyaOpen, setGiveNasiyaOpen] = useState(false)
-  const [giveAmount, setGiveAmount] = useState('')
-  const [giveNote, setGiveNote] = useState('')
-  const [giving, setGiving] = useState(false)
-
-  const [repayNasiyaOpen, setRepayNasiyaOpen] = useState(false)
-  const [repayAmount, setRepayAmount] = useState('')
-  const [repayNote, setRepayNote] = useState('')
-  const [repaying, setRepaying] = useState(false)
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)
@@ -187,11 +155,7 @@ export default function CustomersPage() {
     setKartaLoadedFor(null)
     setKartaLoading(false)
     setNasiyaBalance(0)
-    setNasiyaHistory([])
     setSalesHistory([])
-    setSalesDateFrom('')
-    setSalesDateTo('')
-    setSalesPaymentFilter('Barchasi')
     setVipEditing(false)
 
     const supabase = createClient()
@@ -307,20 +271,15 @@ export default function CustomersPage() {
     setKartaLoadedFor(c.id)
     const supabase = createClient()
 
-    const [
-      { data: nasiyaBalanceData, error: nasiyaBalanceError },
-      { data: nasiyaRows, error: nasiyaRowsError },
-    ] = await Promise.all([
-      supabase.rpc('get_customer_nasiya_balance', { p_customer_id: c.id }),
-      supabase.from('nasiya_transactions').select('*').eq('customer_id', c.id).order('created_at', { ascending: false }),
-    ])
+    const { data: nasiyaBalanceData, error: nasiyaBalanceError } = await supabase.rpc(
+      'get_customer_nasiya_balance', { p_customer_id: c.id },
+    )
 
-    if (nasiyaBalanceError || nasiyaRowsError) {
+    if (nasiyaBalanceError) {
       toast.error(t('common.error'))
     }
 
     setNasiyaBalance(Number(nasiyaBalanceData ?? 0))
-    setNasiyaHistory((nasiyaRows ?? []) as NasiyaTxnRow[])
 
     await loadSalesHistory(c)
 
@@ -366,82 +325,6 @@ export default function CustomersPage() {
     await refreshSelectedCustomer(selectedCustomer.id)
   }
 
-  async function reloadNasiya(customerId: string) {
-    const supabase = createClient()
-    const [{ data: balanceData }, { data: rows }] = await Promise.all([
-      supabase.rpc('get_customer_nasiya_balance', { p_customer_id: customerId }),
-      supabase.from('nasiya_transactions').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }),
-    ])
-    setNasiyaBalance(Number(balanceData ?? 0))
-    setNasiyaHistory((rows ?? []) as NasiyaTxnRow[])
-  }
-
-  async function submitGiveNasiya() {
-    if (!selectedCustomer) return
-    const amt = Number(giveAmount)
-    if (!giveAmount.trim() || Number.isNaN(amt) || amt <= 0) {
-      toast.error(t('customers.karta.requiredAmountError'))
-      return
-    }
-    setGiving(true)
-    const supabase = createClient()
-    const { error } = await supabase.rpc('give_nasiya', {
-      p_customer_id: selectedCustomer.id,
-      p_amount: amt,
-      p_related_transaction_id: null,
-      p_note: giveNote.trim() || null,
-    })
-    setGiving(false)
-
-    if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
-      return
-    }
-
-    toast.success(t('customers.karta.giveSuccess'))
-    setGiveNasiyaOpen(false)
-    setGiveAmount('')
-    setGiveNote('')
-    await reloadNasiya(selectedCustomer.id)
-  }
-
-  async function submitRepayNasiya() {
-    if (!selectedCustomer) return
-    const amt = Number(repayAmount)
-    if (!repayAmount.trim() || Number.isNaN(amt) || amt <= 0) {
-      toast.error(t('customers.karta.requiredAmountError'))
-      return
-    }
-    setRepaying(true)
-    const supabase = createClient()
-    const { error } = await supabase.rpc('repay_nasiya', {
-      p_customer_id: selectedCustomer.id,
-      p_amount: amt,
-      p_note: repayNote.trim() || null,
-    })
-    setRepaying(false)
-
-    if (error) {
-      // repay_nasiya hard-rejects an over-repayment with a message containing
-      // this exact substring — surfaced as a specific toast rather than the
-      // generic error, same pattern as pos/page.tsx's handleSell branches.
-      if (error.message.includes('exceeds outstanding nasiya balance')) {
-        toast.error(t('customers.karta.repayExceedsError'))
-      } else if (error.message.includes('forbidden')) {
-        toast.error(t('common.forbidden'))
-      } else {
-        toast.error(t('common.error'))
-      }
-      return
-    }
-
-    toast.success(t('customers.karta.repaySuccess'))
-    setRepayNasiyaOpen(false)
-    setRepayAmount('')
-    setRepayNote('')
-    await reloadNasiya(selectedCustomer.id)
-  }
-
   async function addCustomer() {
     if (!form.fullName.trim() || !form.phone.trim()) {
       toast.error(t('customers.requiredError'))
@@ -474,26 +357,6 @@ export default function CustomersPage() {
   function initials(name: string) {
     return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
   }
-
-  const filteredSalesHistory = useMemo(() => {
-    let list = salesHistory
-    if (salesDateFrom) list = list.filter(r => r.date >= salesDateFrom)
-    if (salesDateTo) list = list.filter(r => r.date <= salesDateTo)
-    if (salesPaymentFilter !== 'Barchasi') {
-      list = salesPaymentFilter === 'Nasiya'
-        ? list.filter(r => r.isNasiya)
-        : list.filter(r => r.paymentMethod === salesPaymentFilter && !r.isNasiya)
-    }
-    return list
-  }, [salesHistory, salesDateFrom, salesDateTo, salesPaymentFilter])
-
-  const salesTotals = useMemo(() => filteredSalesHistory.reduce((acc, r) => ({
-    itemCount: acc.itemCount + r.itemCount,
-    listPriceTotal: acc.listPriceTotal + r.listPriceTotal,
-    discount: acc.discount + r.discount,
-    paid: acc.paid + r.paid,
-    balls: acc.balls + r.balls,
-  }), { itemCount: 0, listPriceTotal: 0, discount: 0, paid: 0, balls: 0 }), [filteredSalesHistory])
 
   // Judgment call: when a customer has never been VIP (vip_since is NULL),
   // "Jami xarid" falls back to the all-time totalPurchases already tracked
@@ -829,162 +692,23 @@ export default function CustomersPage() {
                           </div>
                         </div>
 
-                        {/* Section 1: Sotuv tarixi */}
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">{t('customers.karta.salesHistory')}</p>
-                          {!selectedCustomer.vipSince ? (
-                            <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">{t('customers.karta.notVipYet')}</p>
-                          ) : (
-                            <>
-                              <div className="flex flex-wrap items-center gap-2 mb-3">
-                                <input type="date" value={salesDateFrom} onChange={e => setSalesDateFrom(e.target.value)} className={DATE_INPUT_CLS} />
-                                <span className="text-[12px] text-gray-400">—</span>
-                                <input type="date" value={salesDateTo} onChange={e => setSalesDateTo(e.target.value)} className={DATE_INPUT_CLS} />
-                                <div className="flex flex-wrap gap-1.5 sm:ml-auto">
-                                  {SALES_PAYMENT_FILTERS.map(f => (
-                                    <button key={f} onClick={() => setSalesPaymentFilter(f)} className={PILL_CLS(salesPaymentFilter === f)}>
-                                      {f === 'Barchasi' ? t('customers.karta.paymentFilterAll') : f}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-                                <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                                  <table className="w-full">
-                                    <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
-                                      <tr className="border-b border-gray-100 dark:border-gray-800">
-                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.date')}</th>
-                                        <th className="px-3 py-2 text-center text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.productsCount')}</th>
-                                        <th className="px-3 py-2 text-right text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.listPrice')}</th>
-                                        <th className="px-3 py-2 text-right text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.discount')}</th>
-                                        <th className="px-3 py-2 text-right text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.paid')}</th>
-                                        <th className="px-3 py-2 text-right text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.ball')}</th>
-                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{t('customers.karta.paymentType')}</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {filteredSalesHistory.length === 0 ? (
-                                        <tr>
-                                          <td colSpan={7} className="px-3 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-                                            {t('customers.karta.noSalesHistory')}
-                                          </td>
-                                        </tr>
-                                      ) : filteredSalesHistory.map(r => (
-                                        <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                                          <td className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(r.date)}</td>
-                                          <td className="px-3 py-2 text-sm text-center text-gray-700 dark:text-gray-300">{r.itemCount}</td>
-                                          <td className="px-3 py-2 text-sm text-right tabular-nums text-gray-400 dark:text-gray-500 line-through whitespace-nowrap">
-                                            {formatPrice(r.listPriceTotal)}
-                                          </td>
-                                          <td className="px-3 py-2 text-sm text-right tabular-nums text-red-600 dark:text-red-400 whitespace-nowrap">
-                                            {r.discount > 0 ? `-${formatPrice(r.discount)}` : '—'}
-                                          </td>
-                                          <td className="px-3 py-2 text-sm text-right font-medium tabular-nums text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                                            {formatPrice(r.paid)}
-                                          </td>
-                                          <td className="px-3 py-2 text-sm text-right tabular-nums text-gray-700 dark:text-gray-300">
-                                            {r.balls > 0 ? `+${r.balls}` : '—'}
-                                          </td>
-                                          <td className="px-3 py-2">
-                                            {r.isNasiya ? (
-                                              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400">
-                                                {t('customers.karta.nasiyaType')}
-                                              </span>
-                                            ) : (
-                                              <span className="text-sm text-gray-500 dark:text-gray-400">{r.paymentMethod}</span>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                    {filteredSalesHistory.length > 0 && (
-                                      <tfoot>
-                                        <tr className="bg-gray-50 dark:bg-gray-800/50 font-semibold">
-                                          <td className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{t('customers.karta.totalRow')}</td>
-                                          <td className="px-3 py-2 text-sm text-center text-gray-900 dark:text-gray-100">{salesTotals.itemCount}</td>
-                                          <td className="px-3 py-2 text-sm text-right tabular-nums text-gray-900 dark:text-gray-100 whitespace-nowrap">{formatPrice(salesTotals.listPriceTotal)}</td>
-                                          <td className="px-3 py-2 text-sm text-right tabular-nums text-red-600 dark:text-red-400 whitespace-nowrap">{formatPrice(salesTotals.discount)}</td>
-                                          <td className="px-3 py-2 text-sm text-right tabular-nums text-gray-900 dark:text-gray-100 whitespace-nowrap">{formatPrice(salesTotals.paid)}</td>
-                                          <td className="px-3 py-2 text-sm text-right tabular-nums text-gray-900 dark:text-gray-100">{salesTotals.balls}</td>
-                                          <td className="px-3 py-2" />
-                                        </tr>
-                                      </tfoot>
-                                    )}
-                                  </table>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Section 2: Qarzdorlik tarixi */}
-                        <div className="border-t border-gray-100 dark:border-gray-800 pt-5">
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">{t('customers.karta.nasiyaHistory')}</p>
-                          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                            <span className={cn(
-                              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                              nasiyaBalance > 0
-                                ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400'
-                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-                            )}>
-                              {formatPrice(nasiyaBalance)}
-                            </span>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => setGiveNasiyaOpen(true)}
-                                className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-[13px] font-medium transition-colors"
-                              >
-                                {t('customers.karta.giveNasiya')}
-                              </button>
-                              <button
-                                onClick={() => setRepayNasiyaOpen(true)}
-                                className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-[13px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                              >
-                                {t('customers.karta.acceptPayment')}
-                              </button>
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-                            <div className="max-h-56 overflow-y-auto">
-                              <table className="w-full">
-                                <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
-                                  <tr className="border-b border-gray-100 dark:border-gray-800">
-                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.date')}</th>
-                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.type')}</th>
-                                    <th className="px-3 py-2 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.amount')}</th>
-                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.note')}</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {nasiyaHistory.length === 0 ? (
-                                    <tr>
-                                      <td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-                                        {t('customers.karta.noNasiyaHistory')}
-                                      </td>
-                                    </tr>
-                                  ) : nasiyaHistory.map(r => (
-                                    <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                                      <td className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{formatDate(r.created_at)}</td>
-                                      <td className="px-3 py-2">
-                                        <span className={cn(
-                                          'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                                          r.type === 'given'
-                                            ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400'
-                                            : 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400',
-                                        )}>
-                                          {r.type === 'given' ? t('customers.karta.given') : t('customers.karta.repaid')}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 py-2 text-sm text-right font-medium tabular-nums text-gray-900 dark:text-gray-100">
-                                        {formatPrice(Number(r.amount))}
-                                      </td>
-                                      <td className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{r.note || '—'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
+                        {/* Navigation to standalone Sotuv tarixi / Qarzdorlik
+                            tarixi pages — both tables + the nasiya give/repay
+                            modals now live on their own routes since they
+                            outgrew a tab inside this drawer. */}
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Link
+                            href={`/customers/${selectedCustomer.id}/sotuv-tarixi`}
+                            className="flex-1 text-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-[13px] font-medium transition-colors"
+                          >
+                            {t('customers.karta.salesHistory')}
+                          </Link>
+                          <Link
+                            href={`/customers/${selectedCustomer.id}/qarzdorlik-tarixi`}
+                            className="flex-1 text-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 text-[13px] font-medium transition-colors"
+                          >
+                            {t('customers.karta.nasiyaHistory')}
+                          </Link>
                         </div>
                       </>
                     )}
@@ -1036,85 +760,6 @@ export default function CustomersPage() {
           <DialogFooter className="mt-4">
             <Button onClick={addCustomer} disabled={saving} loading={saving}>
               {t('common.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Give Nasiya Modal */}
-      <Dialog open={giveNasiyaOpen} onOpenChange={setGiveNasiyaOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t('customers.karta.giveNasiya')}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 mt-2">
-            <div>
-              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('customers.karta.amountLabel')}</label>
-              <input
-                type="number"
-                min={0}
-                placeholder={t('customers.karta.amountPlaceholder')}
-                value={giveAmount}
-                onChange={e => setGiveAmount(e.target.value)}
-                className="w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('customers.karta.noteLabel')}</label>
-              <textarea
-                value={giveNote}
-                onChange={e => setGiveNote(e.target.value)}
-                rows={2}
-                placeholder={t('customers.karta.notePlaceholder')}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-gray-400 dark:focus:border-gray-500 resize-none transition-colors"
-              />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setGiveNasiyaOpen(false)}>{t('customers.karta.cancel')}</Button>
-            <Button onClick={submitGiveNasiya} disabled={giving} loading={giving}>
-              {t('customers.karta.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Accept Payment (repay nasiya) Modal */}
-      <Dialog open={repayNasiyaOpen} onOpenChange={setRepayNasiyaOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t('customers.karta.acceptPayment')}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 mt-2">
-            <div className="rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">
-              {t('customers.karta.nasiyaBalance')}: <span className="font-semibold text-gray-800 dark:text-gray-200">{formatPrice(nasiyaBalance)}</span>
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('customers.karta.amountLabel')}</label>
-              <input
-                type="number"
-                min={0}
-                placeholder={t('customers.karta.amountPlaceholder')}
-                value={repayAmount}
-                onChange={e => setRepayAmount(e.target.value)}
-                className="w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('customers.karta.noteLabel')}</label>
-              <textarea
-                value={repayNote}
-                onChange={e => setRepayNote(e.target.value)}
-                rows={2}
-                placeholder={t('customers.karta.notePlaceholder')}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-gray-400 dark:focus:border-gray-500 resize-none transition-colors"
-              />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setRepayNasiyaOpen(false)}>{t('customers.karta.cancel')}</Button>
-            <Button onClick={submitRepayNasiya} disabled={repaying} loading={repaying}>
-              {t('customers.karta.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
