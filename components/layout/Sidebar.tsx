@@ -124,7 +124,6 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [permissions, setPermissions] = useState<Permissions>(DEFAULT_PERMISSIONS)
   const [isOwner, setIsOwner] = useState(true)
-  const [companyName, setCompanyName] = useState('')
   const [storedCollapsed, setStoredCollapsed] = useLocalStorage<boolean>('sidebar-collapsed', false)
   const { features } = useFeatures()
 
@@ -143,14 +142,6 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
       if (data) {
         setIsOwner(data.role === 'owner')
         setPermissions(withDefaultPermissions(data.permissions as Partial<Permissions> | null))
-        if (data.company_id) {
-          const { data: company } = await supabase
-            .from('companies')
-            .select('name')
-            .eq('id', data.company_id)
-            .single()
-          setCompanyName(company?.name ?? '')
-        }
       }
     })
   }, [])
@@ -317,9 +308,9 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
             className="flex h-10 w-full items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
             title={t('sidebar.expand')}
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold text-[13px]">
-              {companyName ? companyName[0].toUpperCase() : 'D'}
-            </span>
+            <svg viewBox="0 0 24 24" fill="#2563eb" width="18" height="18">
+              <path d="M21 8c-1.5 0-2.5.5-3.5 1.5C16 8 14.5 7 13 7c-1 0-2 .3-2.8.8L8 6.5C6.5 5.5 4.5 5 2.5 5.5L2 6l2 2c-1 1-1.5 2.5-1 4 .5 1.5 2 3 4 3.5 1 .3 2 .2 3-.2l1.5 1.5c.5.5 1 .7 1.5.7s1-.2 1.5-.7l.5-.5c1 .3 2 .2 3-.5 1.5-1 2-2.5 2-4 0-.5 0-1-.2-1.5.7-.5 1.2-1.3 1.2-2.3z" />
+            </svg>
           </button>
         ) : (
           <button
@@ -328,11 +319,11 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
             title={t('sidebar.collapse')}
             className="flex w-full items-center gap-2.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold text-sm">
-              {companyName ? companyName[0].toUpperCase() : 'D'}
-            </span>
-            <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[13.5px] font-semibold text-gray-900 dark:text-gray-100">{companyName || 'Dolphy'}</span>
+            <span className="flex min-w-0 flex-1 items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="#2563eb" width="24" height="24">
+                <path d="M21 8c-1.5 0-2.5.5-3.5 1.5C16 8 14.5 7 13 7c-1 0-2 .3-2.8.8L8 6.5C6.5 5.5 4.5 5 2.5 5.5L2 6l2 2c-1 1-1.5 2.5-1 4 .5 1.5 2 3 4 3.5 1 .3 2 .2 3-.2l1.5 1.5c.5.5 1 .7 1.5.7s1-.2 1.5-.7l.5-.5c1 .3 2 .2 3-.5 1.5-1 2-2.5 2-4 0-.5 0-1-.2-1.5.7-.5 1.2-1.3 1.2-2.3z" />
+              </svg>
+              <span className="font-bold text-[17px] text-[#2563eb]">Dolphy</span>
             </span>
             <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
           </button>
