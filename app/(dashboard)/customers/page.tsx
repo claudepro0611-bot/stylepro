@@ -19,7 +19,7 @@ import { formatDate, formatPhone } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { cn } from '@/lib/utils'
-import type { Customer, Purchase } from '@/lib/types'
+import type { Customer } from '@/lib/types'
 
 const ITEMS_PER_PAGE = 10
 const STATUS_FILTERS = ['Barchasi', 'VIP', 'Regular', 'New'] as const
@@ -95,8 +95,6 @@ export default function CustomersPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [purchases, setPurchases] = useState<Purchase[]>([])
-  const [purchasesLoading, setPurchasesLoading] = useState(false)
   const [form, setForm] = useState({
     fullName: '', phone: '', email: '', address: '', status: 'New' as Customer['status'],
   })
@@ -143,12 +141,10 @@ export default function CustomersPage() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
-  async function openDetail(c: Customer) {
+  function openDetail(c: Customer) {
     setSelectedCustomer(c)
     setDetailTab('kontakt')
     setIsDetailOpen(true)
-    setPurchases([])
-    setPurchasesLoading(true)
 
     // Reset Karta tab state for the newly opened customer — lazily (re)loaded
     // the first time the "karta" tab is actually selected, see the effect below.
@@ -157,39 +153,16 @@ export default function CustomersPage() {
     setNasiyaBalance(0)
     setSalesHistory([])
     setVipEditing(false)
-
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from('transactions_net')
-      .select('id, date, net_amount, payment_method, transaction_items(product_name)')
-      .eq('customer_id', c.id)
-      .eq('status', 'completed')
-      .order('date', { ascending: false })
-
-    if (error) {
-      toast.error(t('common.error'))
-    } else {
-      setPurchases((data ?? []).map(txn => ({
-        id: txn.id ?? '',
-        date: txn.date ?? '',
-        amount: Number(txn.net_amount),
-        items: (txn.transaction_items ?? []).map((i: { product_name: string | null }) => i.product_name ?? ''),
-        paymentMethod: txn.payment_method ?? '',
-      })))
-    }
-    setPurchasesLoading(false)
   }
 
   // ─── Karta tab: sales-since-VIP history (task 5) ─────────────────────────
-  // Judgment call: sourced from `transactions_net` (not raw `transactions`),
-  // matching the existing "xaridlar" tab's precedent above — it already
-  // accounts for returns via net_amount, so this stays consistent instead of
-  // introducing a second, differently-behaved source of truth in the same
-  // dialog. "Asl narx"/"Chegirma" use transaction_items.list_price and the
-  // transaction's own total_amount (pre-return, authoritative from
-  // sell_cart) so the discount shown reflects the sale-time discount only;
-  // "To'langan" uses net_amount (post-return) for consistency with the
-  // purchases tab.
+  // Judgment call: sourced from `transactions_net` (not raw `transactions`)
+  // since it already accounts for returns via net_amount, avoiding a second,
+  // differently-behaved source of truth in the same dialog. "Asl narx"/
+  // "Chegirma" use transaction_items.list_price and the transaction's own
+  // total_amount (pre-return, authoritative from sell_cart) so the discount
+  // shown reflects the sale-time discount only; "To'langan" uses net_amount
+  // (post-return) for the same reason.
   const loadSalesHistory = useCallback(async (c: Customer) => {
     if (!c.vipSince) {
       setSalesHistory([])
@@ -548,7 +521,6 @@ export default function CustomersPage() {
               <Tabs value={detailTab} onValueChange={setDetailTab} className="flex-1 min-h-0 flex flex-col px-4 pb-4">
                 <TabsList className="shrink-0" variant="underline">
                   <TabsTrigger value="kontakt">{t('customers.tabs.contact')}</TabsTrigger>
-                  <TabsTrigger value="xaridlar">{t('customers.tabs.purchases')}</TabsTrigger>
                   <TabsTrigger value="murojaatlar">{t('customers.tabs.complaints')}</TabsTrigger>
                   <TabsTrigger value="karta">{t('customers.tabs.karta')}</TabsTrigger>
                 </TabsList>
@@ -568,29 +540,6 @@ export default function CustomersPage() {
                         <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{value}</span>
                       </div>
                     ))}
-                  </TabsContent>
-
-                  <TabsContent value="xaridlar" className="mt-4">
-                    {purchasesLoading ? (
-                      <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">
-                        <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
-                        {t('common.loading')}
-                      </p>
-                    ) : purchases.length === 0 ? (
-                      <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">{t('customers.detail.noPurchases')}</p>
-                    ) : (
-                      <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                        {purchases.slice(0, 20).map(p => (
-                          <div key={p.id} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{p.items[0] ?? '—'}</p>
-                              <p className="text-[11px] text-gray-400 dark:text-gray-500">{formatDate(p.date)} · {p.paymentMethod}</p>
-                            </div>
-                            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(p.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </TabsContent>
 
                   <TabsContent value="murojaatlar" className="mt-4">
