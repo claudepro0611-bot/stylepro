@@ -66,7 +66,6 @@ export function Header({ onMenuClick }: HeaderProps) {
   const breadcrumbTrail = buildBreadcrumbTrail(pathname, t)
   const [companyName, setCompanyName] = useState('')
   const [userName, setUserName] = useState('')
-  const [userRole, setUserRole] = useState('')
   const [balance, setBalance] = useState(0)
   const [monthlyFee, setMonthlyFee] = useState(0)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
@@ -88,7 +87,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       const { data: userData } = await supabase
         .from('users')
-        .select('company_id, full_name, role')
+        .select('company_id, full_name')
         .eq('id', user.id)
         .single()
 
@@ -103,7 +102,6 @@ export function Header({ onMenuClick }: HeaderProps) {
         setBalance(Number(company?.balance ?? 0))
         setMonthlyFee(Number(company?.monthly_fee ?? 0))
         setUserName(userData.full_name || '')
-        setUserRole(userData.role || '')
       }
     }
 
@@ -208,13 +206,6 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {profileOpen && (
             <div className="absolute right-0 top-10 z-50 w-52 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden">
-              <div className="px-3 py-3">
-                <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">{displayName}</p>
-                {!isSuperAdmin && (
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500 capitalize mt-0.5">{userRole}</p>
-                )}
-              </div>
-              <div className="border-t border-gray-100 dark:border-gray-800" />
               <button
                 onClick={handleLogout}
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-[13px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
