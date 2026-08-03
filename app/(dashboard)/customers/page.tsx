@@ -829,79 +829,7 @@ export default function CustomersPage() {
                           </div>
                         </div>
 
-                        {/* Nasiya tarixi */}
-                        <div>
-                          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('customers.karta.nasiyaHistory')}</p>
-                              <span className={cn(
-                                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                                nasiyaBalance > 0
-                                  ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400'
-                                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-                              )}>
-                                {formatPrice(nasiyaBalance)}
-                              </span>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => setGiveNasiyaOpen(true)}
-                                className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-[13px] font-medium transition-colors"
-                              >
-                                {t('customers.karta.giveNasiya')}
-                              </button>
-                              <button
-                                onClick={() => setRepayNasiyaOpen(true)}
-                                className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-[13px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                              >
-                                {t('customers.karta.acceptPayment')}
-                              </button>
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-                            <div className="max-h-56 overflow-y-auto">
-                              <table className="w-full">
-                                <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
-                                  <tr className="border-b border-gray-100 dark:border-gray-800">
-                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.date')}</th>
-                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.type')}</th>
-                                    <th className="px-3 py-2 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.amount')}</th>
-                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.note')}</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {nasiyaHistory.length === 0 ? (
-                                    <tr>
-                                      <td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-                                        {t('customers.karta.noNasiyaHistory')}
-                                      </td>
-                                    </tr>
-                                  ) : nasiyaHistory.map(r => (
-                                    <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                                      <td className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{formatDate(r.created_at)}</td>
-                                      <td className="px-3 py-2">
-                                        <span className={cn(
-                                          'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                                          r.type === 'given'
-                                            ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400'
-                                            : 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400',
-                                        )}>
-                                          {r.type === 'given' ? t('customers.karta.given') : t('customers.karta.repaid')}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 py-2 text-sm text-right font-medium tabular-nums text-gray-900 dark:text-gray-100">
-                                        {formatPrice(Number(r.amount))}
-                                      </td>
-                                      <td className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{r.note || '—'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Sotiv tarixi */}
+                        {/* Section 1: Sotuv tarixi */}
                         <div>
                           <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">{t('customers.karta.salesHistory')}</p>
                           {!selectedCustomer.vipSince ? (
@@ -987,6 +915,76 @@ export default function CustomersPage() {
                               </div>
                             </>
                           )}
+                        </div>
+
+                        {/* Section 2: Qarzdorlik tarixi */}
+                        <div className="border-t border-gray-100 dark:border-gray-800 pt-5">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">{t('customers.karta.nasiyaHistory')}</p>
+                          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                            <span className={cn(
+                              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                              nasiyaBalance > 0
+                                ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400'
+                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+                            )}>
+                              {formatPrice(nasiyaBalance)}
+                            </span>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setGiveNasiyaOpen(true)}
+                                className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-[13px] font-medium transition-colors"
+                              >
+                                {t('customers.karta.giveNasiya')}
+                              </button>
+                              <button
+                                onClick={() => setRepayNasiyaOpen(true)}
+                                className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-[13px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                              >
+                                {t('customers.karta.acceptPayment')}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+                            <div className="max-h-56 overflow-y-auto">
+                              <table className="w-full">
+                                <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
+                                  <tr className="border-b border-gray-100 dark:border-gray-800">
+                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.date')}</th>
+                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.type')}</th>
+                                    <th className="px-3 py-2 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.amount')}</th>
+                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.note')}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {nasiyaHistory.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                                        {t('customers.karta.noNasiyaHistory')}
+                                      </td>
+                                    </tr>
+                                  ) : nasiyaHistory.map(r => (
+                                    <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
+                                      <td className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{formatDate(r.created_at)}</td>
+                                      <td className="px-3 py-2">
+                                        <span className={cn(
+                                          'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                                          r.type === 'given'
+                                            ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400'
+                                            : 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400',
+                                        )}>
+                                          {r.type === 'given' ? t('customers.karta.given') : t('customers.karta.repaid')}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-right font-medium tabular-nums text-gray-900 dark:text-gray-100">
+                                        {formatPrice(Number(r.amount))}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{r.note || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
                         </div>
                       </>
                     )}
