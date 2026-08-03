@@ -87,11 +87,6 @@ interface SelectedPromotion {
   discountPercent: number
 }
 
-interface AppliedCashback {
-  balls: number
-  amount: number
-}
-
 interface OrderTab {
   id: string
   cart: CartLine[]
@@ -99,13 +94,12 @@ interface OrderTab {
   paymentMethod: string
   amountReceived: string
   selectedPromotion: SelectedPromotion | null
-  cashback: AppliedCashback | null
 }
 
 const MAX_TABS = 5
 
 function createEmptyTab(id: string): OrderTab {
-  return { id, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null, cashback: null }
+  return { id, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null }
 }
 
 interface PromotionRow {
@@ -412,7 +406,7 @@ export default function POSPage() {
   const [activeTabId, setActiveTabId] = useState('tab-1')
 
   const activeTab = tabs.find(tb => tb.id === activeTabId) ?? tabs[0]
-  const { cart, customerId, paymentMethod, amountReceived, selectedPromotion, cashback } = activeTab
+  const { cart, customerId, paymentMethod, amountReceived, selectedPromotion } = activeTab
 
   function updateActiveTab(updater: (tab: OrderTab) => OrderTab) {
     setTabs(prev => prev.map(tb => (tb.id === activeTabId ? updater(tb) : tb)))
@@ -493,80 +487,6 @@ export default function POSPage() {
   const manualBarcodeInputRef = useRef<HTMLInputElement>(null)
 
   const customer = customers.find(c => c.id === customerId) ?? null
-
-  // ─── Cashback (loyalty ball redemption) ────────────────────────────────
-  const [loyaltyBalance, setLoyaltyBalance] = useState(0)
-  const [redeemRate, setRedeemRate] = useState<number | null>(null)
-  const [cashbackModalOpen, setCashbackModalOpen] = useState(false)
-  const [cashbackBallsInput, setCashbackBallsInput] = useState('')
-  const [applyingCashback, setApplyingCashback] = useState(false)
-
-  // Same pair of reads as customers/page.tsx's Karta tab: current ball
-  // balance via RPC, plus loyalty_config.redeem_rate (RLS-scoped to the
-  // caller's own company) for the so'm-equivalent preview.
-  useEffect(() => {
-    if (!customer) { setLoyaltyBalance(0); setRedeemRate(null); return }
-    const supabase = createClient()
-    Promise.all([
-      supabase.rpc('get_customer_loyalty_balance', { p_customer_id: customer.id }),
-      supabase.from('loyalty_config').select('redeem_rate').maybeSingle(),
-    ]).then(([{ data: balanceData }, { data: configData }]) => {
-      setLoyaltyBalance(Number(balanceData ?? 0))
-      setRedeemRate(configData?.redeem_rate != null ? Number(configData.redeem_rate) : null)
-    })
-    // Deliberately keyed on customer?.id, not `customer` itself — `customer`
-    // is re-derived via .find() on every render, so depending on the object
-    // would refetch on unrelated re-renders instead of only on actual
-    // customer changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer?.id])
-
-  function openCashbackModal() {
-    setCashbackBallsInput('')
-    setCashbackModalOpen(true)
-  }
-
-  function clampCashbackBallsInput(raw: string) {
-    if (raw === '') { setCashbackBallsInput(''); return }
-    const num = Math.max(0, Math.min(loyaltyBalance, Number(raw) || 0))
-    setCashbackBallsInput(String(num))
-  }
-
-  async function confirmCashback() {
-    if (!customer) return
-    const balls = Number(cashbackBallsInput)
-    if (!balls || balls <= 0 || balls > loyaltyBalance) return
-    setApplyingCashback(true)
-    const supabase = createClient()
-    const { data, error } = await supabase.rpc('use_cashback', { p_customer_id: customer.id, p_balls: balls })
-    setApplyingCashback(false)
-    if (error || data == null) {
-      if (error?.message.includes('Insufficient loyalty balance')) {
-        toast.error(t('pos.cashback.insufficientBalance'))
-      } else if (error?.message.includes('forbidden')) {
-        toast.error(t('common.forbidden'))
-      } else {
-        toast.error(t('common.error'))
-      }
-      return
-    }
-    const amount = Number(data)
-    updateActiveTab(tab => ({ ...tab, cashback: { balls, amount } }))
-    // The balls were already deducted from the customer's real ledger balance
-    // by use_cashback above — reflect that immediately so a follow-up
-    // redemption in this same session can't over-request.
-    setLoyaltyBalance(prev => Math.max(0, prev - balls))
-    setCashbackModalOpen(false)
-    setCashbackBallsInput('')
-  }
-
-  // Client-side only: clears this tab's applied-cashback line so it stops
-  // reducing the total. Does NOT reverse the ledger — the balls were already
-  // spent for real by confirmCashback()'s use_cashback call above. See
-  // report for this known gap.
-  function removeCashback() {
-    updateActiveTab(tab => ({ ...tab, cashback: null }))
-  }
 
   function addToCart(item: PosItem) {
     if (item.stock <= 0) { toast.error(t('pos.noSizesAvailable')); return }
@@ -737,9 +657,7 @@ export default function POSPage() {
   }
 
   function resetSale() {
-    updateActiveTab(tab => ({ ...tab, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null, cashback: null }))
-    setLoyaltyBalance(0)
-    setRedeemRate(null)
+    updateActiveTab(tab => ({ ...tab, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null }))
   }
 
   // ─── Promotion selector ("Aksiya qo'llash") ────────────────────────────
@@ -800,34 +718,17 @@ export default function POSPage() {
   // sell_cart doesn't read promotion_id yet, so this is a simplified
   // estimate, consistent with pos.estimateNote's "may differ" framing).
   const promoDiscountAmount = selectedPromotion ? Math.round(subtotal * selectedPromotion.discountPercent / 100) : 0
-  const cashbackAmount = cashback?.amount ?? 0
-  const total = subtotal - promoDiscountAmount - cashbackAmount
-  // Per-line breakdown for the cart list: each line's promo-discounted total
-  // (promoLineTotal) is computed first, then the single whole-cart cashback
-  // amount is allocated across lines proportionally to promoLineTotal — a
-  // heavily promo-discounted line gets a proportionally smaller cashback
-  // share. Shares are floored per line and the remainder (< cart.length so'm)
-  // is added to the last line, so sum(lineCashbackShare) === cashbackAmount
-  // exactly (matches the summary-panel cashback row to the so'm).
-  const cartLineDiscounts = (() => {
-    const lines = cart.map(line => {
-      const promoUnitPrice = selectedPromotion
-        ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100))
-        : line.unitPrice
-      return { promoUnitPrice, promoLineTotal: promoUnitPrice * line.quantity }
-    })
-    const sumPromoLineTotals = lines.reduce((s, l) => s + l.promoLineTotal, 0)
-    const flooredShares = lines.map(l =>
-      sumPromoLineTotals > 0 ? Math.floor(cashbackAmount * l.promoLineTotal / sumPromoLineTotals) : 0
-    )
-    const remainder = cashbackAmount - flooredShares.reduce((s, v) => s + v, 0)
-    if (flooredShares.length > 0) flooredShares[flooredShares.length - 1] += remainder
-    return lines.map((l, i) => ({
-      promoUnitPrice: l.promoUnitPrice,
-      lineCashbackShare: flooredShares[i] ?? 0,
-      finalLineTotal: l.promoLineTotal - (flooredShares[i] ?? 0),
-    }))
-  })()
+  const total = subtotal - promoDiscountAmount
+  // Per-line breakdown for the cart list: each line's promo-discounted unit
+  // price/total, computed independently per line (no cross-line remainder
+  // distribution needed — that only existed to split a single whole-cart
+  // cashback amount across lines, which no longer applies here).
+  const cartLineDiscounts = cart.map(line => {
+    const promoUnitPrice = selectedPromotion
+      ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100))
+      : line.unitPrice
+    return { promoUnitPrice, finalLineTotal: promoUnitPrice * line.quantity }
+  })
   const received = Number(amountReceived) || 0
   const change = Math.max(0, received - total)
 
@@ -862,14 +763,6 @@ export default function POSPage() {
         // active promotions/VIP status) — carried through for future use,
         // e.g. attributing a sale to the promotion the cashier picked.
         promotion_id: selectedPromotion?.id ?? null,
-        // Also not yet read by sell_cart — the actual ball redemption
-        // already happened earlier, at modal-confirm time, via use_cashback
-        // (see confirmCashback()). These are carried through only so a
-        // future migration can attribute the redemption to this specific
-        // transaction (use_cashback's p_transaction_id) without a client
-        // change; wiring that is out of this task's scope.
-        cashback_balls: cashback?.balls ?? null,
-        cashback_amount: cashback?.amount ?? null,
       },
     })
 
@@ -1042,19 +935,10 @@ export default function POSPage() {
                         <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">{customer.fullName}</p>
                         <p className="text-[11px] text-gray-400 dark:text-gray-500">{formatPhone(customer.phone)}</p>
                       </div>
-                      <button onClick={() => updateActiveTab(tab => ({ ...tab, customerId: '', cashback: null }))} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                      <button onClick={() => updateActiveTab(tab => ({ ...tab, customerId: '' }))} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    {!cashback && loyaltyBalance > 0 && (
-                      <button
-                        type="button"
-                        onClick={openCashbackModal}
-                        className="mt-2 flex h-8 w-full items-center justify-center rounded-lg border border-blue-600 text-[12px] font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
-                      >
-                        {t('pos.cashback.button')} — {loyaltyBalance} {t('customers.karta.ball')} ({formatPrice(Math.round(loyaltyBalance * (redeemRate ?? 0)))})
-                      </button>
-                    )}
                   </div>
                 ) : (
                   <SearchSelect
@@ -1075,8 +959,8 @@ export default function POSPage() {
                 <div>
                   {cart.map((line, i) => {
                     // Preview-only estimate — see promoDiscountAmount comment above.
-                    const { promoUnitPrice, lineCashbackShare, finalLineTotal } = cartLineDiscounts[i]
-                    const hasLineDiscount = !!selectedPromotion || lineCashbackShare > 0
+                    const { promoUnitPrice, finalLineTotal } = cartLineDiscounts[i]
+                    const hasLineDiscount = !!selectedPromotion
                     return (
                     <div key={line.key} className={cn('flex items-center justify-between gap-2 py-3', i > 0 && 'border-t border-gray-100 dark:border-gray-800')}>
                       <div className="min-w-0">
@@ -1112,11 +996,6 @@ export default function POSPage() {
                               {selectedPromotion && (
                                 <span className="rounded-full border border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400 whitespace-nowrap">
                                   {t('pos.lineBadge.promo')} −{selectedPromotion.discountPercent}%
-                                </span>
-                              )}
-                              {cashback && lineCashbackShare > 0 && (
-                                <span className="rounded-full border border-amber-100 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">
-                                  {t('pos.lineBadge.cashback')} −{formatPrice(lineCashbackShare)}
                                 </span>
                               )}
                             </div>
@@ -1174,21 +1053,6 @@ export default function POSPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-500 dark:text-gray-400">{t('pos.promotionDiscount')}</span>
                       <span className="text-gray-900 dark:text-gray-100 tabular-nums">−{formatPrice(promoDiscountAmount)}</span>
-                    </div>
-                  )}
-                  {cashback && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
-                        {t('pos.cashback.line')}
-                        <button
-                          type="button"
-                          onClick={removeCashback}
-                          className="flex h-4 w-4 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                      <span className="text-gray-900 dark:text-gray-100 tabular-nums">−{formatPrice(cashbackAmount)}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
@@ -1266,45 +1130,6 @@ export default function POSPage() {
               </button>
             ))}
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Cashback (loyalty ball redemption) modal */}
-      <Dialog open={cashbackModalOpen} onOpenChange={setCashbackModalOpen}>
-        <DialogContent className="sm:max-w-xs">
-          <DialogHeader>
-            <DialogTitle>{t('pos.cashback.modalTitle')}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 mt-2">
-            <div className="rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">
-              {t('pos.cashback.currentBalance')}:{' '}
-              <span className="font-semibold text-gray-800 dark:text-gray-200">
-                {loyaltyBalance} {t('customers.karta.ball')} = {formatPrice(Math.round(loyaltyBalance * (redeemRate ?? 0)))}
-              </span>
-            </div>
-            <div>
-              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('pos.cashback.ballsLabel')}</label>
-              <input
-                type="number"
-                min={0}
-                max={loyaltyBalance}
-                value={cashbackBallsInput}
-                onChange={e => clampCashbackBallsInput(e.target.value)}
-                placeholder="0"
-                className="w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors"
-              />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setCashbackModalOpen(false)}>{t('common.cancel')}</Button>
-            <Button
-              onClick={confirmCashback}
-              disabled={applyingCashback || !cashbackBallsInput || Number(cashbackBallsInput) <= 0 || Number(cashbackBallsInput) > loyaltyBalance}
-            >
-              {applyingCashback ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              {t('common.confirm')}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

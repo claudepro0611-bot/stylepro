@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  UserPlus, Search, Eye, Loader2, Gift, Wallet, ShoppingBag, Percent, Pencil, Check, X,
+  UserPlus, Search, Eye, Loader2, Wallet, ShoppingBag, Percent, Pencil, Check, X,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -22,7 +22,6 @@ import type { Customer, Purchase } from '@/lib/types'
 
 const ITEMS_PER_PAGE = 10
 const STATUS_FILTERS = ['Barchasi', 'VIP', 'Regular', 'New'] as const
-const LOYALTY_FILTERS = ['all', 'earn', 'redeem'] as const
 const SALES_PAYMENT_FILTERS = ['Barchasi', 'Naqd', 'Karta', 'Click', 'Payme', 'Nasiya'] as const
 
 const PILL_CLS = (active: boolean) =>
@@ -80,14 +79,6 @@ function mapCustomer(row: CustomerRow): Customer {
   }
 }
 
-interface LoyaltyTxnRow {
-  id: string
-  created_at: string
-  type: 'earn' | 'redeem'
-  amount: number
-  note: string | null
-}
-
 interface NasiyaTxnRow {
   id: string
   created_at: string
@@ -131,11 +122,7 @@ export default function CustomersPage() {
   // ─── Karta tab state ──────────────────────────────────────────────────────
   const [kartaLoading, setKartaLoading] = useState(false)
   const [kartaLoadedFor, setKartaLoadedFor] = useState<string | null>(null)
-  const [loyaltyBalance, setLoyaltyBalance] = useState(0)
-  const [redeemRate, setRedeemRate] = useState<number | null>(null)
   const [nasiyaBalance, setNasiyaBalance] = useState(0)
-  const [loyaltyHistory, setLoyaltyHistory] = useState<LoyaltyTxnRow[]>([])
-  const [loyaltyFilter, setLoyaltyFilter] = useState<typeof LOYALTY_FILTERS[number]>('all')
   const [nasiyaHistory, setNasiyaHistory] = useState<NasiyaTxnRow[]>([])
   const [salesHistory, setSalesHistory] = useState<SalesHistoryRow[]>([])
   const [salesDateFrom, setSalesDateFrom] = useState('')
@@ -199,11 +186,7 @@ export default function CustomersPage() {
     // the first time the "karta" tab is actually selected, see the effect below.
     setKartaLoadedFor(null)
     setKartaLoading(false)
-    setLoyaltyBalance(0)
-    setRedeemRate(null)
     setNasiyaBalance(0)
-    setLoyaltyHistory([])
-    setLoyaltyFilter('all')
     setNasiyaHistory([])
     setSalesHistory([])
     setSalesDateFrom('')
@@ -325,27 +308,18 @@ export default function CustomersPage() {
     const supabase = createClient()
 
     const [
-      { data: loyaltyBalanceData, error: loyaltyBalanceError },
       { data: nasiyaBalanceData, error: nasiyaBalanceError },
-      { data: configData },
-      { data: loyaltyRows, error: loyaltyRowsError },
       { data: nasiyaRows, error: nasiyaRowsError },
     ] = await Promise.all([
-      supabase.rpc('get_customer_loyalty_balance', { p_customer_id: c.id }),
       supabase.rpc('get_customer_nasiya_balance', { p_customer_id: c.id }),
-      supabase.from('loyalty_config').select('redeem_rate').maybeSingle(),
-      supabase.from('loyalty_transactions').select('*').eq('customer_id', c.id).order('created_at', { ascending: false }),
       supabase.from('nasiya_transactions').select('*').eq('customer_id', c.id).order('created_at', { ascending: false }),
     ])
 
-    if (loyaltyBalanceError || nasiyaBalanceError || loyaltyRowsError || nasiyaRowsError) {
+    if (nasiyaBalanceError || nasiyaRowsError) {
       toast.error(t('common.error'))
     }
 
-    setLoyaltyBalance(Number(loyaltyBalanceData ?? 0))
     setNasiyaBalance(Number(nasiyaBalanceData ?? 0))
-    setRedeemRate(configData?.redeem_rate != null ? Number(configData.redeem_rate) : null)
-    setLoyaltyHistory((loyaltyRows ?? []) as LoyaltyTxnRow[])
     setNasiyaHistory((nasiyaRows ?? []) as NasiyaTxnRow[])
 
     await loadSalesHistory(c)
@@ -500,11 +474,6 @@ export default function CustomersPage() {
   function initials(name: string) {
     return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
   }
-
-  const filteredLoyaltyHistory = useMemo(() => {
-    if (loyaltyFilter === 'all') return loyaltyHistory
-    return loyaltyHistory.filter(r => r.type === loyaltyFilter)
-  }, [loyaltyHistory, loyaltyFilter])
 
   const filteredSalesHistory = useMemo(() => {
     let list = salesHistory
@@ -784,18 +753,7 @@ export default function CustomersPage() {
                     ) : (
                       <>
                         {/* KPI cards */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div className={KARTA_KPI_CARD_CLS}>
-                            <div className="flex items-start justify-between mb-3">
-                              <KartaKpiIconBox icon={Gift} />
-                            </div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">{t('customers.karta.ballBalance')}</p>
-                            <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{loyaltyBalance}</p>
-                            {redeemRate != null && (
-                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatPrice(loyaltyBalance * redeemRate)}</p>
-                            )}
-                          </div>
-
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           <div className={KARTA_KPI_CARD_CLS}>
                             <div className="flex items-start justify-between mb-3">
                               <KartaKpiIconBox icon={Wallet} />
@@ -868,51 +826,6 @@ export default function CustomersPage() {
                                   : t('customers.karta.vipNotSet')}
                               </p>
                             )}
-                          </div>
-                        </div>
-
-                        {/* Ball tarixi */}
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">{t('customers.karta.loyaltyHistory')}</p>
-                          <div className="flex gap-1.5 mb-3">
-                            {LOYALTY_FILTERS.map(f => (
-                              <button key={f} onClick={() => setLoyaltyFilter(f)} className={PILL_CLS(loyaltyFilter === f)}>
-                                {f === 'all' ? t('customers.karta.filterAll') : f === 'earn' ? t('customers.karta.filterEarn') : t('customers.karta.filterRedeem')}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-                            <div className="max-h-56 overflow-y-auto">
-                              <table className="w-full">
-                                <thead className="bg-table-header-bg dark:bg-gray-800/50 sticky top-0">
-                                  <tr className="border-b border-gray-100 dark:border-gray-800">
-                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.date')}</th>
-                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.reason')}</th>
-                                    <th className="px-3 py-2 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('customers.karta.ball')}</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {filteredLoyaltyHistory.length === 0 ? (
-                                    <tr>
-                                      <td colSpan={3} className="px-3 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-                                        {t('customers.karta.noLoyaltyHistory')}
-                                      </td>
-                                    </tr>
-                                  ) : filteredLoyaltyHistory.map(r => (
-                                    <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                                      <td className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{formatDate(r.created_at)}</td>
-                                      <td className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{r.note || '—'}</td>
-                                      <td className={cn(
-                                        'px-3 py-2 text-sm text-right font-medium tabular-nums',
-                                        r.type === 'earn' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
-                                      )}>
-                                        {r.type === 'earn' ? '+' : '−'}{Number(r.amount)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
                           </div>
                         </div>
 
