@@ -72,9 +72,9 @@ export async function sendMessage(chatId: number | string, text: string): Promis
 export async function sendContactRequest(chatId: number | string): Promise<TelegramCallResult> {
   return callTelegramApi('sendMessage', {
     chat_id: chatId,
-    text: "Iltimos, telefon raqamingizni ulashing.",
+    text: 'Salom! Telefon raqamingizni ulashing — tizimda sizni topamiz.',
     reply_markup: {
-      keyboard: [[{ text: 'Telefon raqamni ulashish', request_contact: true }]],
+      keyboard: [[{ text: '📱 Telefon raqamimni ulashish', request_contact: true }]],
       resize_keyboard: true,
       one_time_keyboard: true,
     },

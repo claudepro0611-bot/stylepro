@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
 
     if (message.contact) {
       await handleContact(chatId, fromId, message.contact)
-    } else if (message.text === '/start') {
+    } else if (message.text?.startsWith('/start')) {
       await handleStart(chatId)
     } else if (message.text) {
       await handleTextMessage(chatId, fromId, message.text)
