@@ -80,3 +80,61 @@ export async function sendContactRequest(chatId: number | string): Promise<Teleg
     },
   })
 }
+
+/** A single inline-keyboard button. `callbackData` becomes `callback_data`,
+ * which is echoed back on `update.callback_query.data` when tapped. */
+export interface InlineKeyboardButton {
+  text: string
+  callbackData: string
+}
+
+/**
+ * Sends a message with an inline keyboard attached (buttons live on the
+ * message itself, not the user's keyboard area). Taps arrive on the webhook
+ * as `update.callback_query`, distinct from `update.message` used by the
+ * reply keyboard above (sendContactRequest).
+ */
+export async function sendMessageWithInlineKeyboard(
+  chatId: number | string,
+  text: string,
+  buttons: InlineKeyboardButton[][],
+): Promise<TelegramCallResult> {
+  return callTelegramApi('sendMessage', {
+    chat_id: chatId,
+    text,
+    reply_markup: {
+      inline_keyboard: buttons.map(row => row.map(b => ({ text: b.text, callback_data: b.callbackData }))),
+    },
+  })
+}
+
+/**
+ * Edits the text (and optionally the inline keyboard) of a previously-sent
+ * message. Used to acknowledge a callback_query tap in place, e.g. replacing
+ * the classification buttons with a confirmation line. Passing an empty
+ * `buttons` array (the default) clears the inline keyboard.
+ */
+export async function editMessageText(
+  chatId: number | string,
+  messageId: number,
+  text: string,
+  buttons: InlineKeyboardButton[][] = [],
+): Promise<TelegramCallResult> {
+  return callTelegramApi('editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    reply_markup: {
+      inline_keyboard: buttons.map(row => row.map(b => ({ text: b.text, callback_data: b.callbackData }))),
+    },
+  })
+}
+
+/**
+ * Acknowledges a callback_query so Telegram stops showing the loading
+ * spinner on the tapped inline-keyboard button. `text` (optional) shows as a
+ * small toast/alert in the client - keep it short.
+ */
+export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<TelegramCallResult> {
+  return callTelegramApi('answerCallbackQuery', { callback_query_id: callbackQueryId, text })
+}

@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
-  UserPlus, Search, Eye, Loader2, Wallet, ShoppingBag, Percent, Pencil, Check, X,
+  UserPlus, Search, Eye, Loader2, Wallet, ShoppingBag, Percent, Pencil, Check, X, Send,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -19,7 +19,9 @@ import { formatDate, formatPhone } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { cn } from '@/lib/utils'
-import type { Customer } from '@/lib/types'
+import type { Customer, Request } from '@/lib/types'
+import type { TranslationKey } from '@/lib/i18n/translations'
+import { replyToCustomerTelegram } from './actions'
 
 const ITEMS_PER_PAGE = 10
 const STATUS_FILTERS = ['Barchasi', 'VIP', 'Regular', 'New'] as const
@@ -71,6 +73,22 @@ function mapCustomer(row: CustomerRow): Customer {
   }
 }
 
+// Murojaatlar tab: Telegram requests for the selected customer only
+// (customer_id + source = 'telegram' - see requests table). "Turi" reuses
+// the same requests.typeLabel.* i18n keys as app/(dashboard)/requests/page.tsx.
+interface TelegramRequestRow {
+  id: string
+  type: Request['type']
+  message: string | null
+  created_at: string
+}
+
+const REQUEST_TYPE_LABEL_KEY: Record<string, TranslationKey> = {
+  complaint: 'requests.typeLabel.complaint',
+  inquiry: 'requests.typeLabel.inquiry',
+  return: 'requests.typeLabel.return',
+}
+
 interface SalesHistoryRow {
   id: string
   date: string
@@ -110,6 +128,14 @@ export default function CustomersPage() {
   const [vipEditing, setVipEditing] = useState(false)
   const [vipEditValue, setVipEditValue] = useState('')
   const [vipSaving, setVipSaving] = useState(false)
+
+  // ─── Murojaatlar tab state (Telegram requests for this customer) ─────────
+  const [requestsLoading, setRequestsLoading] = useState(false)
+  const [requestsLoadedFor, setRequestsLoadedFor] = useState<string | null>(null)
+  const [telegramRequests, setTelegramRequests] = useState<TelegramRequestRow[]>([])
+  const [replyOpenId, setReplyOpenId] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState('')
+  const [replySending, setReplySending] = useState(false)
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)
@@ -155,6 +181,15 @@ export default function CustomersPage() {
     setNasiyaBalance(0)
     setSalesHistory([])
     setVipEditing(false)
+
+    // Reset Murojaatlar tab state for the newly opened customer - lazily
+    // (re)loaded the first time that tab is actually selected, same pattern
+    // as the Karta tab above.
+    setRequestsLoadedFor(null)
+    setRequestsLoading(false)
+    setTelegramRequests([])
+    setReplyOpenId(null)
+    setReplyText('')
   }
 
   // ─── Karta tab: sales-since-VIP history (task 5) ─────────────────────────
@@ -266,6 +301,49 @@ export default function CustomersPage() {
     if (kartaLoadedFor === selectedCustomer.id) return
     loadKarta(selectedCustomer)
   }, [detailTab, selectedCustomer, kartaLoadedFor, loadKarta])
+
+  const loadTelegramRequests = useCallback(async (c: Customer) => {
+    setRequestsLoading(true)
+    setRequestsLoadedFor(c.id)
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('requests')
+      .select('id, type, message, created_at')
+      .eq('customer_id', c.id)
+      .eq('source', 'telegram')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      toast.error(t('common.error'))
+      setTelegramRequests([])
+    } else {
+      setTelegramRequests((data ?? []) as TelegramRequestRow[])
+    }
+    setRequestsLoading(false)
+  }, [t])
+
+  useEffect(() => {
+    if (detailTab !== 'murojaatlar' || !selectedCustomer) return
+    if (requestsLoadedFor === selectedCustomer.id) return
+    loadTelegramRequests(selectedCustomer)
+  }, [detailTab, selectedCustomer, requestsLoadedFor, loadTelegramRequests])
+
+  async function sendReply(customerId: string) {
+    const trimmed = replyText.trim()
+    if (!trimmed) return
+    setReplySending(true)
+    const result = await replyToCustomerTelegram(customerId, trimmed)
+    setReplySending(false)
+
+    if ('error' in result) {
+      toast.error(t('customers.detail.replyError'))
+      return
+    }
+
+    toast.success(t('customers.detail.replySuccess'))
+    setReplyText('')
+    setReplyOpenId(null)
+  }
 
   async function refreshSelectedCustomer(id: string) {
     const supabase = createClient()
@@ -545,13 +623,60 @@ export default function CustomersPage() {
                   </TabsContent>
 
                   <TabsContent value="murojaatlar" className="mt-4">
-                    {selectedCustomer.complaints.length === 0 ? (
+                    {requestsLoading ? (
+                      <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">
+                        <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
+                        {t('common.loading')}
+                      </p>
+                    ) : telegramRequests.length === 0 ? (
                       <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">{t('customers.detail.noComplaints')}</p>
                     ) : (
-                      <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                        {selectedCustomer.complaints.map((c, idx) => (
-                          <div key={idx} className="rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300">
-                            {c}
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {telegramRequests.map(r => (
+                          <div key={r.id} className="rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2.5 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <MiniBadge status="telegram" label={t('requests.sourceTelegram')} />
+                                <span className="text-[11px] text-gray-400 dark:text-gray-500">{t(REQUEST_TYPE_LABEL_KEY[r.type])}</span>
+                              </div>
+                              <span className="text-[11px] text-gray-400 dark:text-gray-500">{formatDate(r.created_at)}</span>
+                            </div>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">{r.message}</p>
+
+                            {replyOpenId === r.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={replyText}
+                                  onChange={e => setReplyText(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') sendReply(selectedCustomer.id) }}
+                                  placeholder={t('customers.detail.replyPlaceholder')}
+                                  className="flex-1 h-8 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 bg-white dark:bg-gray-900 transition-colors"
+                                />
+                                <button
+                                  onClick={() => sendReply(selectedCustomer.id)}
+                                  disabled={replySending || !replyText.trim()}
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors disabled:opacity-60"
+                                >
+                                  {replySending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                </button>
+                                <button
+                                  onClick={() => { setReplyOpenId(null); setReplyText('') }}
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setReplyOpenId(r.id); setReplyText('') }}
+                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                              >
+                                <Send className="h-3 w-3" />
+                                {t('customers.detail.replyButton')}
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>

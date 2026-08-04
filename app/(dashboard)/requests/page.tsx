@@ -192,6 +192,7 @@ export default function RequestsPage() {
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.id')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.customer')}</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.source')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.type')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.priority')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.status')}</th>
@@ -202,14 +203,14 @@ export default function RequestsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                     <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
                     {t('common.loading')}
                   </td>
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                     {t('requests.notFound')}
                   </td>
                 </tr>
@@ -224,6 +225,9 @@ export default function RequestsPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-[12px] font-semibold text-gray-600 dark:text-gray-300">{r.id}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{r.customerName}</td>
+                  <td className="px-4 py-3">
+                    {r.source === 'telegram' && <MiniBadge status="telegram" label={t('requests.sourceTelegram')} />}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{t(TYPE_LABEL_KEY[r.type])}</td>
                   <td className="px-4 py-3"><MiniBadge status={r.priority} /></td>
                   <td className="px-4 py-3"><MiniBadge status={r.status} /></td>

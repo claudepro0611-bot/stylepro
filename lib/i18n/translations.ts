@@ -865,7 +865,9 @@ export const translations = {
         status: "Holat",
         date: "Sana",
         action: "Amal",
+        source: "Manba",
       },
+      sourceTelegram: "Telegram",
       notFound: "So'rovlar topilmadi",
       view: "Ko'rish",
       modal: {
@@ -993,6 +995,10 @@ export const translations = {
         totalPurchases: "Jami xaridlar",
         noPurchases: "Xaridlar tarixi topilmadi",
         noComplaints: "Murojaatlar mavjud emas",
+        replyPlaceholder: "Javob yozing...",
+        replyButton: "Yuborish",
+        replySuccess: "Xabar yuborildi",
+        replyError: "Xabar yuborilmadi",
       },
       karta: {
         ballBalance: "Ball balansi",
@@ -2400,7 +2406,9 @@ export const translations = {
         status: "Статус",
         date: "Дата",
         action: "Действие",
+        source: "Источник",
       },
+      sourceTelegram: "Telegram",
       notFound: "Заявки не найдены",
       view: "Просмотр",
       modal: {
@@ -2528,6 +2536,10 @@ export const translations = {
         totalPurchases: "Всего покупок",
         noPurchases: "История покупок не найдена",
         noComplaints: "Обращений нет",
+        replyPlaceholder: "Напишите ответ...",
+        replyButton: "Отправить",
+        replySuccess: "Сообщение отправлено",
+        replyError: "Сообщение не отправлено",
       },
       karta: {
         ballBalance: "Баланс баллов",
@@ -3935,7 +3947,9 @@ export const translations = {
         status: "Status",
         date: "Date",
         action: "Action",
+        source: "Source",
       },
+      sourceTelegram: "Telegram",
       notFound: "No requests found",
       view: "View",
       modal: {
@@ -4063,6 +4077,10 @@ export const translations = {
         totalPurchases: "Total Purchases",
         noPurchases: "No purchase history found",
         noComplaints: "No complaints",
+        replyPlaceholder: "Write a reply...",
+        replyButton: "Send",
+        replySuccess: "Message sent",
+        replyError: "Message not sent",
       },
       karta: {
         ballBalance: "Loyalty balance",

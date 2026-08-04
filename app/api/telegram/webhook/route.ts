@@ -1,7 +1,9 @@
 import { timingSafeEqual } from 'crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import { supabaseServer } from '@/lib/supabase/server'
-import { sendContactRequest, sendMessage } from '@/lib/telegram'
+import {
+  answerCallbackQuery, editMessageText, sendContactRequest, sendMessage, sendMessageWithInlineKeyboard,
+} from '@/lib/telegram'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,9 +32,31 @@ interface TelegramMessage {
   contact?: TelegramContact
 }
 
+interface TelegramCallbackQuery {
+  id: string
+  from: TelegramUser
+  message?: TelegramMessage
+  data?: string
+}
+
 interface TelegramUpdate {
   update_id: number
   message?: TelegramMessage
+  callback_query?: TelegramCallbackQuery
+}
+
+// Two-mode classification (see handleTextMessage / handleCallbackQuery below).
+// callback_data shape: "mode:request:<request-id>" | "mode:chat:<request-id>".
+// requests.type is a constrained enum (complaint|inquiry|return, see
+// supabase/migrations/20260612090011_requests.sql) with no matching values
+// for "general request" vs "personal chat", and this is out-of-scope work to
+// migrate - so the chosen mode is NOT persisted anywhere. It only drives the
+// label shown back to the customer in Telegram (cosmetic, via editMessageText
+// below). See final report for the full reasoning.
+const MODE_CALLBACK_RE = /^mode:(request|chat):([0-9a-f-]{36})$/i
+const MODE_LABEL_UZ: Record<'request' | 'chat', string> = {
+  request: "So'rov",
+  chat: 'Muloqot',
 }
 
 function isValidSecret(request: NextRequest): boolean {
@@ -154,7 +178,7 @@ async function handleTextMessage(chatId: number, fromId: number, text: string) {
     return
   }
 
-  const { error: insertError } = await supabaseServer
+  const { data: inserted, error: insertError } = await supabaseServer
     .from('requests')
     .insert({
       company_id: customer.company_id,
@@ -166,6 +190,8 @@ async function handleTextMessage(chatId: number, fromId: number, text: string) {
       message: text,
       source: 'telegram',
     })
+    .select('id')
+    .single()
 
   if (insertError) {
     console.error('[telegram/webhook] failed to create request', insertError.message)
@@ -173,7 +199,45 @@ async function handleTextMessage(chatId: number, fromId: number, text: string) {
     return
   }
 
-  await sendMessage(chatId, 'Xabaringiz qabul qilindi. Tez orada siz bilan bog\'lanamiz.')
+  const confirmationText = 'Xabaringiz qabul qilindi. Tez orada siz bilan bog\'lanamiz.'
+
+  // Ask the customer to classify what they just sent. No pending state is
+  // needed for this since the request row already exists by this point - the
+  // callback_data simply carries its id (see MODE_CALLBACK_RE above).
+  if (inserted?.id) {
+    const result = await sendMessageWithInlineKeyboard(chatId, confirmationText, [[
+      { text: "📋 So'rov yuborish", callbackData: `mode:request:${inserted.id}` },
+      { text: "💬 Do'kon bilan muloqot", callbackData: `mode:chat:${inserted.id}` },
+    ]])
+    if (result.ok) return
+    // Fall through to a plain confirmation if the keyboard send failed, so
+    // the customer still gets acknowledged.
+  }
+
+  await sendMessage(chatId, confirmationText)
+}
+
+async function handleCallbackQuery(cb: TelegramCallbackQuery) {
+  const data = cb.data ?? ''
+  const match = data.match(MODE_CALLBACK_RE)
+
+  if (!match || !cb.message) {
+    await answerCallbackQuery(cb.id)
+    return
+  }
+
+  const mode = match[1] as 'request' | 'chat'
+  const chatId = cb.message.chat.id
+  const messageId = cb.message.message_id
+  const label = MODE_LABEL_UZ[mode]
+
+  await answerCallbackQuery(cb.id, `${label} sifatida qayd etildi`)
+
+  const baseText = cb.message.text ?? 'Xabaringiz qabul qilindi. Tez orada siz bilan bog\'lanamiz.'
+  const result = await editMessageText(chatId, messageId, `${baseText}\n\nTuri: ${label}`)
+  if (!result.ok) {
+    console.error('[telegram/webhook] failed to edit message after classification tap')
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -183,6 +247,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const update = (await request.json()) as TelegramUpdate
+
+    if (update.callback_query) {
+      await handleCallbackQuery(update.callback_query)
+      return NextResponse.json({ ok: true })
+    }
+
     const message = update.message
 
     if (!message || !message.from) {
