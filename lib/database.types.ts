@@ -1167,6 +1167,7 @@ export type Database = {
           customer_name: string | null
           id: string
           message: string | null
+          mode: string
           notes: string | null
           priority: string
           source: string
@@ -1181,6 +1182,7 @@ export type Database = {
           customer_name?: string | null
           id?: string
           message?: string | null
+          mode?: string
           notes?: string | null
           priority?: string
           source?: string
@@ -1195,6 +1197,7 @@ export type Database = {
           customer_name?: string | null
           id?: string
           message?: string | null
+          mode?: string
           notes?: string | null
           priority?: string
           source?: string

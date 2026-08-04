@@ -868,6 +868,10 @@ export const translations = {
         source: "Manba",
       },
       sourceTelegram: "Telegram",
+      modeLabel: {
+        general: "So'rov",
+        chat: "Muloqot",
+      },
       notFound: "So'rovlar topilmadi",
       view: "Ko'rish",
       modal: {
@@ -2409,6 +2413,10 @@ export const translations = {
         source: "Источник",
       },
       sourceTelegram: "Telegram",
+      modeLabel: {
+        general: "Запрос",
+        chat: "Общение",
+      },
       notFound: "Заявки не найдены",
       view: "Просмотр",
       modal: {
@@ -3950,6 +3958,10 @@ export const translations = {
         source: "Source",
       },
       sourceTelegram: "Telegram",
+      modeLabel: {
+        general: "Request",
+        chat: "Chat",
+      },
       notFound: "No requests found",
       view: "View",
       modal: {

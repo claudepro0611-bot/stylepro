@@ -47,16 +47,18 @@ interface TelegramUpdate {
 
 // Two-mode classification (see handleTextMessage / handleCallbackQuery below).
 // callback_data shape: "mode:request:<request-id>" | "mode:chat:<request-id>".
-// requests.type is a constrained enum (complaint|inquiry|return, see
-// supabase/migrations/20260612090011_requests.sql) with no matching values
-// for "general request" vs "personal chat", and this is out-of-scope work to
-// migrate - so the chosen mode is NOT persisted anywhere. It only drives the
-// label shown back to the customer in Telegram (cosmetic, via editMessageText
-// below). See final report for the full reasoning.
+// The callback's "request" literal maps to the requests.mode column's
+// "general" value (see supabase/migrations/20260730000002_requests_mode.sql -
+// CHECK (mode IN ('general', 'chat'))); "chat" maps 1:1. Persisted in
+// handleCallbackQuery below, in addition to the cosmetic editMessageText.
 const MODE_CALLBACK_RE = /^mode:(request|chat):([0-9a-f-]{36})$/i
 const MODE_LABEL_UZ: Record<'request' | 'chat', string> = {
   request: "So'rov",
   chat: 'Muloqot',
+}
+const MODE_TO_DB_VALUE: Record<'request' | 'chat', 'general' | 'chat'> = {
+  request: 'general',
+  chat: 'chat',
 }
 
 function isValidSecret(request: NextRequest): boolean {
@@ -227,11 +229,20 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
   }
 
   const mode = match[1] as 'request' | 'chat'
+  const requestId = match[2]
   const chatId = cb.message.chat.id
   const messageId = cb.message.message_id
   const label = MODE_LABEL_UZ[mode]
 
   await answerCallbackQuery(cb.id, `${label} sifatida qayd etildi`)
+
+  const { error: updateError } = await supabaseServer
+    .from('requests')
+    .update({ mode: MODE_TO_DB_VALUE[mode] })
+    .eq('id', requestId)
+  if (updateError) {
+    console.error('[telegram/webhook] failed to persist request mode', updateError.message)
+  }
 
   const baseText = cb.message.text ?? 'Xabaringiz qabul qilindi. Tez orada siz bilan bog\'lanamiz.'
   const result = await editMessageText(chatId, messageId, `${baseText}\n\nTuri: ${label}`)

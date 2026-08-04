@@ -177,6 +177,7 @@ export interface Request {
   createdAt: string
   notes: string
   source: 'web' | 'telegram'
+  mode: 'general' | 'chat'
 }
 
 export interface ProductGroup {

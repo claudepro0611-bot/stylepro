@@ -73,9 +73,11 @@ function mapCustomer(row: CustomerRow): Customer {
   }
 }
 
-// Murojaatlar tab: Telegram requests for the selected customer only
-// (customer_id + source = 'telegram' - see requests table). "Turi" reuses
-// the same requests.typeLabel.* i18n keys as app/(dashboard)/requests/page.tsx.
+// Murojaatlar tab: Telegram requests for the selected customer only, limited
+// to mode = 'chat' (customer_id + source = 'telegram' + mode = 'chat' - see
+// requests table). General ('general' mode) requests stay on the main
+// /requests page only. "Turi" reuses the same requests.typeLabel.* i18n keys
+// as app/(dashboard)/requests/page.tsx.
 interface TelegramRequestRow {
   id: string
   type: Request['type']
@@ -311,6 +313,7 @@ export default function CustomersPage() {
       .select('id, type, message, created_at')
       .eq('customer_id', c.id)
       .eq('source', 'telegram')
+      .eq('mode', 'chat')
       .order('created_at', { ascending: false })
 
     if (error) {

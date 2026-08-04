@@ -27,6 +27,7 @@ interface RequestRow {
   notes: string | null
   created_at: string
   source: Request['source'] | null
+  mode: Request['mode'] | null
 }
 
 function mapRequest(row: RequestRow): Request {
@@ -41,6 +42,7 @@ function mapRequest(row: RequestRow): Request {
     createdAt: row.created_at,
     notes: row.notes ?? '',
     source: row.source ?? 'web',
+    mode: row.mode ?? 'general',
   }
 }
 
@@ -226,7 +228,20 @@ export default function RequestsPage() {
                   <td className="px-4 py-3 font-mono text-[12px] font-semibold text-gray-600 dark:text-gray-300">{r.id}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{r.customerName}</td>
                   <td className="px-4 py-3">
-                    {r.source === 'telegram' && <MiniBadge status="telegram" label={t('requests.sourceTelegram')} />}
+                    {r.source === 'telegram' && (
+                      <div className="flex items-center gap-1.5">
+                        <MiniBadge status="telegram" label={t('requests.sourceTelegram')} />
+                        {r.mode === 'chat' ? (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                            {t('requests.modeLabel.chat')}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                            {t('requests.modeLabel.general')}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{t(TYPE_LABEL_KEY[r.type])}</td>
                   <td className="px-4 py-3"><MiniBadge status={r.priority} /></td>
