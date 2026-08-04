@@ -20,6 +20,7 @@ export interface Customer {
   complaints: string[]
   vipDiscountPercent: number | null
   vipSince: string | null
+  telegramId: number | null
 }
 
 export interface Product {
@@ -175,6 +176,7 @@ export interface Request {
   message: string
   createdAt: string
   notes: string
+  source: 'web' | 'telegram'
 }
 
 export interface ProductGroup {

@@ -272,6 +272,7 @@ export type Database = {
           last_purchase_date: string | null
           phone: string | null
           status: string
+          telegram_id: number | null
           total_purchases: number
           updated_at: string
           vip_discount_percent: number | null
@@ -288,6 +289,7 @@ export type Database = {
           last_purchase_date?: string | null
           phone?: string | null
           status?: string
+          telegram_id?: number | null
           total_purchases?: number
           updated_at?: string
           vip_discount_percent?: number | null
@@ -304,6 +306,7 @@ export type Database = {
           last_purchase_date?: string | null
           phone?: string | null
           status?: string
+          telegram_id?: number | null
           total_purchases?: number
           updated_at?: string
           vip_discount_percent?: number | null
@@ -1166,6 +1169,7 @@ export type Database = {
           message: string | null
           notes: string | null
           priority: string
+          source: string
           status: string
           type: string
           updated_at: string
@@ -1179,6 +1183,7 @@ export type Database = {
           message?: string | null
           notes?: string | null
           priority?: string
+          source?: string
           status?: string
           type: string
           updated_at?: string
@@ -1192,6 +1197,7 @@ export type Database = {
           message?: string | null
           notes?: string | null
           priority?: string
+          source?: string
           status?: string
           type?: string
           updated_at?: string

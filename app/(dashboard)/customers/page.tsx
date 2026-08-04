@@ -47,6 +47,7 @@ interface CustomerRow {
   created_at: string
   vip_discount_percent: number | null
   vip_since: string | null
+  telegram_id: number | null
 }
 
 function mapCustomer(row: CustomerRow): Customer {
@@ -66,6 +67,7 @@ function mapCustomer(row: CustomerRow): Customer {
       ? Number(row.vip_discount_percent)
       : null,
     vipSince: row.vip_since ?? null,
+    telegramId: row.telegram_id ?? null,
   }
 }
 

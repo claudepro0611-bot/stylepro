@@ -26,6 +26,7 @@ interface RequestRow {
   message: string | null
   notes: string | null
   created_at: string
+  source: Request['source'] | null
 }
 
 function mapRequest(row: RequestRow): Request {
@@ -39,6 +40,7 @@ function mapRequest(row: RequestRow): Request {
     message: row.message ?? '',
     createdAt: row.created_at,
     notes: row.notes ?? '',
+    source: row.source ?? 'web',
   }
 }
 

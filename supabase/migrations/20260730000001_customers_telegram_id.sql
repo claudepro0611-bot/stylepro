@@ -1,0 +1,41 @@
+-- Telegram bot integration: link customers to their Telegram account and
+-- tag requests created via the bot.
+--
+-- Additive only — no data loss, both statements are IF NOT EXISTS-guarded
+-- and safe to re-run.
+--
+-- 1) public.customers.telegram_id
+--    Nullable (a customer may not have linked Telegram yet). The webhook
+--    (built separately, not part of this migration) will look up the
+--    customer row by telegram_id once they share their phone number via
+--    the bot, so an index is added to support that lookup.
+--
+--    Not RLS/grant-related: customers already has "Company isolation" RLS
+--    (20260612090005_customers.sql) and direct INSERT/UPDATE/DELETE from
+--    `authenticated` is already revoked (20260723000006_customers_
+--    campaigns_hardening.sql) — the only write path is the create_customer
+--    RPC / set_customer_vip. A plain ADD COLUMN needs no policy or grant
+--    changes here. NOTE for the webhook implementation: writing
+--    telegram_id onto an existing customer row will need either the
+--    service-role client or a new SECURITY DEFINER RPC — there is no
+--    existing RPC that updates this column.
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS telegram_id bigint;
+CREATE INDEX IF NOT EXISTS customers_telegram_id_idx ON public.customers(telegram_id);
+
+-- 2) public.requests.source
+--    Defaults to 'web' so existing/legacy rows and any UI-created request
+--    keep their current implicit origin; the Telegram webhook will insert
+--    new rows with source='telegram'.
+--
+--    Not RLS/grant-related: requests already has "Company isolation" RLS
+--    (20260612090011_requests.sql) and direct INSERT/UPDATE/DELETE from
+--    `authenticated` is already revoked (20260723000009_expenses_
+--    requests_hr_security.sql) — the only existing RPC (update_request)
+--    only touches notes/status. NOTE for the webhook implementation:
+--    there is currently NO create_request RPC in this schema ("No create
+--    or delete RPC: nothing in the app creates or deletes a request." per
+--    that migration's comments) — inserting new Telegram-originated
+--    requests will need either the service-role client or a new
+--    SECURITY DEFINER create_request RPC to be added alongside the
+--    webhook work.
+ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS source text DEFAULT 'web';
