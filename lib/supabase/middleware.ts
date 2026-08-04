@@ -5,6 +5,12 @@ import type { PermissionKey } from '@/lib/permissions'
 const PUBLIC_PATHS = ['/login']
 const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 
+// Paths that must fully bypass the auth/permission logic below - called
+// server-to-server (e.g. by Telegram's webhook infra) with no browser
+// session/cookies, so they can never satisfy the `user` check and would
+// otherwise get redirected to /login on every request.
+const BYPASS_PATHS = ['/api/telegram/webhook']
+
 // Route-prefix -> PERMISSION_KEY. /dashboard, /sozlamalar, /pos stay
 // role-based-only (every authenticated company user can reach them).
 // All other permission-gated pages are now covered here as well, closing
@@ -28,6 +34,12 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
 }
 
 export async function updateSession(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  if (BYPASS_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return NextResponse.next()
+  }
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -49,7 +61,6 @@ export async function updateSession(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
   const isPublicPath = PUBLIC_PATHS.includes(pathname)
 
   if (!user && !isPublicPath) {

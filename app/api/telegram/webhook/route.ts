@@ -3,6 +3,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { supabaseServer } from '@/lib/supabase/server'
 import { sendContactRequest, sendMessage } from '@/lib/telegram'
 
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
 // Telegram sends the secret_token set on setWebhook back on every request via
 // this header. It authenticates INBOUND calls from Telegram to us - a
 // different secret from TELEGRAM_BOT_TOKEN, which authenticates OUTBOUND
