@@ -54,27 +54,7 @@ async function requireCompanyOwner() {
 
 export async function getTeamData(): Promise<TeamData | { error: string }> {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'Unauthorized' }
-
-    const { data: companyId, error: companyIdError } = await supabase.rpc('get_company_id')
-
-    if (companyIdError || !companyId) {
-      console.error('[jamoa/getTeamData] get_company_id() failed', companyIdError)
-      return { error: COMPANY_NOT_FOUND_MESSAGE }
-    }
-
-    const { data: me, error: meError } = await supabaseServer
-      .from('users')
-      .select('id, role')
-      .eq('id', user.id)
-      .single()
-
-    if (meError || !me) {
-      console.error('[jamoa/getTeamData] failed to load current user', meError)
-      return { error: 'Unauthorized' }
-    }
+    const { companyId } = await requireCompanyOwner()
 
     const [{ data: company, error: companyError }, { data: users, error: usersError }] = await Promise.all([
       supabaseServer.from('companies').select('user_limit').eq('id', companyId).single(),
@@ -98,7 +78,7 @@ export async function getTeamData(): Promise<TeamData | { error: string }> {
     return {
       users: rows,
       userLimit: company?.user_limit ?? 1,
-      isOwner: me.role === 'owner',
+      isOwner: true,
     }
   } catch (e) {
     console.error('[jamoa/getTeamData] unexpected error', e)

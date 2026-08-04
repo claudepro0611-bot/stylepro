@@ -4,26 +4,22 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getCompanyId } from '@/lib/supabase/helpers'
 
-// Fail open: if the fetch (or the RLS check behind it) fails, assume every
-// feature is enabled rather than locking companies out of paid modules.
+// Fail closed: if the fetch (or the RLS check behind it) fails, assume every
+// feature is disabled rather than granting access to paid/gated modules.
 // Keep this in sync with feature_definitions — expenses and shift_system
 // were added by later migrations (20260714000002, 20260713000001) after
-// this list was first written, and were never backfilled here. Because
-// consumers key their redirect guards off `!features.<key>`, a key missing
-// from this object reads as "disabled" (undefined is falsy) instead of
-// "unknown, assume enabled" — that gap is what caused xarajatlar to
-// bounce every user to /dashboard even though the company's real
-// company_features row has it active.
+// this list was first written. A key missing from this object, or missing
+// from the company's company_features rows, must resolve to `false`.
 const DEFAULT_FEATURES: Record<string, boolean> = {
-  pos: true,
-  warehouse: true,
-  hr: true,
-  marketing: true,
-  reports: true,
-  barcode: true,
-  excel_import: true,
-  expenses: true,
-  shift_system: true,
+  pos: false,
+  warehouse: false,
+  hr: false,
+  marketing: false,
+  reports: false,
+  barcode: false,
+  excel_import: false,
+  expenses: false,
+  shift_system: false,
 }
 
 export function useFeatures() {
@@ -51,18 +47,20 @@ export function useFeatures() {
           .eq('company_id', companyId)
 
         if (error || !data) {
-          console.error('[useFeatures] fetch failed, keeping defaults:', error?.message)
+          console.error('[useFeatures] fetch failed, denying all features:', error?.message)
+          if (!cancelled) setFeatures({ ...DEFAULT_FEATURES })
           return
         }
 
-        // Built strictly from real rows here (not from DEFAULT_FEATURES) —
-        // a feature with no row means the company hasn't activated it.
-        const map: Record<string, boolean> = {}
+        // Start from all-false so a feature with no row (i.e. the company
+        // hasn't activated it) explicitly resolves to `false`, not undefined.
+        const map: Record<string, boolean> = { ...DEFAULT_FEATURES }
         data.forEach(f => { map[f.feature_key] = f.is_active })
 
         if (!cancelled) setFeatures(map)
       } catch (err) {
-        console.error('[useFeatures] unexpected error, keeping defaults:', err)
+        console.error('[useFeatures] unexpected error, denying all features:', err)
+        if (!cancelled) setFeatures({ ...DEFAULT_FEATURES })
       } finally {
         if (!cancelled) setLoading(false)
       }
