@@ -46,19 +46,24 @@ interface TelegramUpdate {
 }
 
 // Two-mode classification (see handleTextMessage / handleCallbackQuery below).
-// callback_data shape: "mode:request:<request-id>" | "mode:chat:<request-id>".
-// The callback's "request" literal maps to the requests.mode column's
-// "general" value (see supabase/migrations/20260730000002_requests_mode.sql -
-// CHECK (mode IN ('general', 'chat'))); "chat" maps 1:1. Persisted in
+// callback_data shape: "mode:shikoyat:<request-id>" | "mode:murojat:<request-id>"
+// for a real, already-inserted request row - the literal is the exact
+// requests.mode column value (see supabase/migrations/20260806000001_
+// requests_mode_rename.sql - CHECK (mode IN ('shikoyat', 'murojat'))), so no
+// separate literal->DB-value map is needed anymore. Persisted in
 // handleCallbackQuery below, in addition to the cosmetic editMessageText.
-const MODE_CALLBACK_RE = /^mode:(request|chat):([0-9a-f-]{36})$/i
-const MODE_LABEL_UZ: Record<'request' | 'chat', string> = {
-  request: "So'rov",
-  chat: 'Muloqot',
-}
-const MODE_TO_DB_VALUE: Record<'request' | 'chat', 'general' | 'chat'> = {
-  request: 'general',
-  chat: 'chat',
+//
+// A second, distinct callback_data shape - "mode:info:shikoyat" |
+// "mode:info:murojat", no request id - is used only for the onboarding
+// buttons sent right after phone linking (see handleContact below), before
+// any request row exists to classify. MODE_INFO_RE is matched first in
+// handleCallbackQuery and never touches the DB; keep it separate from
+// MODE_CALLBACK_RE's per-request flow.
+const MODE_CALLBACK_RE = /^mode:(shikoyat|murojat):([0-9a-f-]{36})$/i
+const MODE_INFO_RE = /^mode:info:(shikoyat|murojat)$/i
+const MODE_LABEL_UZ: Record<'shikoyat' | 'murojat', string> = {
+  shikoyat: 'Shikoyat',
+  murojat: 'Murojat',
 }
 
 function isValidSecret(request: NextRequest): boolean {
@@ -156,6 +161,24 @@ async function handleContact(chatId: number, fromId: number, contact: TelegramCo
   }
 
   await sendMessage(chatId, `Rahmat! Hisobingiz ulandi: ${customer.full_name}.`)
+
+  // Onboarding/informational message only - no request row exists yet at
+  // this point, so these buttons must not attempt to update any row. Uses
+  // the "mode:info:*" callback_data shape (MODE_INFO_RE), handled as a
+  // distinct branch in handleCallbackQuery before the per-request
+  // MODE_CALLBACK_RE match, so it can never be confused with a real
+  // classification tap.
+  const onboardingResult = await sendMessageWithInlineKeyboard(
+    chatId,
+    "Botga yozgan har bir xabaringizni \"Shikoyat\" yoki \"Murojat\" turida belgilashingiz mumkin. Xabaringizni yozing, so'ng paydo bo'ladigan tugmalardan turini tanlang.",
+    [[
+      { text: '📋 Shikoyat', callbackData: 'mode:info:shikoyat' },
+      { text: '💬 Murojat', callbackData: 'mode:info:murojat' },
+    ]],
+  )
+  if (!onboardingResult.ok) {
+    console.error('[telegram/webhook] failed to send onboarding mode buttons')
+  }
 }
 
 async function handleTextMessage(chatId: number, fromId: number, text: string) {
@@ -208,8 +231,8 @@ async function handleTextMessage(chatId: number, fromId: number, text: string) {
   // callback_data simply carries its id (see MODE_CALLBACK_RE above).
   if (inserted?.id) {
     const result = await sendMessageWithInlineKeyboard(chatId, confirmationText, [[
-      { text: "📋 So'rov yuborish", callbackData: `mode:request:${inserted.id}` },
-      { text: "💬 Do'kon bilan muloqot", callbackData: `mode:chat:${inserted.id}` },
+      { text: '📋 Shikoyat', callbackData: `mode:shikoyat:${inserted.id}` },
+      { text: '💬 Murojat', callbackData: `mode:murojat:${inserted.id}` },
     ]])
     if (result.ok) return
     // Fall through to a plain confirmation if the keyboard send failed, so
@@ -221,6 +244,18 @@ async function handleTextMessage(chatId: number, fromId: number, text: string) {
 
 async function handleCallbackQuery(cb: TelegramCallbackQuery) {
   const data = cb.data ?? ''
+
+  // Onboarding taps ("mode:info:*", sent from handleContact right after
+  // phone linking) never correspond to a real request row - checked first,
+  // separately from the per-request flow below, so a malformed/onboarding
+  // callback can never fall through into the MODE_CALLBACK_RE branch and
+  // attempt a DB write.
+  const infoMatch = data.match(MODE_INFO_RE)
+  if (infoMatch) {
+    await answerCallbackQuery(cb.id, "Xabar yozing, so'ng turini tanlaysiz")
+    return
+  }
+
   const match = data.match(MODE_CALLBACK_RE)
 
   if (!match || !cb.message) {
@@ -228,7 +263,7 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
     return
   }
 
-  const mode = match[1] as 'request' | 'chat'
+  const mode = match[1] as 'shikoyat' | 'murojat'
   const requestId = match[2]
   const chatId = cb.message.chat.id
   const messageId = cb.message.message_id
@@ -238,7 +273,7 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
 
   const { error: updateError } = await supabaseServer
     .from('requests')
-    .update({ mode: MODE_TO_DB_VALUE[mode] })
+    .update({ mode })
     .eq('id', requestId)
   if (updateError) {
     console.error('[telegram/webhook] failed to persist request mode', updateError.message)

@@ -69,7 +69,7 @@ export const translations = {
       reportsInventar: "Inventar hisoboti",
       expenses: "Xarajatlar",
       marketing: "Marketing",
-      requests: "So'rovlar",
+      requests: "Shikoyatlar",
       settings: "Sozlamalar",
       admin: "Admin",
       hrModule: "HR Modul",
@@ -829,7 +829,7 @@ export const translations = {
       resultsCount: "ta natija",
     },
     requests: {
-      title: "So'rovlar",
+      title: "Shikoyatlar",
       subtitle: "Mijozlar murojaatlari boshqaruvi",
       stats: {
         total: "Jami so'rovlar",
@@ -868,11 +868,7 @@ export const translations = {
         source: "Manba",
       },
       sourceTelegram: "Telegram",
-      modeLabel: {
-        general: "So'rov",
-        chat: "Muloqot",
-      },
-      notFound: "So'rovlar topilmadi",
+      notFound: "Shikoyatlar topilmadi",
       view: "Ko'rish",
       modal: {
         customer: "Mijoz",
@@ -884,7 +880,7 @@ export const translations = {
         statusChangeLabel: "Holat o'zgartirish",
       },
       toasts: {
-        updateSuccess: "So'rov yangilandi!",
+        updateSuccess: "Shikoyat yangilandi!",
       },
     },
     pos: {
@@ -1614,7 +1610,7 @@ export const translations = {
       reportsInventar: "Отчёт по складу",
       expenses: "Расходы",
       marketing: "Маркетинг",
-      requests: "Заявки",
+      requests: "Жалобы",
       settings: "Настройки",
       admin: "Админ",
       hrModule: "HR Модуль",
@@ -2374,7 +2370,7 @@ export const translations = {
       resultsCount: "результатов",
     },
     requests: {
-      title: "Заявки",
+      title: "Жалобы",
       subtitle: "Управление обращениями клиентов",
       stats: {
         total: "Всего заявок",
@@ -2413,11 +2409,7 @@ export const translations = {
         source: "Источник",
       },
       sourceTelegram: "Telegram",
-      modeLabel: {
-        general: "Запрос",
-        chat: "Общение",
-      },
-      notFound: "Заявки не найдены",
+      notFound: "Жалобы не найдены",
       view: "Просмотр",
       modal: {
         customer: "Клиент",
@@ -2429,7 +2421,7 @@ export const translations = {
         statusChangeLabel: "Изменить статус",
       },
       toasts: {
-        updateSuccess: "Заявка обновлена!",
+        updateSuccess: "Жалоба обновлена!",
       },
     },
     pos: {
@@ -3159,7 +3151,7 @@ export const translations = {
       reportsInventar: "Inventory Report",
       expenses: "Expenses",
       marketing: "Marketing",
-      requests: "Requests",
+      requests: "Complaints",
       settings: "Settings",
       admin: "Admin",
       hrModule: "HR Module",
@@ -3919,7 +3911,7 @@ export const translations = {
       resultsCount: "results",
     },
     requests: {
-      title: "Requests",
+      title: "Complaints",
       subtitle: "Customer request management",
       stats: {
         total: "Total Requests",
@@ -3958,11 +3950,7 @@ export const translations = {
         source: "Source",
       },
       sourceTelegram: "Telegram",
-      modeLabel: {
-        general: "Request",
-        chat: "Chat",
-      },
-      notFound: "No requests found",
+      notFound: "No complaints found",
       view: "View",
       modal: {
         customer: "Customer",
@@ -3974,7 +3962,7 @@ export const translations = {
         statusChangeLabel: "Change Status",
       },
       toasts: {
-        updateSuccess: "Request updated!",
+        updateSuccess: "Complaint updated!",
       },
     },
     pos: {

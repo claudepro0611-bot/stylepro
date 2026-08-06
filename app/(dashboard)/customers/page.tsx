@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   UserPlus, Search, Eye, Loader2, Wallet, ShoppingBag, Percent, Pencil, Check, X, Send,
@@ -15,12 +15,11 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
-import { formatDate, formatPhone } from '@/lib/utils/formatters'
+import { formatDate, formatDateTime, formatPhone } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { cn } from '@/lib/utils'
-import type { Customer, Request } from '@/lib/types'
-import type { TranslationKey } from '@/lib/i18n/translations'
+import type { Customer } from '@/lib/types'
 import { replyToCustomerTelegram } from './actions'
 
 const ITEMS_PER_PAGE = 10
@@ -73,22 +72,31 @@ function mapCustomer(row: CustomerRow): Customer {
   }
 }
 
-// Murojaatlar tab: Telegram requests for the selected customer only, limited
-// to mode = 'chat' (customer_id + source = 'telegram' + mode = 'chat' - see
-// requests table). General ('general' mode) requests stay on the main
-// /requests page only. "Turi" reuses the same requests.typeLabel.* i18n keys
-// as app/(dashboard)/requests/page.tsx.
+// Murojaatlar tab: a two-way chat view of Telegram requests for the selected
+// customer only, limited to mode = 'murojat' (customer_id + source =
+// 'telegram' + mode = 'murojat' - see requests table). Complaint
+// ('shikoyat' mode) requests stay on the main /requests ("Shikoyatlar")
+// page only.
+//
+// requests rows only ever represent INBOUND (customer -> store) messages -
+// there is no schema for persisting the store's outbound replies as chat
+// history (replyToCustomerTelegram in ./actions.ts just calls Telegram's
+// sendMessage and returns success/failure; it does not write anywhere). So
+// outbound bubbles rendered below (`optimisticReplies` state) are a
+// client-side-only, non-persisted echo of what was just sent - they exist
+// only for this open drawer session and will not reappear if the customer
+// is reopened later. Persisting real two-way history would need a new
+// table/column and is out of scope here.
 interface TelegramRequestRow {
   id: string
-  type: Request['type']
   message: string | null
   created_at: string
 }
 
-const REQUEST_TYPE_LABEL_KEY: Record<string, TranslationKey> = {
-  complaint: 'requests.typeLabel.complaint',
-  inquiry: 'requests.typeLabel.inquiry',
-  return: 'requests.typeLabel.return',
+interface OptimisticReply {
+  id: string
+  text: string
+  createdAt: string
 }
 
 interface SalesHistoryRow {
@@ -135,9 +143,13 @@ export default function CustomersPage() {
   const [requestsLoading, setRequestsLoading] = useState(false)
   const [requestsLoadedFor, setRequestsLoadedFor] = useState<string | null>(null)
   const [telegramRequests, setTelegramRequests] = useState<TelegramRequestRow[]>([])
-  const [replyOpenId, setReplyOpenId] = useState<string | null>(null)
+  // Client-side-only, non-persisted outbound bubbles - see the comment above
+  // TelegramRequestRow/OptimisticReply above for why these cannot be sourced
+  // from the DB.
+  const [optimisticReplies, setOptimisticReplies] = useState<OptimisticReply[]>([])
   const [replyText, setReplyText] = useState('')
   const [replySending, setReplySending] = useState(false)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)
@@ -190,7 +202,7 @@ export default function CustomersPage() {
     setRequestsLoadedFor(null)
     setRequestsLoading(false)
     setTelegramRequests([])
-    setReplyOpenId(null)
+    setOptimisticReplies([])
     setReplyText('')
   }
 
@@ -310,11 +322,11 @@ export default function CustomersPage() {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('requests')
-      .select('id, type, message, created_at')
+      .select('id, message, created_at')
       .eq('customer_id', c.id)
       .eq('source', 'telegram')
-      .eq('mode', 'chat')
-      .order('created_at', { ascending: false })
+      .eq('mode', 'murojat')
+      .order('created_at', { ascending: true })
 
     if (error) {
       toast.error(t('common.error'))
@@ -343,10 +355,26 @@ export default function CustomersPage() {
       return
     }
 
+    // Optimistic, client-side-only bubble - see the comment above
+    // TelegramRequestRow/OptimisticReply for why this isn't (and can't yet
+    // be) persisted server-side.
+    setOptimisticReplies(prev => [...prev, {
+      id: crypto.randomUUID(),
+      text: trimmed,
+      createdAt: new Date().toISOString(),
+    }])
+
     toast.success(t('customers.detail.replySuccess'))
     setReplyText('')
-    setReplyOpenId(null)
   }
+
+  // Keep the chat scrolled to the newest message whenever the thread grows
+  // (initial load or a new optimistic reply).
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }
+  }, [telegramRequests, optimisticReplies])
 
   async function refreshSelectedCustomer(id: string) {
     const supabase = createClient()
@@ -631,59 +659,59 @@ export default function CustomersPage() {
                         <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
                         {t('common.loading')}
                       </p>
-                    ) : telegramRequests.length === 0 ? (
+                    ) : telegramRequests.length === 0 && optimisticReplies.length === 0 ? (
                       <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">{t('customers.detail.noComplaints')}</p>
                     ) : (
-                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                      <div
+                        ref={chatScrollRef}
+                        className="flex h-96 flex-col gap-3 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-3"
+                      >
+                        {/* Inbound (customer -> store) messages, oldest first - real
+                            data from `requests` (mode = 'murojat'). */}
                         {telegramRequests.map(r => (
-                          <div key={r.id} className="rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2.5 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5">
-                                <MiniBadge status="telegram" label={t('requests.sourceTelegram')} />
-                                <span className="text-[11px] text-gray-400 dark:text-gray-500">{t(REQUEST_TYPE_LABEL_KEY[r.type])}</span>
+                          <div key={r.id} className="flex justify-start">
+                            <div className="max-w-[80%]">
+                              <div className="rounded-2xl rounded-bl-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
+                                {r.message}
                               </div>
-                              <span className="text-[11px] text-gray-400 dark:text-gray-500">{formatDate(r.created_at)}</span>
+                              <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{formatDateTime(r.created_at)}</p>
                             </div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">{r.message}</p>
+                          </div>
+                        ))}
 
-                            {replyOpenId === r.id ? (
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="text"
-                                  autoFocus
-                                  value={replyText}
-                                  onChange={e => setReplyText(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') sendReply(selectedCustomer.id) }}
-                                  placeholder={t('customers.detail.replyPlaceholder')}
-                                  className="flex-1 h-8 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 bg-white dark:bg-gray-900 transition-colors"
-                                />
-                                <button
-                                  onClick={() => sendReply(selectedCustomer.id)}
-                                  disabled={replySending || !replyText.trim()}
-                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors disabled:opacity-60"
-                                >
-                                  {replySending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                                </button>
-                                <button
-                                  onClick={() => { setReplyOpenId(null); setReplyText('') }}
-                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
+                        {/* Outbound (store -> customer) replies - client-side-only,
+                            not persisted (see the OptimisticReply comment above). */}
+                        {optimisticReplies.map(o => (
+                          <div key={o.id} className="flex justify-end">
+                            <div className="max-w-[80%]">
+                              <div className="rounded-2xl rounded-br-sm bg-blue-600 dark:bg-blue-700 px-3 py-2 text-sm text-white">
+                                {o.text}
                               </div>
-                            ) : (
-                              <button
-                                onClick={() => { setReplyOpenId(r.id); setReplyText('') }}
-                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                              >
-                                <Send className="h-3 w-3" />
-                                {t('customers.detail.replyButton')}
-                              </button>
-                            )}
+                              <p className="mt-1 text-right text-[11px] text-gray-400 dark:text-gray-500">{formatDateTime(o.createdAt)}</p>
+                            </div>
                           </div>
                         ))}
                       </div>
                     )}
+
+                    {/* Reply input, pinned below the scrollable thread. */}
+                    <div className="mt-3 flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={replyText}
+                        onChange={e => setReplyText(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') sendReply(selectedCustomer.id) }}
+                        placeholder={t('customers.detail.replyPlaceholder')}
+                        className="flex-1 h-9 rounded-lg border border-gray-200 dark:border-gray-700 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 bg-white dark:bg-gray-900 transition-colors"
+                      />
+                      <button
+                        onClick={() => sendReply(selectedCustomer.id)}
+                        disabled={replySending || !replyText.trim()}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors disabled:opacity-60"
+                      >
+                        {replySending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="karta" className="mt-4 space-y-5">
