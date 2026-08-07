@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { AlertTriangle, Loader2, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Pagination } from '@/components/ui/Pagination'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -54,6 +54,7 @@ interface NameGroup {
   category: string
   variants: Variant[]
   total: number
+  outOfStock: number
   minStock: number
 }
 
@@ -69,8 +70,47 @@ function VariantChip({ variant }: { variant: Variant }) {
       style={style}
       className="inline-flex items-center rounded-lg bg-gray-50 dark:bg-gray-800 px-2 py-1 text-xs text-gray-700 dark:text-gray-300"
     >
-      {`${color}·${size}  ${stock}`}
+      {`${color}·${size} ${stock}`}
     </span>
+  )
+}
+
+function ProductAccordionRow({ group }: { group: NameGroup }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="px-5 py-4">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{group.name}</p>
+          {group.sku && (
+            <span className="shrink-0 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 text-xs font-medium">
+              {group.sku}
+            </span>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {group.outOfStock > 0 && (
+            <span className="rounded-full bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-2 py-0.5 text-xs font-medium">
+              {group.outOfStock} ta tugagan
+            </span>
+          )}
+          <span className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">{group.total}</span>
+          <ChevronDown className={cn('h-4 w-4 text-gray-400 dark:text-gray-500 transition-transform duration-200', open ? 'rotate-180' : 'rotate-0')} />
+        </div>
+      </button>
+      <div className={cn('overflow-hidden transition-all duration-200 ease-in-out', open ? 'mt-3 max-h-[2000px] opacity-100' : 'max-h-0 opacity-0')}>
+        <div className="flex flex-wrap gap-[5px]">
+          {group.variants.map(v => (
+            <VariantChip key={`${v.color}-${v.size}`} variant={v} />
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -145,11 +185,12 @@ export default function InventoryPage() {
       const p = productMap.get(sz.product_id)
       if (!p) continue
       if (!map.has(p.id)) {
-        map.set(p.id, { productId: p.id, name: p.name, sku: p.sku, category: p.category, variants: [], total: 0, minStock: p.minStock })
+        map.set(p.id, { productId: p.id, name: p.name, sku: p.sku, category: p.category, variants: [], total: 0, outOfStock: 0, minStock: p.minStock })
       }
       const g = map.get(p.id)!
       g.variants.push({ color: sz.color, size: sz.size, stock: sz.stock })
       g.total += sz.stock
+      if (sz.stock === 0) g.outOfStock += 1
     }
     for (const g of map.values()) {
       const sizeOrder = new Map(sortSizes(Array.from(new Set(g.variants.map(v => v.size)))).map((s, i) => [s, i]))
@@ -298,24 +339,7 @@ export default function InventoryPage() {
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {paginated.map(g => (
-              <div key={g.productId} className="px-5 py-4">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{g.name}</p>
-                    {g.sku && (
-                      <span className="shrink-0 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 text-xs font-medium">
-                        {g.sku}
-                      </span>
-                    )}
-                  </div>
-                  <span className="shrink-0 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">{g.total}</span>
-                </div>
-                <div className="flex flex-wrap gap-[5px]">
-                  {g.variants.map(v => (
-                    <VariantChip key={`${v.color}-${v.size}`} variant={v} />
-                  ))}
-                </div>
-              </div>
+              <ProductAccordionRow key={g.productId} group={g} />
             ))}
           </div>
         )}
