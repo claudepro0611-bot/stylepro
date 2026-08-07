@@ -1,7 +1,7 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Loader2, ChevronRight, ChevronDown, Plus, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { AlertTriangle, Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Pagination } from '@/components/ui/Pagination'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -24,7 +24,7 @@ interface ProductRow {
 }
 
 interface ProductSizeRow {
-  id: string; product_id: string; size: string; stock: number
+  id: string; product_id: string; size: string; color: string; stock: number
   purchase_price: number; selling_price: number; warehouse_id: string | null
 }
 
@@ -41,44 +41,37 @@ function mapProduct(r: ProductRow): Product {
   }
 }
 
+interface Variant {
+  color: string
+  size: string
+  stock: number
+}
+
 interface NameGroup {
   productId: string
   name: string
+  sku: string
   category: string
-  sizeStock: Record<string, number>
+  variants: Variant[]
   total: number
   minStock: number
 }
 
-function SizeBreakdown({ sizeStock }: { sizeStock: Record<string, number> }) {
-  const sizes = sortSizes(Object.keys(sizeStock)).map(size => ({ size, stock: sizeStock[size] }))
-  const maxStock = Math.max(1, ...sizes.map(s => s.stock))
+function VariantChip({ variant }: { variant: Variant }) {
+  const { color, size, stock } = variant
+  const style: CSSProperties = stock === 0
+    ? { border: '1.5px solid #ef4444' }
+    : stock <= 3
+      ? { border: '1.5px solid #f59e0b' }
+      : { border: '0.5px solid var(--border)' }
   return (
-    <div className="bg-gray-50 dark:bg-gray-800/50 divide-y divide-gray-100 dark:divide-gray-800">
-      {sizes.map(size => (
-        <div key={size.size} className="flex items-center gap-3 px-3 py-2">
-          <span className="font-semibold text-sm w-8">{size.size}</span>
-          <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div className="h-full bg-gray-900 dark:bg-gray-100 rounded-full" style={{ width: `${(size.stock / maxStock) * 100}%` }} />
-          </div>
-          <span className="text-sm text-gray-600 dark:text-gray-400 w-16 text-right">{size.stock} dona</span>
-          {size.stock <= 5 && <span className="text-xs text-amber-600 dark:text-amber-400">kam</span>}
-        </div>
-      ))}
-    </div>
+    <span
+      style={style}
+      className="inline-flex items-center rounded-lg bg-gray-50 dark:bg-gray-800 px-2 py-1 text-xs text-gray-700 dark:text-gray-300"
+    >
+      {`${color}·${size}  ${stock}`}
+    </span>
   )
-}
-
-function GroupStockBadge({ group }: { group: NameGroup }) {
-  const { t } = useLanguage()
-  const hasOut = Object.values(group.sizeStock).some(s => s === 0)
-  const hasLow = Object.values(group.sizeStock).some(s => s > 0 && s <= group.minStock)
-
-  if (group.total === 0)
-    return <span className="inline-flex items-center rounded-full bg-red-100 dark:bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">{t('inventory.statusOut')}</span>
-  if (hasOut || hasLow)
-    return <span className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">{t('inventory.statusLow')}</span>
-  return <span className="inline-flex items-center rounded-full bg-green-100 dark:bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">{t('inventory.statusOk')}</span>
 }
 
 export default function InventoryPage() {
@@ -90,22 +83,12 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [activeWarehouseId, setActiveWarehouseId] = useLocalStorage<string>('stylepro-active-warehouse-id', '')
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
   const [isAddWarehouseOpen, setIsAddWarehouseOpen] = useState(false)
   const [newWarehouseName, setNewWarehouseName] = useState('')
   const [newWarehouseType, setNewWarehouseType] = useState<WarehouseType>('clothing')
   const [savingWarehouse, setSavingWarehouse] = useState(false)
   const [deleteWarehouseTarget, setDeleteWarehouseTarget] = useState<WarehouseRow | null>(null)
-
-  function toggleRow(productId: string) {
-    setExpandedRows(prev => {
-      const next = new Set(prev)
-      if (next.has(productId)) next.delete(productId)
-      else next.add(productId)
-      return next
-    })
-  }
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -117,7 +100,7 @@ export default function InventoryPage() {
       { data: companyData },
     ] = await Promise.all([
       supabase.from('products').select('id, name, sku, category, price, colors, min_stock, status').order('name'),
-      supabase.from('product_sizes').select('id, product_id, size, stock, purchase_price, selling_price, warehouse_id'),
+      supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price, selling_price, warehouse_id'),
       supabase.from('warehouses').select('id, name, type'),
       supabase.from('companies').select('warehouse_limit').single(),
     ])
@@ -162,11 +145,18 @@ export default function InventoryPage() {
       const p = productMap.get(sz.product_id)
       if (!p) continue
       if (!map.has(p.id)) {
-        map.set(p.id, { productId: p.id, name: p.name, category: p.category, sizeStock: {}, total: 0, minStock: p.minStock })
+        map.set(p.id, { productId: p.id, name: p.name, sku: p.sku, category: p.category, variants: [], total: 0, minStock: p.minStock })
       }
       const g = map.get(p.id)!
-      g.sizeStock[sz.size] = sz.stock
+      g.variants.push({ color: sz.color, size: sz.size, stock: sz.stock })
       g.total += sz.stock
+    }
+    for (const g of map.values()) {
+      const sizeOrder = new Map(sortSizes(Array.from(new Set(g.variants.map(v => v.size)))).map((s, i) => [s, i]))
+      g.variants.sort((a, b) => {
+        const diff = (sizeOrder.get(a.size) ?? 0) - (sizeOrder.get(b.size) ?? 0)
+        return diff !== 0 ? diff : a.color.localeCompare(b.color)
+      })
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [products, activeSizeRows])
@@ -299,55 +289,36 @@ export default function InventoryPage() {
         <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{t('inventory.tableTitle')}</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-table-header-bg dark:bg-gray-800/50">
-              <tr className="border-b border-gray-100 dark:border-gray-800">
-                <th className="w-10 px-4 py-3" />
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('inventory.table.product')}</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('inventory.table.category')}</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{t('inventory.table.sizeTotal')}</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('inventory.table.status')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">
-                  <Loader2 className="inline h-4 w-4 animate-spin mr-2" />{t('common.loading')}
-                </td></tr>
-              ) : paginated.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">{t('common.notFound')}</td></tr>
-              ) : paginated.map(g => {
-                const expanded = expandedRows.has(g.productId)
-                return (
-                  <Fragment key={g.productId}>
-                    <tr
-                      onClick={() => toggleRow(g.productId)}
-                      className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-3 text-gray-400 dark:text-gray-500">
-                        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{g.name}</p>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.category}</td>
-                      <td className="px-3 py-3 text-center text-[12px] font-semibold tabular-nums text-gray-900 dark:text-gray-100">{g.total}</td>
-                      <td className="px-4 py-3"><GroupStockBadge group={g} /></td>
-                    </tr>
-                    {expanded && (
-                      <tr className="border-b border-gray-100 dark:border-gray-800">
-                        <td colSpan={5} className="p-0">
-                          <SizeBreakdown sizeStock={g.sizeStock} />
-                        </td>
-                      </tr>
+        {loading ? (
+          <div className="px-4 py-12 text-center text-sm text-gray-400">
+            <Loader2 className="inline h-4 w-4 animate-spin mr-2" />{t('common.loading')}
+          </div>
+        ) : paginated.length === 0 ? (
+          <div className="px-4 py-12 text-center text-sm text-gray-400">{t('common.notFound')}</div>
+        ) : (
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {paginated.map(g => (
+              <div key={g.productId} className="px-5 py-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{g.name}</p>
+                    {g.sku && (
+                      <span className="shrink-0 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 text-xs font-medium">
+                        {g.sku}
+                      </span>
                     )}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">{g.total}</span>
+                </div>
+                <div className="flex flex-wrap gap-[5px]">
+                  {g.variants.map(v => (
+                    <VariantChip key={`${v.color}-${v.size}`} variant={v} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <Pagination currentPage={page} totalPages={totalPages} totalItems={groups.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setPage} />
       </div>
 
