@@ -181,7 +181,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
       <Icon className={cn(
         'shrink-0',
         small ? 'h-3.5 w-3.5' : 'h-4 w-4',
-        active ? 'text-sidebar-accent-foreground dark:text-gray-100' : 'text-gray-400 dark:text-gray-500',
+        active ? 'text-blue-600' : 'text-gray-400 dark:text-gray-500',
       )} />
     )
   }
@@ -191,7 +191,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
     const itemCls = cn(
       'flex h-9 w-full items-center justify-center rounded-lg transition-colors',
       active
-        ? 'bg-sidebar-accent dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border dark:border-l-gray-700'
+        ? 'bg-sidebar-accent dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60',
     )
 
@@ -224,7 +224,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
           'flex items-center gap-2.5 rounded-lg transition-colors',
           small ? 'py-1.5 pl-9 pr-2.5 text-[12.5px]' : 'py-2 px-2.5 text-[13.5px]',
           active
-            ? 'bg-sidebar-accent dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border dark:border-l-gray-700 text-sidebar-accent-foreground dark:text-gray-100 font-medium'
+            ? 'bg-sidebar-accent dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border text-sidebar-accent-foreground dark:text-gray-100 font-medium'
             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60',
         )}
       >
@@ -252,7 +252,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
       const headerCls = cn(
         'flex w-full items-center gap-2.5 rounded-lg py-2 px-2.5 text-[13.5px] transition-colors',
         active
-          ? 'bg-sidebar-accent dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border dark:border-l-gray-700 text-sidebar-accent-foreground dark:text-gray-100 font-medium'
+          ? 'bg-sidebar-accent dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border text-sidebar-accent-foreground dark:text-gray-100 font-medium'
           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60',
       )
 
@@ -294,7 +294,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex h-full flex-col shrink-0 overflow-hidden bg-white dark:bg-gray-900',
+        'flex h-full flex-col shrink-0 overflow-hidden bg-sidebar',
         'transition-[width] duration-200 ease-in-out',
         collapsed ? 'w-16' : 'w-60',
       )}
@@ -323,7 +323,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
               <svg viewBox="0 0 24 24" fill="#2563eb" width="24" height="24">
                 <path d="M21 8c-1.5 0-2.5.5-3.5 1.5C16 8 14.5 7 13 7c-1 0-2 .3-2.8.8L8 6.5C6.5 5.5 4.5 5 2.5 5.5L2 6l2 2c-1 1-1.5 2.5-1 4 .5 1.5 2 3 4 3.5 1 .3 2 .2 3-.2l1.5 1.5c.5.5 1 .7 1.5.7s1-.2 1.5-.7l.5-.5c1 .3 2 .2 3-.5 1.5-1 2-2.5 2-4 0-.5 0-1-.2-1.5.7-.5 1.2-1.3 1.2-2.3z" />
               </svg>
-              <span className="font-bold text-[17px] text-[#2563eb]">Dolphy</span>
+              <span className="font-bold text-[17px] text-blue-600">Dolphy</span>
             </span>
             <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
           </button>

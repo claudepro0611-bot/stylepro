@@ -157,9 +157,9 @@ export default function GrafikPage() {
   const [employeeFilter, setEmployeeFilter] = useState('all')
   const [displayFilter, setDisplayFilter] = useState<DisplayFilter>('both')
 
-  const axisTick = { fill: isDark ? '#6B7280' : '#9CA3AF', fontSize: 11 }
-  const gridProps = { strokeDasharray: '3 3', stroke: isDark ? '#374151' : '#F3F4F6', vertical: false } as const
-  const cursorLine = isDark ? '#374151' : '#E5E7EB'
+  const axisTick = { fill: isDark ? '#9AA4B4' : '#6B7584', fontSize: 11 }
+  const gridProps = { strokeDasharray: '3 3', stroke: isDark ? 'rgba(255,255,255,0.09)' : '#E1E5EB', vertical: false } as const
+  const cursorLine = isDark ? 'rgba(255,255,255,0.09)' : '#E1E5EB'
 
   const employeeOptions = useMemo(() => [
     { value: 'all', label: t('hr.grafik.filters.allEmployees') },

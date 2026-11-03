@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, Fragment } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, Menu, LogOut } from 'lucide-react'
+import { Bell, Menu, LogOut, Sun, Moon } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -63,6 +64,10 @@ export function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { t } = useLanguage()
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  const isNight = resolvedTheme !== 'light'
   const breadcrumbTrail = buildBreadcrumbTrail(pathname, t)
   const [companyName, setCompanyName] = useState('')
   const [userName, setUserName] = useState('')
@@ -169,7 +174,19 @@ export function Header({ onMenuClick }: HeaderProps) {
         {/* Notification bell */}
         <button className="relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-gray-900 dark:bg-gray-100 ring-1 ring-white dark:ring-gray-950" />
+          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 ring-1 ring-white dark:ring-gray-900" />
+        </button>
+
+        {/* Day / Night switch */}
+        <button
+          type="button"
+          onClick={() => setTheme(isNight ? 'light' : 'dark')}
+          aria-label={isNight ? 'Day mode' : 'Night mode'}
+          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        >
+          {mounted && (isNight
+            ? <Sun className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            : <Moon className="h-4 w-4 text-gray-500 dark:text-gray-400" />)}
         </button>
 
         {/* Company balance */}
@@ -197,7 +214,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           <button
             onClick={() => setProfileOpen(v => !v)}
             className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-[11px] font-medium text-white dark:text-gray-900 select-none transition-opacity hover:opacity-90',
+              'flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-[11px] font-medium text-white select-none select-none transition-opacity hover:opacity-90',
               profileOpen && 'ring-2 ring-gray-900/20 dark:ring-gray-100/20',
             )}
           >

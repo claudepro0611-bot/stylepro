@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Geist } from 'next/font/google'
 import './globals.css'
 import { Providers } from '@/components/Providers'
 import { ToastProvider } from '@/components/ui/toast'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 
 export const metadata: Metadata = {
   title: 'StylePro — Kiyim Do\'koni CRM',
@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="uz" className={`${inter.variable} h-full`} suppressHydrationWarning>
-      <body className="min-h-full antialiased bg-gray-50 dark:bg-gray-950">
+    <html lang="uz" className={`${geist.variable} h-full`} suppressHydrationWarning>
+      <body className="min-h-full antialiased bg-background text-foreground">
         <Providers>
           {children}
           <ToastProvider position="top-right" />
