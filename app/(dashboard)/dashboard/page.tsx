@@ -31,7 +31,7 @@ import type { Product, Transaction } from '@/lib/types'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const SLICE_COLORS = ['#6366F1', '#F97316', '#10B981', '#3B82F6', '#F59E0B', '#EC4899']
+const SLICE_COLORS = ['#5E60CE', '#4EA8DE', '#64DFDF', '#7400B8', '#48BFE3', '#80FFDB']
 
 function TrendBadge({ value }: { value: number }) {
   const up = value >= 0
@@ -368,12 +368,12 @@ function TodaySalesCard({ title, count, revenue, prevCount, changeLabel, isPendi
 function NetProfitCard({ amount, isPending }: { amount: number; isPending?: boolean }) {
   const { formatPrice } = useCurrency()
   return (
-    <div className={KPI_HERO_CARD_CLS} style={{ background: 'var(--acc)' }}>
-      <p className="text-[15px] font-medium text-[color:var(--acc-fg)]/70 mb-1.5">Sof foyda</p>
+    <div className={KPI_HERO_CARD_CLS} style={{ background: 'var(--acc-gradient)' }}>
+      <p className="text-[15px] font-medium text-white/80 mb-1.5">Sof foyda</p>
       {isPending ? (
         <Skeleton className="h-[22px] w-24" />
       ) : (
-        <p className="text-lg font-semibold tabular-nums whitespace-nowrap text-[color:var(--acc-fg)]">
+        <p className="text-lg font-semibold tabular-nums whitespace-nowrap text-white">
           {formatPrice(amount)}
         </p>
       )}
@@ -486,12 +486,12 @@ export default function DashboardPage() {
 
   const isPending = dataLoading || filterPending
 
-  const axisTick = { fill: isDark ? '#9AA4B4' : '#6B7584', fontSize: 11 }
-  const gridProps = { strokeDasharray: '3 3', stroke: isDark ? 'rgba(255,255,255,0.09)' : '#E1E5EB', vertical: false } as const
-  const monoStrong = isDark ? '#A6B6CC' : '#4A5568'
-  const monoSoft   = '#6B7A90'
-  const cursorArea = isDark ? 'rgba(255,255,255,0.09)' : '#E1E5EB'
-  const primaryLineColor = isDark ? '#A6B6CC' : '#4A5568'
+  const axisTick = { fill: isDark ? '#9EA3D0' : '#666D94', fontSize: 11 }
+  const gridProps = { strokeDasharray: '3 3', stroke: isDark ? 'rgba(255,255,255,0.08)' : '#DEE2F3', vertical: false } as const
+  const monoStrong = isDark ? '#4EA8DE' : '#5E60CE'
+  const monoSoft   = '#8F94C4'
+  const cursorArea = isDark ? 'rgba(255,255,255,0.08)' : '#DEE2F3'
+  const primaryLineColor = isDark ? '#4EA8DE' : '#5E60CE'
 
   const curRevenue = useMemo(() => filteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [filteredTransactions])
   const prvRevenue = useMemo(() => prevFilteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [prevFilteredTransactions])
@@ -715,12 +715,12 @@ export default function DashboardPage() {
                 <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(chartBuckets.length / 8))} />
                 <YAxis tickFormatter={formatShortPrice} tick={axisTick} axisLine={false} tickLine={false} width={52} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 8, border: `1px solid ${isDark ? 'rgba(255,255,255,0.09)' : '#E1E5EB'}`, background: isDark ? '#2A3241' : '#fff', fontSize: 12, color: isDark ? '#EEF1F5' : '#232B38' }}
+                  contentStyle={{ borderRadius: 8, border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#DEE2F3'}`, background: isDark ? '#1B1C3A' : '#fff', fontSize: 12, color: isDark ? '#EEF0FF' : '#1E2140' }}
                   formatter={(v, name) => [formatPrice(v as number), name === 'current' ? t('dashboard.current') : t('dashboard.previous')]}
                   cursor={{ stroke: cursorArea, strokeWidth: 1 }}
                 />
                 <Area type="monotone" dataKey="previous" stroke={monoSoft} strokeWidth={1.5} strokeDasharray="5 4" fill="url(#gradPrv)" dot={false} />
-                <Area type="monotone" dataKey="current"  stroke={primaryLineColor} strokeWidth={2} fill="url(#gradCur)" dot={false} activeDot={{ r: 4, fill: primaryLineColor, stroke: isDark ? '#2A3241' : '#fff', strokeWidth: 2 }} />
+                <Area type="monotone" dataKey="current"  stroke={primaryLineColor} strokeWidth={2} fill="url(#gradCur)" dot={false} activeDot={{ r: 4, fill: primaryLineColor, stroke: isDark ? '#1B1C3A' : '#fff', strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -761,7 +761,7 @@ export default function DashboardPage() {
                   <CartesianGrid {...gridProps} />
                   <XAxis
                     dataKey="label"
-                    tick={{ fill: isDark ? '#9AA4B4' : '#6B7584', fontSize: 10 }}
+                    tick={{ fill: isDark ? '#9EA3D0' : '#666D94', fontSize: 10 }}
                     axisLine={false}
                     tickLine={false}
                     interval={Math.max(0, Math.floor(chartBuckets.length / 8))}
