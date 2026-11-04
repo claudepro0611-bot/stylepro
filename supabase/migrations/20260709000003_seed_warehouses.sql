@@ -38,7 +38,9 @@ CREATE TRIGGER on_company_created
 UPDATE public.product_sizes ps
 SET warehouse_id = w.id
 FROM public.products p
-LEFT JOIN public.product_groups pg ON pg.company_id = p.company_id AND pg.name = p.category
-JOIN public.warehouses w ON w.company_id = ps.company_id
-  AND w.type = CASE WHEN pg.size_type = 'shoe' THEN 'footwear' ELSE 'clothing' END
-WHERE ps.product_id = p.id AND ps.warehouse_id IS NULL;
+LEFT JOIN public.product_groups pg ON pg.company_id = p.company_id AND pg.name = p.category,
+     public.warehouses w
+WHERE ps.product_id = p.id
+  AND ps.warehouse_id IS NULL
+  AND w.company_id = ps.company_id
+  AND w.type = CASE WHEN pg.size_type = 'shoe' THEN 'footwear' ELSE 'clothing' END;
