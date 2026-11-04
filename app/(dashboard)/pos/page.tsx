@@ -38,6 +38,7 @@ interface ProductSizeRow {
   purchase_price: number
   selling_price: number
   sku: string | null
+  companion_product_size_id: string | null
 }
 
 interface PosItem {
@@ -52,6 +53,7 @@ interface PosItem {
   purchasePrice: number
   sku: string
   imageUrl: string
+  companionId: string | null  // product_sizes.id of the auto-added bottle
 }
 
 // One card per parent product.
@@ -72,6 +74,10 @@ function mapCustomerLite(row: CustomerRow): CustomerLite {
 
 interface CartLine {
   key: string
+  productSizeId: string  // product_sizes.id sent to sell_cart (differs from key on bottle lines)
+  companionId: string | null   // bottle to auto-add alongside this line
+  bottleDropped: boolean       // cashier removed the bottle; do not re-add
+  companionOf?: string         // set on bottle lines: key of the perfume line they belong to
   productId: string
   productName: string
   size: string
@@ -97,6 +103,27 @@ interface OrderTab {
 }
 
 const MAX_TABS = 5
+
+// Bottle lines are fully derived from their perfume line: same quantity,
+// placed right after it, dropped when the perfume line is gone, and not
+// regenerated once the cashier removed them (bottleDropped on the parent).
+function syncBottles(cart: CartLine[], items: PosItem[]): CartLine[] {
+  const byId = new Map(items.map(i => [i.id, i]))
+  const out: CartLine[] = []
+  for (const line of cart) {
+    if (line.companionOf) continue
+    out.push(line)
+    if (!line.companionId || line.bottleDropped) continue
+    const b = byId.get(line.companionId)
+    if (!b) continue
+    out.push({
+      key: `bottle:${line.key}`, productSizeId: b.id, companionId: null, bottleDropped: false, companionOf: line.key,
+      productId: b.productId, productName: b.productName, size: b.size,
+      unitPrice: b.price, purchasePrice: b.purchasePrice, quantity: line.quantity, maxStock: b.stock,
+    })
+  }
+  return out
+}
 
 function createEmptyTab(id: string): OrderTab {
   return { id, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null }
@@ -360,7 +387,7 @@ export default function POSPage() {
       // Unfiltered (including stock=0 rows): the variant matrix needs every
       // size/color a product has ever been stocked in, so it can show
       // zero-stock cells grayed-out rather than omitting them.
-      supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price, selling_price, sku'),
+      supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price, selling_price, sku, companion_product_size_id'),
     ])
     const catalogMap = new Map((catalogData as ProductCatalogRow[] ?? []).map(p => [p.id, p]))
     const items: PosItem[] = []
@@ -379,6 +406,7 @@ export default function POSPage() {
         purchasePrice: sz.purchase_price,
         sku: sz.sku ?? p.sku ?? '',
         imageUrl: p.image_url ?? '',
+        companionId: sz.companion_product_size_id ?? null,
       })
     }
     items.sort((a, b) => a.productName.localeCompare(b.productName) || a.size.localeCompare(b.size))
@@ -495,11 +523,11 @@ export default function POSPage() {
       const existing = tab.cart.find(l => l.key === key)
       if (existing) {
         if (existing.quantity >= item.stock) return tab
-        return { ...tab, cart: tab.cart.map(l => l.key === key ? { ...l, quantity: l.quantity + 1 } : l) }
+        return { ...tab, cart: syncBottles(tab.cart.map(l => l.key === key ? { ...l, quantity: l.quantity + 1 } : l), posItems) }
       }
       return {
         ...tab,
-        cart: [...tab.cart, { key, productId: item.productId, productName: item.productName, size: item.size, unitPrice: item.price, purchasePrice: item.purchasePrice, quantity: 1, maxStock: item.stock }],
+        cart: syncBottles([...tab.cart, { key, productSizeId: item.id, companionId: item.companionId, bottleDropped: false, productId: item.productId, productName: item.productName, size: item.size, unitPrice: item.price, purchasePrice: item.purchasePrice, quantity: 1, maxStock: item.stock }], posItems),
       }
     })
   }
@@ -640,20 +668,28 @@ export default function POSPage() {
   function incrementLine(key: string) {
     updateActiveTab(tab => ({
       ...tab,
-      cart: tab.cart.map(l => (l.key === key && l.quantity < l.maxStock) ? { ...l, quantity: l.quantity + 1 } : l),
+      cart: syncBottles(tab.cart.map(l => (l.key === key && !l.companionOf && l.quantity < l.maxStock) ? { ...l, quantity: l.quantity + 1 } : l), posItems),
     }))
   }
 
   function decrementLine(key: string) {
     updateActiveTab(tab => {
       const line = tab.cart.find(l => l.key === key)
-      if (line && line.quantity <= 1) return { ...tab, cart: tab.cart.filter(l => l.key !== key) }
-      return { ...tab, cart: tab.cart.map(l => l.key === key ? { ...l, quantity: l.quantity - 1 } : l) }
+      if (!line || line.companionOf) return tab
+      if (line.quantity <= 1) return { ...tab, cart: syncBottles(tab.cart.filter(l => l.key !== key), posItems) }
+      return { ...tab, cart: syncBottles(tab.cart.map(l => l.key === key ? { ...l, quantity: l.quantity - 1 } : l), posItems) }
     })
   }
 
   function removeLine(key: string) {
-    updateActiveTab(tab => ({ ...tab, cart: tab.cart.filter(l => l.key !== key) }))
+    updateActiveTab(tab => {
+      const line = tab.cart.find(l => l.key === key)
+      // Removing a bottle line only drops the bottle (customer brought their own).
+      if (line?.companionOf) {
+        return { ...tab, cart: syncBottles(tab.cart.map(l => l.key === line.companionOf ? { ...l, bottleDropped: true } : l), posItems) }
+      }
+      return { ...tab, cart: syncBottles(tab.cart.filter(l => l.key !== key), posItems) }
+    })
   }
 
   function resetSale() {
@@ -732,7 +768,8 @@ export default function POSPage() {
   const received = Number(amountReceived) || 0
   const change = Math.max(0, received - total)
 
-  const canSell = cart.length > 0 && paymentMethod !== '' && (!features.shift_system || !!activeShift)
+  const hasStockShortage = cart.some(l => l.quantity > l.maxStock)
+  const canSell = cart.length > 0 && !hasStockShortage && paymentMethod !== '' && (!features.shift_system || !!activeShift)
 
   async function handleSell() {
     if (!canSell) return
@@ -742,10 +779,12 @@ export default function POSPage() {
     const today = new Date().toISOString().slice(0, 10)
     const customerName = customer?.fullName ?? t('dashboard.recentSales.guestCustomer')
 
-    const items = cart.map(line => ({
-      product_size_id: line.key,
-      quantity: line.quantity,
-    }))
+    // Bottle lines are separate cart lines but merge here if the same bottle
+    // is also present twice (e.g. two perfumes sharing one bottle size) so
+    // sell_cart sees one line per product_size.
+    const merged = new Map<string, number>()
+    for (const line of cart) merged.set(line.productSizeId, (merged.get(line.productSizeId) ?? 0) + line.quantity)
+    const items = Array.from(merged, ([product_size_id, quantity]) => ({ product_size_id, quantity }))
 
     const { data: transactionId, error } = await supabase.rpc('sell_cart', {
       p_items: items,
@@ -966,7 +1005,15 @@ export default function POSPage() {
                       <div className="min-w-0">
                         <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
                           {line.productName} <span className="text-gray-400 dark:text-gray-500">· {line.size}</span>
+                          {line.companionOf && (
+                            <span className="ml-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                              {t('pos.bottleBadge')}
+                            </span>
+                          )}
                         </p>
+                        {line.quantity > line.maxStock && (
+                          <p className="text-xs text-red-500 mt-0.5">{t('pos.noSizesAvailable')}</p>
+                        )}
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
                           {selectedPromotion ? (
                             <>
@@ -979,6 +1026,9 @@ export default function POSPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        {line.companionOf ? (
+                          <span className="w-[4.25rem] text-center text-sm text-gray-900 dark:text-gray-100 tabular-nums">{line.quantity}</span>
+                        ) : (
                         <div className="flex items-center gap-1">
                           <button onClick={() => decrementLine(line.key)} className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                             <Minus className="h-3 w-3" />
@@ -988,6 +1038,7 @@ export default function POSPage() {
                             <Plus className="h-3 w-3" />
                           </button>
                         </div>
+                        )}
                         {hasLineDiscount ? (
                           <div className="flex flex-col items-end gap-1 min-w-20">
                             <span className="text-[11px] line-through text-gray-300 dark:text-gray-600 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
@@ -1003,7 +1054,7 @@ export default function POSPage() {
                         ) : (
                           <span className="w-20 text-right text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
                         )}
-                        <button onClick={() => removeLine(line.key)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                        <button onClick={() => removeLine(line.key)} aria-label={line.companionOf ? t('pos.removeBottle') : undefined} title={line.companionOf ? t('pos.removeBottle') : undefined} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                           <X className="h-4 w-4" />
                         </button>
                       </div>

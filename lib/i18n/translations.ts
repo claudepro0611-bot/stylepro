@@ -90,6 +90,7 @@ export const translations = {
     header: {
       searchPlaceholder: "Qidirish...",
       logout: "Profildan chiqish",
+      changePassword: "Parolni o'zgartirish",
     },
     dashboard: {
       title: "Bosh sahifa",
@@ -310,6 +311,8 @@ export const translations = {
       },
       matrix: {
         addSize: "O'lcham qo'shish",
+        customVolume: "Boshqa hajm (ml)",
+        sellingPrice: "Sotuv narxi",
         color: "Rang",
         qty: "Miqdor",
         defaultColor: "Asosiy",
@@ -482,6 +485,12 @@ export const translations = {
       stockUnit: "ta",
       sizesLabel: "O'lchamlar",
       noWarehouse: "Ombor biriktirilmagan",
+      companion: {
+        title: "Idish (bottle)",
+        placeholder: "Idish tanlang...",
+        none: "Idishsiz",
+        saved: "Idish saqlandi",
+      },
       table: {
         product: "Mahsulot",
         sku: "SKU",
@@ -523,6 +532,7 @@ export const translations = {
     productGroups: {
       title: "Mahsulot guruhi",
       subtitle: "Mahsulot guruhlarini boshqarish",
+      sizeTypeVolume: "Atir (ml)",
       addNew: "Guruh qo'shish",
       stats: {
         total: "Jami guruhlar",
@@ -831,6 +841,7 @@ export const translations = {
     requests: {
       title: "Shikoyatlar",
       subtitle: "Mijozlar murojaatlari boshqaruvi",
+      searchPlaceholder: "Chek raqami bo'yicha qidirish...",
       stats: {
         total: "Jami so'rovlar",
         resolvedToday: "Bugun hal etilgan",
@@ -858,7 +869,7 @@ export const translations = {
         allType: "Barcha tur",
       },
       table: {
-        id: "ID",
+        ticket: "Ariza raqami",
         customer: "Mijoz",
         type: "Tur",
         priority: "Muhimlik",
@@ -889,6 +900,8 @@ export const translations = {
       searchPlaceholder: "Qidirish...",
       emptyProducts: "Mahsulot topilmadi",
       noSizesAvailable: "Mavjud emas",
+      bottleBadge: "Idish",
+      removeBottle: "Idishni olib tashlash",
       unitsSuffix: "ta",
       variantModal: {
         outOfStock: "Mavjud emas",
@@ -1073,6 +1086,24 @@ export const translations = {
         store: "Do'kon",
         goals: "Maqsadlar",
         system: "Tizim",
+      },
+      password: {
+        title: "Parolni o'zgartirish",
+        description: "Hisobingiz parolini yangilang",
+        current: "Joriy parol",
+        new: "Yangi parol",
+        confirm: "Yangi parolni tasdiqlang",
+        submit: "Parolni yangilash",
+        show: "Parolni ko'rsatish",
+        hide: "Parolni yashirish",
+        success: "Parol muvaffaqiyatli o'zgartirildi",
+        errorWrongCurrent: "Joriy parol noto'g'ri",
+        errorWeak: "Yangi parol juda oddiy yoki talabga javob bermaydi",
+        errorGeneric: "Parolni o'zgartirib bo'lmadi. Qayta urinib ko'ring",
+        errRequired: "Maydonni to'ldiring",
+        errTooShort: "Parol kamida 8 ta belgidan iborat bo'lishi kerak",
+        errMismatch: "Parollar mos kelmadi",
+        errSame: "Yangi parol joriy paroldan farq qilishi kerak",
       },
       general: {
         sectionTitle: "Umumiy sozlamalar",
@@ -1482,6 +1513,7 @@ export const translations = {
       tabs: {
         shifts: "Smena hisobotlari",
         sales: "Sotuvlar arxivi",
+        complaints: "Hal etilgan shikoyatlar",
       },
       filters: {
         date: "Sana",
@@ -1508,6 +1540,13 @@ export const translations = {
         amount: "Summa",
         payment: "To'lov",
         status: "Holat",
+      },
+      complaintsTable: {
+        ticket: "Ariza raqami",
+        customer: "Mijoz",
+        type: "Tur",
+        priority: "Muhimlik",
+        date: "Sana",
       },
       csv: "CSV yuklab olish",
       empty: "Ma'lumot topilmadi",
@@ -1631,6 +1670,7 @@ export const translations = {
     header: {
       searchPlaceholder: "Поиск...",
       logout: "Выйти из профиля",
+      changePassword: "Изменить пароль",
     },
     dashboard: {
       title: "Главная",
@@ -1851,6 +1891,8 @@ export const translations = {
       },
       matrix: {
         addSize: "Добавить размер",
+        customVolume: "Другой объем (мл)",
+        sellingPrice: "Цена продажи",
         color: "Цвет",
         qty: "Кол-во",
         defaultColor: "Основной",
@@ -2023,6 +2065,12 @@ export const translations = {
       stockUnit: "шт",
       sizesLabel: "Размеры",
       noWarehouse: "Склад не привязан",
+      companion: {
+        title: "Флакон",
+        placeholder: "Выберите флакон...",
+        none: "Без флакона",
+        saved: "Флакон сохранен",
+      },
       table: {
         product: "Товар",
         sku: "Артикул",
@@ -2064,6 +2112,7 @@ export const translations = {
     productGroups: {
       title: "Группы товаров",
       subtitle: "Управление группами товаров",
+      sizeTypeVolume: "Парфюм (мл)",
       addNew: "Добавить группу",
       stats: {
         total: "Всего групп",
@@ -2372,6 +2421,7 @@ export const translations = {
     requests: {
       title: "Жалобы",
       subtitle: "Управление обращениями клиентов",
+      searchPlaceholder: "Поиск по номеру обращения...",
       stats: {
         total: "Всего заявок",
         resolvedToday: "Решено сегодня",
@@ -2399,7 +2449,7 @@ export const translations = {
         allType: "Все типы",
       },
       table: {
-        id: "ID",
+        ticket: "Номер обращения",
         customer: "Клиент",
         type: "Тип",
         priority: "Приоритет",
@@ -2430,6 +2480,8 @@ export const translations = {
       searchPlaceholder: "Поиск...",
       emptyProducts: "Товар не найден",
       noSizesAvailable: "Нет в наличии",
+      bottleBadge: "Флакон",
+      removeBottle: "Убрать флакон",
       unitsSuffix: "шт",
       variantModal: {
         outOfStock: "Нет в наличии",
@@ -2614,6 +2666,24 @@ export const translations = {
         store: "Магазин",
         goals: "Цели",
         system: "Система",
+      },
+      password: {
+        title: "Изменить пароль",
+        description: "Обновите пароль вашей учетной записи",
+        current: "Текущий пароль",
+        new: "Новый пароль",
+        confirm: "Подтвердите новый пароль",
+        submit: "Обновить пароль",
+        show: "Показать пароль",
+        hide: "Скрыть пароль",
+        success: "Пароль успешно изменен",
+        errorWrongCurrent: "Текущий пароль неверный",
+        errorWeak: "Новый пароль слишком простой или не соответствует требованиям",
+        errorGeneric: "Не удалось изменить пароль. Попробуйте еще раз",
+        errRequired: "Заполните поле",
+        errTooShort: "Пароль должен содержать не менее 8 символов",
+        errMismatch: "Пароли не совпадают",
+        errSame: "Новый пароль должен отличаться от текущего",
       },
       general: {
         sectionTitle: "Общие настройки",
@@ -3023,6 +3093,7 @@ export const translations = {
       tabs: {
         shifts: "Отчёты по сменам",
         sales: "Архив продаж",
+        complaints: "Решённые жалобы",
       },
       filters: {
         date: "Дата",
@@ -3049,6 +3120,13 @@ export const translations = {
         amount: "Сумма",
         payment: "Оплата",
         status: "Статус",
+      },
+      complaintsTable: {
+        ticket: "Номер обращения",
+        customer: "Клиент",
+        type: "Тип",
+        priority: "Приоритет",
+        date: "Дата",
       },
       csv: "Скачать CSV",
       empty: "Данные не найдены",
@@ -3172,6 +3250,7 @@ export const translations = {
     header: {
       searchPlaceholder: "Search...",
       logout: "Log out",
+      changePassword: "Change password",
     },
     dashboard: {
       title: "Dashboard",
@@ -3392,6 +3471,8 @@ export const translations = {
       },
       matrix: {
         addSize: "Add size",
+        customVolume: "Other volume (ml)",
+        sellingPrice: "Selling price",
         color: "Color",
         qty: "Qty",
         defaultColor: "Default",
@@ -3564,6 +3645,12 @@ export const translations = {
       stockUnit: "pcs",
       sizesLabel: "Sizes",
       noWarehouse: "No warehouse assigned",
+      companion: {
+        title: "Bottle",
+        placeholder: "Select a bottle...",
+        none: "No bottle",
+        saved: "Bottle saved",
+      },
       table: {
         product: "Product",
         sku: "SKU",
@@ -3605,6 +3692,7 @@ export const translations = {
     productGroups: {
       title: "Product Groups",
       subtitle: "Manage product groups",
+      sizeTypeVolume: "Perfume (ml)",
       addNew: "Add Group",
       stats: {
         total: "Total Groups",
@@ -3913,6 +4001,7 @@ export const translations = {
     requests: {
       title: "Complaints",
       subtitle: "Customer request management",
+      searchPlaceholder: "Search by ticket number...",
       stats: {
         total: "Total Requests",
         resolvedToday: "Resolved Today",
@@ -3940,7 +4029,7 @@ export const translations = {
         allType: "All Types",
       },
       table: {
-        id: "ID",
+        ticket: "Ticket #",
         customer: "Customer",
         type: "Type",
         priority: "Priority",
@@ -3971,6 +4060,8 @@ export const translations = {
       searchPlaceholder: "Search...",
       emptyProducts: "No products found",
       noSizesAvailable: "Not available",
+      bottleBadge: "Bottle",
+      removeBottle: "Remove bottle",
       unitsSuffix: "pcs",
       variantModal: {
         outOfStock: "Out of stock",
@@ -4155,6 +4246,24 @@ export const translations = {
         store: "Store",
         goals: "Goals",
         system: "System",
+      },
+      password: {
+        title: "Change password",
+        description: "Update your account password",
+        current: "Current password",
+        new: "New password",
+        confirm: "Confirm new password",
+        submit: "Update password",
+        show: "Show password",
+        hide: "Hide password",
+        success: "Password changed successfully",
+        errorWrongCurrent: "Current password is incorrect",
+        errorWeak: "The new password is too weak or does not meet requirements",
+        errorGeneric: "Could not change the password. Please try again",
+        errRequired: "This field is required",
+        errTooShort: "Password must be at least 8 characters",
+        errMismatch: "Passwords do not match",
+        errSame: "New password must be different from the current one",
       },
       general: {
         sectionTitle: "General Settings",
@@ -4564,6 +4673,7 @@ export const translations = {
       tabs: {
         shifts: "Shift Reports",
         sales: "Sales Archive",
+        complaints: "Resolved Complaints",
       },
       filters: {
         date: "Date",
@@ -4590,6 +4700,13 @@ export const translations = {
         amount: "Amount",
         payment: "Payment",
         status: "Status",
+      },
+      complaintsTable: {
+        ticket: "Ticket #",
+        customer: "Customer",
+        type: "Type",
+        priority: "Priority",
+        date: "Date",
       },
       csv: "Export CSV",
       empty: "No data found",

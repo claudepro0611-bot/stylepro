@@ -20,7 +20,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { cn } from '@/lib/utils'
 import type { Customer } from '@/lib/types'
-import { replyToCustomerTelegram } from './actions'
+import { sendMurojatReply } from './actions'
 
 const ITEMS_PER_PAGE = 10
 const STATUS_FILTERS = ['Barchasi', 'VIP', 'Regular', 'New'] as const
@@ -72,31 +72,28 @@ function mapCustomer(row: CustomerRow): Customer {
   }
 }
 
-// Murojaatlar tab: a two-way chat view of Telegram requests for the selected
-// customer only, limited to mode = 'murojat' (customer_id + source =
-// 'telegram' + mode = 'murojat' - see requests table). Complaint
-// ('shikoyat' mode) requests stay on the main /requests ("Shikoyatlar")
-// page only.
+// Murojaatlar tab: a real, persisted two-way chat view for the selected
+// customer's murojat (mode = 'murojat') thread. Complaint ('shikoyat' mode)
+// requests stay on the main /requests ("Shikoyatlar") page only.
 //
-// requests rows only ever represent INBOUND (customer -> store) messages -
-// there is no schema for persisting the store's outbound replies as chat
-// history (replyToCustomerTelegram in ./actions.ts just calls Telegram's
-// sendMessage and returns success/failure; it does not write anywhere). So
-// outbound bubbles rendered below (`optimisticReplies` state) are a
-// client-side-only, non-persisted echo of what was just sent - they exist
-// only for this open drawer session and will not reappear if the customer
-// is reopened later. Persisting real two-way history would need a new
-// table/column and is out of scope here.
-interface TelegramRequestRow {
+// Data model (20260806000002_murojat_chat_history.sql): one `requests` row
+// per ongoing murojat conversation, with the actual message-by-message
+// history threaded under it in `murojat_messages` (both customer- and
+// store-authored messages). We load the customer's most recent murojat
+// `requests` row (regardless of status, so a resolved thread's history is
+// still viewable/reply-able) via a direct company-scoped select, then fetch
+// its full message history through the get_murojat_messages() RPC. Replies
+// go through sendMurojatReply() (./actions.ts), which persists via
+// send_murojat_reply() and then delivers over Telegram in the same action.
+interface MurojatRequestRow {
   id: string
-  message: string | null
-  created_at: string
 }
 
-interface OptimisticReply {
+interface MurojatMessageRow {
   id: string
-  text: string
-  createdAt: string
+  sender: string
+  message: string
+  sent_at: string | null
 }
 
 interface SalesHistoryRow {
@@ -139,14 +136,11 @@ export default function CustomersPage() {
   const [vipEditValue, setVipEditValue] = useState('')
   const [vipSaving, setVipSaving] = useState(false)
 
-  // ─── Murojaatlar tab state (Telegram requests for this customer) ─────────
+  // ─── Murojaatlar tab state (persisted chat thread for this customer) ─────
   const [requestsLoading, setRequestsLoading] = useState(false)
   const [requestsLoadedFor, setRequestsLoadedFor] = useState<string | null>(null)
-  const [telegramRequests, setTelegramRequests] = useState<TelegramRequestRow[]>([])
-  // Client-side-only, non-persisted outbound bubbles - see the comment above
-  // TelegramRequestRow/OptimisticReply above for why these cannot be sourced
-  // from the DB.
-  const [optimisticReplies, setOptimisticReplies] = useState<OptimisticReply[]>([])
+  const [murojatRequestId, setMurojatRequestId] = useState<string | null>(null)
+  const [chatMessages, setChatMessages] = useState<MurojatMessageRow[]>([])
   const [replyText, setReplyText] = useState('')
   const [replySending, setReplySending] = useState(false)
   const chatScrollRef = useRef<HTMLDivElement>(null)
@@ -201,8 +195,8 @@ export default function CustomersPage() {
     // as the Karta tab above.
     setRequestsLoadedFor(null)
     setRequestsLoading(false)
-    setTelegramRequests([])
-    setOptimisticReplies([])
+    setMurojatRequestId(null)
+    setChatMessages([])
     setReplyText('')
   }
 
@@ -316,65 +310,106 @@ export default function CustomersPage() {
     loadKarta(selectedCustomer)
   }, [detailTab, selectedCustomer, kartaLoadedFor, loadKarta])
 
-  const loadTelegramRequests = useCallback(async (c: Customer) => {
+  const loadMurojatMessages = useCallback(async (requestId: string) => {
+    const supabase = createClient()
+    const { data, error } = await supabase.rpc('get_murojat_messages', { p_request_id: requestId })
+    if (error) {
+      toast.error(t('common.error'))
+      return
+    }
+    setChatMessages((data ?? []) as MurojatMessageRow[])
+  }, [t])
+
+  const loadMurojatThread = useCallback(async (c: Customer) => {
     setRequestsLoading(true)
     setRequestsLoadedFor(c.id)
     const supabase = createClient()
-    const { data, error } = await supabase
+
+    // Most recent murojat thread for this customer, regardless of status -
+    // a resolved thread's history should still be viewable (and reply-able,
+    // which simply continues the same thread server-side).
+    const { data: request, error } = await supabase
       .from('requests')
-      .select('id, message, created_at')
+      .select('id')
       .eq('customer_id', c.id)
-      .eq('source', 'telegram')
       .eq('mode', 'murojat')
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (error) {
       toast.error(t('common.error'))
-      setTelegramRequests([])
+      setMurojatRequestId(null)
+      setChatMessages([])
+      setRequestsLoading(false)
+      return
+    }
+
+    const row = request as MurojatRequestRow | null
+    setMurojatRequestId(row?.id ?? null)
+
+    if (row?.id) {
+      await loadMurojatMessages(row.id)
     } else {
-      setTelegramRequests((data ?? []) as TelegramRequestRow[])
+      setChatMessages([])
     }
     setRequestsLoading(false)
-  }, [t])
+  }, [t, loadMurojatMessages])
 
   useEffect(() => {
     if (detailTab !== 'murojaatlar' || !selectedCustomer) return
     if (requestsLoadedFor === selectedCustomer.id) return
-    loadTelegramRequests(selectedCustomer)
-  }, [detailTab, selectedCustomer, requestsLoadedFor, loadTelegramRequests])
+    loadMurojatThread(selectedCustomer)
+  }, [detailTab, selectedCustomer, requestsLoadedFor, loadMurojatThread])
 
   async function sendReply(customerId: string) {
     const trimmed = replyText.trim()
     if (!trimmed) return
-    setReplySending(true)
-    const result = await replyToCustomerTelegram(customerId, trimmed)
-    setReplySending(false)
 
-    if ('error' in result) {
+    if (!murojatRequestId) {
+      // No murojat thread exists yet for this customer (they haven't
+      // messaged the bot / been classified as murojat yet) - nothing to
+      // attach a reply to.
       toast.error(t('customers.detail.replyError'))
       return
     }
 
-    // Optimistic, client-side-only bubble - see the comment above
-    // TelegramRequestRow/OptimisticReply for why this isn't (and can't yet
-    // be) persisted server-side.
-    setOptimisticReplies(prev => [...prev, {
-      id: crypto.randomUUID(),
-      text: trimmed,
-      createdAt: new Date().toISOString(),
+    setReplySending(true)
+
+    // Optimistic bubble for immediate feedback, reconciled with the real
+    // persisted row below (same UX principle as before, now backed by
+    // send_murojat_reply()/murojat_messages instead of being purely local).
+    const optimisticId = crypto.randomUUID()
+    setChatMessages(prev => [...prev, {
+      id: optimisticId,
+      sender: 'store',
+      message: trimmed,
+      sent_at: new Date().toISOString(),
     }])
+    setReplyText('')
+
+    const result = await sendMurojatReply(murojatRequestId, customerId, trimmed)
+    setReplySending(false)
+
+    if ('error' in result) {
+      // Revert the optimistic bubble on failure.
+      setChatMessages(prev => prev.filter(m => m.id !== optimisticId))
+      toast.error(t('customers.detail.replyError'))
+      return
+    }
 
     toast.success(t('customers.detail.replySuccess'))
-    setReplyText('')
+    // Reconcile with the real persisted history (real id/sent_at).
+    await loadMurojatMessages(murojatRequestId)
   }
 
   // Keep the chat scrolled to the newest message whenever the thread grows
-  // (initial load or a new optimistic reply).
+  // (initial load, an optimistic reply, or reconciliation).
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
     }
-  }, [telegramRequests, optimisticReplies])
+  }, [chatMessages])
 
   async function refreshSelectedCustomer(id: string) {
     const supabase = createClient()
@@ -659,35 +694,30 @@ export default function CustomersPage() {
                         <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
                         {t('common.loading')}
                       </p>
-                    ) : telegramRequests.length === 0 && optimisticReplies.length === 0 ? (
+                    ) : chatMessages.length === 0 ? (
                       <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">{t('customers.detail.noComplaints')}</p>
                     ) : (
                       <div
                         ref={chatScrollRef}
                         className="flex h-96 flex-col gap-3 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-3"
                       >
-                        {/* Inbound (customer -> store) messages, oldest first - real
-                            data from `requests` (mode = 'murojat'). */}
-                        {telegramRequests.map(r => (
-                          <div key={r.id} className="flex justify-start">
+                        {/* Full persisted thread, oldest first - real data from
+                            get_murojat_messages() (murojat_messages table). */}
+                        {chatMessages.map(m => (
+                          <div key={m.id} className={m.sender === 'store' ? 'flex justify-end' : 'flex justify-start'}>
                             <div className="max-w-[80%]">
-                              <div className="rounded-2xl rounded-bl-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
-                                {r.message}
-                              </div>
-                              <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{formatDateTime(r.created_at)}</p>
-                            </div>
-                          </div>
-                        ))}
-
-                        {/* Outbound (store -> customer) replies - client-side-only,
-                            not persisted (see the OptimisticReply comment above). */}
-                        {optimisticReplies.map(o => (
-                          <div key={o.id} className="flex justify-end">
-                            <div className="max-w-[80%]">
-                              <div className="rounded-2xl rounded-br-sm bg-blue-600 dark:bg-blue-700 px-3 py-2 text-sm text-white">
-                                {o.text}
-                              </div>
-                              <p className="mt-1 text-right text-[11px] text-gray-400 dark:text-gray-500">{formatDateTime(o.createdAt)}</p>
+                              {m.sender === 'store' ? (
+                                <div className="rounded-2xl rounded-br-sm bg-blue-600 dark:bg-blue-700 px-3 py-2 text-sm text-white">
+                                  {m.message}
+                                </div>
+                              ) : (
+                                <div className="rounded-2xl rounded-bl-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
+                                  {m.message}
+                                </div>
+                              )}
+                              <p className={m.sender === 'store' ? 'mt-1 text-right text-[11px] text-gray-400 dark:text-gray-500' : 'mt-1 text-[11px] text-gray-400 dark:text-gray-500'}>
+                                {m.sent_at ? formatDateTime(m.sent_at) : ''}
+                              </p>
                             </div>
                           </div>
                         ))}

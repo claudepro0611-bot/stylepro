@@ -34,40 +34,74 @@ async function requireCustomersPermission() {
   return { companyId: me.company_id as string }
 }
 
-export async function replyToCustomerTelegram(customerId: string, text: string) {
+// Persists a store reply to a murojat thread AND delivers it over Telegram.
+//
+// Replaces the old replyToCustomerTelegram (send-only, no persistence) that
+// used to live here. That helper predated public.murojat_messages - it just
+// called sendMessage() and returned success/failure, with the UI faking a
+// non-persisted "optimistic" bubble that vanished on reload (see the old
+// comment block above TelegramRequestRow/OptimisticReply in
+// customers/page.tsx). Now that a real chat-history table + RPC exist
+// (20260806000002_murojat_chat_history.sql), there is no reason to keep two
+// divergent reply paths - this action supersedes it entirely: persistence
+// via send_murojat_reply() first, then the same Telegram delivery step as
+// before.
+export async function sendMurojatReply(requestId: string, customerId: string, message: string) {
   try {
-    return await replyToCustomerTelegramInternal(customerId, text)
+    return await sendMurojatReplyInternal(requestId, customerId, message)
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Unknown error' }
   }
 }
 
-async function replyToCustomerTelegramInternal(customerId: string, text: string) {
+async function sendMurojatReplyInternal(requestId: string, customerId: string, message: string) {
   const { companyId } = await requireCustomersPermission()
 
-  const trimmed = text.trim()
+  const trimmed = message.trim()
   if (!trimmed) {
     return { error: 'empty_message' }
   }
 
-  const { data: customer, error } = await supabaseServer
+  const { data: customer, error: customerError } = await supabaseServer
     .from('customers')
     .select('id, company_id, telegram_id')
     .eq('id', customerId)
     .single()
 
-  if (error || !customer || customer.company_id !== companyId) {
+  if (customerError || !customer || customer.company_id !== companyId) {
     return { error: 'customer_not_found' }
   }
 
+  // send_murojat_reply() is a SECURITY DEFINER RPC gated on
+  // has_permission('requests') and company-scoped via get_company_id() -
+  // both resolve from auth.uid(), so it must be called through the
+  // session-aware server client (createClient()), not supabaseServer/
+  // service-role, which has no auth.uid() and would make get_company_id()
+  // raise "No company for current user". This is the first server-action
+  // RPC call in the codebase (every other RPC call happens from the browser
+  // client) - needed here specifically because delivering the reply over
+  // Telegram in the same action requires supabaseServer to read
+  // customers.telegram_id server-side.
+  const supabase = await createClient()
+  const { data: inserted, error: rpcError } = await supabase.rpc('send_murojat_reply', {
+    p_request_id: requestId,
+    p_message: trimmed,
+  })
+
+  if (rpcError || !inserted) {
+    return { error: rpcError?.message ?? 'send_failed' }
+  }
+
   if (!customer.telegram_id) {
-    return { error: 'not_linked' }
+    // Persisted, but nothing to deliver - the customer isn't Telegram-linked.
+    return { success: true, message: inserted }
   }
 
   const result = await sendMessage(customer.telegram_id, trimmed)
   if (!result.ok) {
-    return { error: 'send_failed' }
+    console.error('[customers/actions] failed to deliver murojat reply via telegram', result.error)
+    return { success: true, message: inserted, deliveryFailed: true }
   }
 
-  return { success: true }
+  return { success: true, message: inserted }
 }

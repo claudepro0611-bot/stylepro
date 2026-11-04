@@ -7,12 +7,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { MiniBadge } from '@/components/ui/MiniBadge'
 import { ReturnModal, type ReturnableItem } from '@/components/arxiv/ReturnModal'
 import { createClient } from '@/lib/supabase/client'
-import { formatDateTime, formatDuration } from '@/lib/utils/formatters'
+import { formatDateTime, formatDuration, formatTicketNumber } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import type { TranslationKey } from '@/lib/i18n/translations'
 import type { Shift } from '@/lib/types'
+
+// Requests with mode = 'shikoyat' AND status = 'resolved' also surface here
+// (Task 5.3) as a third "Hal etilgan shikoyatlar" tab, following the same
+// filter/table visual conventions as the Sales tab below - the main
+// /requests page only ever shows the live queue, this is its archive
+// counterpart.
+const TYPE_LABEL_KEY: Record<string, TranslationKey> = {
+  complaint: 'requests.typeLabel.complaint',
+  inquiry: 'requests.typeLabel.inquiry',
+  return: 'requests.typeLabel.return',
+}
 
 const ITEMS_PER_PAGE = 20
 const PAYMENT_METHODS = ['Naqd', 'Karta', 'Click', 'Payme']
@@ -99,6 +110,15 @@ interface TransactionItemRow {
   product_size_id: string | null
 }
 
+interface ResolvedComplaintRow {
+  id: string
+  ticket_number: number
+  customer_name: string | null
+  type: string
+  priority: string
+  created_at: string
+}
+
 function receiptNumber(id: string): string {
   return `#${id.slice(0, 8).toUpperCase()}`
 }
@@ -107,28 +127,31 @@ export default function ArxivPage() {
   const { t } = useLanguage()
   const { formatPrice } = useCurrency()
 
-  const [activeTab, setActiveTab] = useState<'shifts' | 'sales'>('shifts')
+  const [activeTab, setActiveTab] = useState<'shifts' | 'sales' | 'complaints'>('shifts')
   const [loading, setLoading] = useState(true)
 
   const [shifts, setShifts] = useState<Shift[]>([])
   const [transactions, setTransactions] = useState<TransactionRow[]>([])
   const [items, setItems] = useState<TransactionItemRow[]>([])
   const [products, setProducts] = useState<{ id: string; name: string }[]>([])
+  const [resolvedComplaints, setResolvedComplaints] = useState<ResolvedComplaintRow[]>([])
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const [shiftsRes, txnsRes, itemsRes, productsRes] = await Promise.all([
+    const [shiftsRes, txnsRes, itemsRes, productsRes, complaintsRes] = await Promise.all([
       supabase.from('shifts').select('*').eq('status', 'closed').order('started_at', { ascending: false }),
       supabase.from('transactions_net').select('id, customer_name, total_amount, net_amount, returned_amount, status, date, created_at, payment_method, cashier_name').order('created_at', { ascending: false }),
       supabase.from('transaction_items').select('id, transaction_id, product_id, product_name, quantity, price, returned_quantity, product_size_id'),
       supabase.from('products').select('id, name').order('name'),
+      supabase.from('requests').select('id, ticket_number, customer_name, type, priority, created_at').eq('mode', 'shikoyat').eq('status', 'resolved').order('created_at', { ascending: false }),
     ])
 
     setShifts((shiftsRes.data ?? []) as Shift[])
     setTransactions((txnsRes.data ?? []) as TransactionRow[])
     setItems((itemsRes.data ?? []) as TransactionItemRow[])
     setProducts((productsRes.data ?? []) as { id: string; name: string }[])
+    setResolvedComplaints((complaintsRes.data ?? []) as ResolvedComplaintRow[])
     setLoading(false)
   }, [])
 
@@ -237,6 +260,37 @@ export default function ArxivPage() {
   const saleTotalPages = Math.max(1, Math.ceil(filteredSales.length / ITEMS_PER_PAGE))
   const paginatedSales = filteredSales.slice((salePage - 1) * ITEMS_PER_PAGE, salePage * ITEMS_PER_PAGE)
 
+  // ─── Tab 3: Resolved Shikoyat tickets (Task 5.3) ────────────────────────
+  const [complaintDatePreset, setComplaintDatePreset] = useState<DatePreset | null>(null)
+  const [complaintCustomFrom, setComplaintCustomFrom] = useState('')
+  const [complaintCustomTo, setComplaintCustomTo] = useState('')
+  const [complaintSearch, setComplaintSearch] = useState('')
+  const [complaintPage, setComplaintPage] = useState(1)
+
+  const filteredComplaints = useMemo(() => {
+    let list = resolvedComplaints
+    const range = presetRange(complaintDatePreset, complaintCustomFrom, complaintCustomTo)
+    if (range) {
+      const [from, to] = range
+      list = list.filter(c => {
+        const day = c.created_at.slice(0, 10)
+        return day >= from && day <= to
+      })
+    }
+    if (complaintSearch.trim()) {
+      const q = complaintSearch.trim().toLowerCase().replace(/^#/, '')
+      list = list.filter(c =>
+        (c.customer_name ?? '').toLowerCase().includes(q) ||
+        String(c.ticket_number).includes(q) ||
+        formatTicketNumber(c.ticket_number).toLowerCase().includes(q),
+      )
+    }
+    return list
+  }, [resolvedComplaints, complaintDatePreset, complaintCustomFrom, complaintCustomTo, complaintSearch])
+
+  const complaintTotalPages = Math.max(1, Math.ceil(filteredComplaints.length / ITEMS_PER_PAGE))
+  const paginatedComplaints = filteredComplaints.slice((complaintPage - 1) * ITEMS_PER_PAGE, complaintPage * ITEMS_PER_PAGE)
+
   function exportCSV() {
     const headers = [
       t('arxiv.salesTable.time'), t('arxiv.salesTable.receipt'), t('arxiv.salesTable.cashier'),
@@ -265,7 +319,7 @@ export default function ArxivPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
-        {(['shifts', 'sales'] as const).map(tab => (
+        {(['shifts', 'sales', 'complaints'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -276,7 +330,7 @@ export default function ArxivPage() {
                 : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
             )}
           >
-            {tab === 'shifts' ? t('arxiv.tabs.shifts') : t('arxiv.tabs.sales')}
+            {tab === 'shifts' ? t('arxiv.tabs.shifts') : tab === 'sales' ? t('arxiv.tabs.sales') : t('arxiv.tabs.complaints')}
           </button>
         ))}
       </div>
@@ -366,7 +420,7 @@ export default function ArxivPage() {
             )}
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'sales' ? (
         <div className="space-y-4">
           {/* Filters */}
           <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3 transition-colors duration-200">
@@ -485,6 +539,96 @@ export default function ArxivPage() {
                   </table>
                 </div>
                 <Pagination currentPage={salePage} totalPages={saleTotalPages} totalItems={filteredSales.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setSalePage} />
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Filters */}
+          <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3 transition-colors duration-200">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12px] font-medium text-gray-400 dark:text-gray-500 mr-1 shrink-0">{t('arxiv.filters.period')}</span>
+              {DATE_PRESETS.map(dp => (
+                <button
+                  key={dp.value}
+                  onClick={() => { setComplaintDatePreset(complaintDatePreset === dp.value ? null : dp.value); setComplaintPage(1) }}
+                  className={pillCls(complaintDatePreset === dp.value)}
+                >
+                  {t(dp.labelKey)}
+                </button>
+              ))}
+              {complaintDatePreset === 'custom' && (
+                <div className="flex flex-wrap items-center gap-2 ml-1">
+                  <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.from')}</span>
+                  <input type="date" value={complaintCustomFrom} onChange={e => { setComplaintCustomFrom(e.target.value); setComplaintPage(1) }} className={dateInputCls} />
+                  <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.to')}</span>
+                  <input type="date" value={complaintCustomTo} onChange={e => { setComplaintCustomTo(e.target.value); setComplaintPage(1) }} className={dateInputCls} />
+                </div>
+              )}
+            </div>
+            <div className="h-px bg-gray-100 dark:bg-gray-800" />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder={t('requests.searchPlaceholder')}
+                  value={complaintSearch}
+                  onChange={e => { setComplaintSearch(e.target.value); setComplaintPage(1) }}
+                  className="h-9 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 pl-9 pr-4 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden transition-colors duration-200">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 px-4 py-16 text-sm text-gray-400 dark:text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('common.loading')}
+              </div>
+            ) : filteredComplaints.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-3 px-4 py-16 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                  <ArchiveIcon className="h-6 w-6 text-gray-300 dark:text-gray-600" />
+                </div>
+                <p className="text-sm text-gray-400 dark:text-gray-500">{t('arxiv.empty')}</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-table-header-bg dark:bg-gray-800/50">
+                      <tr className="border-b border-gray-100 dark:border-gray-800">
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.complaintsTable.ticket')}</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.complaintsTable.customer')}</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.complaintsTable.type')}</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.complaintsTable.priority')}</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.complaintsTable.date')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedComplaints.map((c, i) => (
+                        <tr
+                          key={c.id}
+                          className={cn(
+                            'border-b border-gray-100 dark:border-gray-800 transition-colors',
+                            i % 2 !== 0 && 'bg-gray-50/50 dark:bg-gray-800/30',
+                          )}
+                        >
+                          <td className="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{formatTicketNumber(c.ticket_number)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{c.customer_name ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{t(TYPE_LABEL_KEY[c.type] ?? 'requests.typeLabel.inquiry')}</td>
+                          <td className="px-4 py-3"><MiniBadge status={c.priority} /></td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(c.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Pagination currentPage={complaintPage} totalPages={complaintTotalPages} totalItems={filteredComplaints.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setComplaintPage} />
               </>
             )}
           </div>

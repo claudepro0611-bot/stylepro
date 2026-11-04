@@ -312,7 +312,7 @@ export default function MahsulotGuruhlariPage() {
             <div>
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">O&apos;lcham turi</label>
               <div className="flex gap-2">
-                {([['clothing', "Kiyim (XS–XXL)"], ['shoe', "Poyabzal (36–45)"], ['universal', "Universal"]] as const).map(([val, label]) => (
+                {([['clothing', "Kiyim (XS–XXL)"], ['shoe', "Poyabzal (36–45)"], ['universal', "Universal"], ['volume', t('productGroups.sizeTypeVolume')]] as const).map(([val, label]) => (
                   <button
                     key={val}
                     type="button"

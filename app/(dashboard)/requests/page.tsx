@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { MessageSquare, CheckCircle, Clock, Loader2 } from 'lucide-react'
+import { MessageSquare, CheckCircle, Clock, Loader2, Search } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { StatCard } from '@/components/ui/StatCard'
 import { Pagination } from '@/components/ui/Pagination'
@@ -9,10 +9,11 @@ import { MiniBadge } from '@/components/ui/MiniBadge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
-import { formatDate } from '@/lib/utils/formatters'
+import { formatDate, formatTicketNumber } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import type { TranslationKey } from '@/lib/i18n/translations'
 import type { Request } from '@/lib/types'
+import { notifyCustomerRequestUpdate } from './actions'
 
 const ITEMS_PER_PAGE = 10
 
@@ -28,6 +29,7 @@ interface RequestRow {
   created_at: string
   source: Request['source'] | null
   mode: Request['mode'] | null
+  ticket_number: number
 }
 
 function mapRequest(row: RequestRow): Request {
@@ -43,6 +45,7 @@ function mapRequest(row: RequestRow): Request {
     notes: row.notes ?? '',
     source: row.source ?? 'web',
     mode: row.mode ?? 'shikoyat',
+    ticketNumber: row.ticket_number,
   }
 }
 
@@ -66,6 +69,7 @@ export default function RequestsPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
@@ -97,8 +101,14 @@ export default function RequestsPage() {
     if (statusFilter !== 'all') list = list.filter(r => r.status === statusFilter)
     if (priorityFilter !== 'all') list = list.filter(r => r.priority === priorityFilter)
     if (typeFilter !== 'all') list = list.filter(r => r.type === typeFilter)
+    if (search.trim()) {
+      // Match against the formatted "#001" ticket number and the raw digits,
+      // so both "1" and "#001" find the same ticket.
+      const q = search.trim().toLowerCase().replace(/^#/, '')
+      list = list.filter(r => String(r.ticketNumber).includes(q) || formatTicketNumber(r.ticketNumber).toLowerCase().includes(q))
+    }
     return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }, [requests, statusFilter, priorityFilter, typeFilter])
+  }, [requests, statusFilter, priorityFilter, typeFilter, search])
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
@@ -131,6 +141,11 @@ export default function RequestsPage() {
     setIsDetailOpen(false)
     toast.success(t('requests.toasts.updateSuccess'))
     fetchRequests()
+
+    // Best-effort notification to the linked customer over Telegram - never
+    // blocks/fails the notes save itself (see notifyCustomerRequestUpdate's
+    // own comment in ./actions.ts); errors are only logged there.
+    notifyCustomerRequestUpdate(selectedRequest.id, notes)
   }
 
   const selectCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
@@ -152,6 +167,16 @@ export default function RequestsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder={t('requests.searchPlaceholder')}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
+            className="h-9 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 pl-9 pr-4 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors"
+          />
+        </div>
         <select
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1) }}
@@ -193,7 +218,7 @@ export default function RequestsPage() {
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" className="rounded border-gray-300 dark:border-gray-600 h-3.5 w-3.5" />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.id')}</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.ticket')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.customer')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.source')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.type')}</th>
@@ -226,7 +251,7 @@ export default function RequestsPage() {
                   <td className="w-10 px-4 py-3" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" className="rounded border-gray-300 dark:border-gray-600 h-3.5 w-3.5" />
                   </td>
-                  <td className="px-4 py-3 font-mono text-[12px] font-semibold text-gray-600 dark:text-gray-300">{r.id}</td>
+                  <td className="px-4 py-3 font-mono text-[12px] font-semibold text-gray-600 dark:text-gray-300">{formatTicketNumber(r.ticketNumber)}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{r.customerName}</td>
                   <td className="px-4 py-3">
                     {r.source === 'telegram' && (
@@ -267,7 +292,7 @@ export default function RequestsPage() {
               <DialogHeader>
                 <div className="flex items-center justify-between gap-3">
                   <DialogTitle className="font-mono text-sm text-gray-700 dark:text-gray-300">
-                    {selectedRequest.id}
+                    {formatTicketNumber(selectedRequest.ticketNumber)}
                   </DialogTitle>
                   <MiniBadge status={selectedRequest.priority} />
                 </div>

@@ -178,6 +178,19 @@ export interface Request {
   notes: string
   source: 'web' | 'telegram'
   mode: 'shikoyat' | 'murojat'
+  ticketNumber: number
+}
+
+// A single message in a murojat (mode = 'murojat') request's persisted chat
+// history - see public.murojat_messages / get_murojat_messages() /
+// send_murojat_reply() in supabase/migrations/20260806000002_murojat_chat_history.sql.
+export interface MurojatMessage {
+  id: string
+  requestId: string
+  customerId: string | null
+  sender: 'customer' | 'store'
+  message: string
+  sentAt: string
 }
 
 export interface ProductGroup {

@@ -20,7 +20,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import type { TranslationKey } from '@/lib/i18n/translations'
 import type { StockInEntry, Product } from '@/lib/types'
-import { type SizeType, getSizesForType } from '@/lib/sizes'
+import { type SizeType, getSizesForType, parseVolume, formatVolume } from '@/lib/sizes'
 import { WAREHOUSE_TYPE_LABEL_KEYS, type WarehouseType } from '@/lib/warehouses'
 
 const ITEMS_PER_PAGE = 20
@@ -284,7 +284,7 @@ const emptyForm = {
   markupPercent: '',
 }
 
-interface MatrixColumn { id: string; size: string }
+interface MatrixColumn { id: string; size: string; price: string }
 
 export default function KirimPage() {
   const { t } = useLanguage()
@@ -362,7 +362,7 @@ export default function KirimPage() {
 
   function resetMatrix() {
     colIdRef.current = 1
-    setColumns([{ id: 'col-1', size: '' }])
+    setColumns([{ id: 'col-1', size: '', price: '' }])
     setCellQty({})
   }
 
@@ -376,7 +376,7 @@ export default function KirimPage() {
 
   function addColumn() {
     const id = `col-${++colIdRef.current}`
-    setColumns(prev => [...prev, { id, size: '' }])
+    setColumns(prev => [...prev, { id, size: '', price: '' }])
   }
 
   function removeColumn(id: string) {
@@ -390,6 +390,10 @@ export default function KirimPage() {
 
   function setColumnSize(id: string, size: string) {
     setColumns(prev => prev.map(c => (c.id === id ? { ...c, size } : c)))
+  }
+
+  function setColumnPrice(id: string, price: string) {
+    setColumns(prev => prev.map(c => (c.id === id ? { ...c, price: price.replace(/\D/g, '') } : c)))
   }
 
   function cellKey(color: string, colId: string): string {
@@ -514,6 +518,12 @@ export default function KirimPage() {
         if (!col.size) continue
         const qty = Number(cellQty[cellKey(color, col.id)] || 0)
         if (qty <= 0) continue
+        // Volume (perfume) sizes carry their own selling price per column.
+        const entryPrice = activeSizeType === 'volume' ? Number(col.price) || 0 : sellingPrice
+        if (activeSizeType === 'volume' && entryPrice <= 0) {
+          toast.error(t('kirim.matrix.sellingPrice'))
+          return
+        }
         entries.push({
           product_id: product.id,
           product_name: product.name,
@@ -522,7 +532,7 @@ export default function KirimPage() {
           color,
           quantity: qty,
           purchase_price: purchasePrice,
-          selling_price: sellingPrice,
+          selling_price: entryPrice,
           warehouse_id: activeWarehouse.id,
           supplier: form.supplier.trim(),
           date: form.datetime ? `${form.datetime}:00` : new Date().toISOString(),
@@ -893,12 +903,14 @@ export default function KirimPage() {
                     />
                   </div>
                 </div>
+                {activeSizeType !== 'volume' && (
                 <div className="flex items-center justify-between rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-4 py-3">
                   <span className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">Sotuv narxi</span>
                   <span className="text-[15px] font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">
                     {formatPrice(Math.round(Number(form.purchasePrice || 0) * (1 + Number(form.markupPercent || 0) / 100)))}
                   </span>
                 </div>
+                )}
               </div>
             )}
 
@@ -925,6 +937,22 @@ export default function KirimPage() {
                         {columns.map(col => (
                           <th key={col.id} className="px-2 py-2 border-b border-gray-200 dark:border-gray-700">
                             <div className="flex items-center gap-1">
+                              {activeSizeType === 'volume' && (
+                                <div className="space-y-1">
+                                  <input
+                                    type="number" min="1" placeholder={t('kirim.matrix.customVolume')}
+                                    value={parseVolume(col.size) !== null && !activeSizes.includes(col.size) ? String(parseVolume(col.size)) : ''}
+                                    onChange={e => setColumnSize(col.id, e.target.value ? formatVolume(Number(e.target.value)) : '')}
+                                    className="h-9 w-28 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500"
+                                  />
+                                  <input
+                                    type="text" inputMode="numeric" placeholder={t('kirim.matrix.sellingPrice')}
+                                    value={col.price ? new Intl.NumberFormat('ru-RU').format(Number(col.price)) : ''}
+                                    onChange={e => setColumnPrice(col.id, e.target.value)}
+                                    className="h-9 w-28 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500"
+                                  />
+                                </div>
+                              )}
                               <Select
                                 onValueChange={value => setColumnSize(col.id, value ?? '')}
                                 value={col.size || null}

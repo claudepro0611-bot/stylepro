@@ -59,6 +59,56 @@ interface TelegramUpdate {
 // any request row exists to classify. MODE_INFO_RE is matched first in
 // handleCallbackQuery and never touches the DB; keep it separate from
 // MODE_CALLBACK_RE's per-request flow.
+//
+// ═══════════════════════════════════════════════════════════════════════════
+// MUROJAT THREADING STRATEGY (20260806000002_murojat_chat_history.sql)
+// ═══════════════════════════════════════════════════════════════════════════
+// The new schema assumes ONE `requests` row per ongoing murojat conversation,
+// with many `murojat_messages` threaded under it via `request_id`. This
+// webhook, however, still creates a brand-new `requests` row for EVERY
+// incoming text message (unchanged classification UX - see handleTextMessage
+// below). Reconciling the two, implemented exactly as follows (the
+// "recommended approach" from the task brief - option (a), not deviated
+// from):
+//
+// 1. First message of a NEW conversation: unchanged. handleTextMessage still
+//    creates a `requests` row and asks the customer to classify it via the
+//    Shikoyat/Murojat inline buttons, exactly as before.
+//
+// 2. Every SUBSEQUENT message from that same customer: handleTextMessage
+//    first checks whether the customer already has an OPEN murojat thread
+//    (a `requests` row with mode = 'murojat' AND status != 'resolved',
+//    findOpenMurojatThread() below). If one exists, the incoming message is
+//    a continuation of that thread - it is inserted straight into
+//    `murojat_messages` (sender = 'customer') against that thread's
+//    request_id, and NO new `requests` row is created and NO classification
+//    buttons are (re-)sent. This is the only behavioral change from the old
+//    "one requests row per message" flow.
+//
+// 3. When the customer taps "Murojat" on a first/unclassified message (see
+//    handleCallbackQuery), that request row becomes the new open thread
+//    going forward AND its own original message text is backfilled into
+//    murojat_messages (sender = 'customer') at classification time, so the
+//    thread's history is complete from message #1 - not just from the
+//    second message onward. telegram_message_id is left null on this
+//    backfilled row: requests does not store the original inbound
+//    message_id anywhere, only its text (requests.message), so there is
+//    nothing to backfill it with.
+//
+// 4. When the customer taps "Shikoyat" instead: no threading happens.
+//    Shikoyat/complaint requests intentionally stay one-row-per-message,
+//    same as before this migration - a complaint is a single, self-
+//    contained report to be triaged and resolved on /requests, not a live
+//    back-and-forth conversation the way a murojat thread is. Nothing about
+//    the mode = 'shikoyat' branch needed to change.
+//
+// 5. Once a murojat thread's `requests.status` is set to 'resolved' (via
+//    update_request() on /requests, or a future dedicated action), the next
+//    message from that same customer will find no OPEN thread and falls
+//    back to step 1 - a brand-new `requests` row + fresh classification
+//    prompt. This is intentional: a resolved conversation should not
+//    silently reopen and keep accumulating messages against a "closed"
+//    ticket.
 const MODE_CALLBACK_RE = /^mode:(shikoyat|murojat):([0-9a-f-]{36})$/i
 const MODE_INFO_RE = /^mode:info:(shikoyat|murojat)$/i
 const MODE_LABEL_UZ: Record<'shikoyat' | 'murojat', string> = {
@@ -181,7 +231,58 @@ async function handleContact(chatId: number, fromId: number, contact: TelegramCo
   }
 }
 
-async function handleTextMessage(chatId: number, fromId: number, text: string) {
+/**
+ * Finds this customer's OPEN murojat thread, if any - a `requests` row with
+ * mode = 'murojat' AND status != 'resolved'. Returns null if none exists
+ * (either the customer has never had a murojat conversation, or their most
+ * recent one is already resolved - see the threading strategy comment
+ * above). Uses supabaseServer like every other DB write/read in this file.
+ */
+async function findOpenMurojatThread(customerId: string): Promise<string | null> {
+  const { data, error } = await supabaseServer
+    .from('requests')
+    .select('id')
+    .eq('customer_id', customerId)
+    .eq('mode', 'murojat')
+    .neq('status', 'resolved')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[telegram/webhook] failed to look up open murojat thread', error.message)
+    return null
+  }
+
+  return data?.id ?? null
+}
+
+/** Inserts a customer-authored message into murojat_messages against an
+ * existing request thread. Used both for live continuations of an open
+ * thread (handleTextMessage) and for backfilling message #1 at
+ * classification time (handleCallbackQuery). */
+async function insertMurojatMessage(params: {
+  companyId: string
+  requestId: string
+  customerId: string | null
+  message: string
+  telegramMessageId?: number | null
+}) {
+  const { error } = await supabaseServer.from('murojat_messages').insert({
+    company_id: params.companyId,
+    request_id: params.requestId,
+    customer_id: params.customerId,
+    sender: 'customer',
+    message: params.message,
+    telegram_message_id: params.telegramMessageId ?? null,
+  })
+
+  if (error) {
+    console.error('[telegram/webhook] failed to insert murojat_messages row', error.message)
+  }
+}
+
+async function handleTextMessage(chatId: number, fromId: number, text: string, messageId: number) {
   const { data: customer, error } = await supabaseServer
     .from('customers')
     .select('id, company_id, full_name')
@@ -200,6 +301,24 @@ async function handleTextMessage(chatId: number, fromId: number, text: string) {
     // requests.sql) - so unlinked messages cannot be recorded as a request.
     // Ask the user to link first instead of guessing/fabricating a company.
     await handleStart(chatId)
+    return
+  }
+
+  // Threading: if this customer already has an OPEN murojat thread, this
+  // message is a continuation of it - persist straight into
+  // murojat_messages and skip creating a new requests row / re-classifying.
+  // See the threading strategy comment block above MODE_CALLBACK_RE for the
+  // full rationale.
+  const openThreadId = await findOpenMurojatThread(customer.id)
+  if (openThreadId) {
+    await insertMurojatMessage({
+      companyId: customer.company_id,
+      requestId: openThreadId,
+      customerId: customer.id,
+      message: text,
+      telegramMessageId: messageId,
+    })
+    await sendMessage(chatId, 'Xabaringiz qabul qilindi. Tez orada siz bilan bog\'lanamiz.')
     return
   }
 
@@ -271,13 +390,30 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
 
   await answerCallbackQuery(cb.id, `${label} sifatida qayd etildi`)
 
-  const { error: updateError } = await supabaseServer
+  const { data: updatedRequest, error: updateError } = await supabaseServer
     .from('requests')
     .update({ mode })
     .eq('id', requestId)
-  if (updateError) {
-    console.error('[telegram/webhook] failed to persist request mode', updateError.message)
+    .select('id, company_id, customer_id, message')
+    .single()
+
+  if (updateError || !updatedRequest) {
+    console.error('[telegram/webhook] failed to persist request mode', updateError?.message)
+  } else if (mode === 'murojat' && updatedRequest.message) {
+    // Backfill message #1 into murojat_messages so this thread's history is
+    // complete from the start, not just from the second message onward -
+    // see step 3 of the threading strategy comment above MODE_CALLBACK_RE.
+    // telegram_message_id is left null: requests never stored the original
+    // inbound message_id, only its text.
+    await insertMurojatMessage({
+      companyId: updatedRequest.company_id,
+      requestId: updatedRequest.id,
+      customerId: updatedRequest.customer_id,
+      message: updatedRequest.message,
+    })
   }
+  // mode === 'shikoyat': no threading needed - Shikoyat requests stay
+  // one-row-per-message, see step 4 of the strategy comment above.
 
   const baseText = cb.message.text ?? 'Xabaringiz qabul qilindi. Tez orada siz bilan bog\'lanamiz.'
   const result = await editMessageText(chatId, messageId, `${baseText}\n\nTuri: ${label}`)
@@ -313,7 +449,7 @@ export async function POST(request: NextRequest) {
     } else if (message.text?.startsWith('/start')) {
       await handleStart(chatId)
     } else if (message.text) {
-      await handleTextMessage(chatId, fromId, message.text)
+      await handleTextMessage(chatId, fromId, message.text, message.message_id)
     }
     // Other update/message shapes (stickers, photos, etc.) are ignored.
   } catch (e) {

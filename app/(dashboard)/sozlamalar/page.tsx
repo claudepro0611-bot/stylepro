@@ -13,6 +13,7 @@ import { useSettings } from '@/lib/useSettings'
 import { formatDate } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import type { TranslationKey } from '@/lib/i18n/translations'
+import { ChangePasswordForm } from '@/components/sozlamalar/ChangePasswordForm'
 
 const segCls = (active: boolean) =>
   cn(
@@ -236,6 +237,12 @@ export default function SettingsPage() {
                 <div className={pill}>
                   <button onClick={() => setCurrency('UZS')} className={segCls(currency === 'UZS')}>UZS</button>
                   <button onClick={() => setCurrency('USD')} className={segCls(currency === 'USD')}>USD</button>
+                </div>
+              </Card>
+
+              <Card title={t('settings.password.title')} description={t('settings.password.description')}>
+                <div className="max-w-sm">
+                  <ChangePasswordForm />
                 </div>
               </Card>
             </>

@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState, Fragment } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, Menu, LogOut, Sun, Moon } from 'lucide-react'
+import { Bell, Menu, LogOut, Sun, Moon, KeyRound } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { PaymentModal } from '@/components/PaymentModal'
+import { ChangePasswordForm } from '@/components/sozlamalar/ChangePasswordForm'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -76,6 +78,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -224,6 +227,13 @@ export function Header({ onMenuClick }: HeaderProps) {
           {profileOpen && (
             <div className="absolute right-0 top-10 z-50 w-52 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden">
               <button
+                onClick={() => { setProfileOpen(false); setPasswordDialogOpen(true) }}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-[13px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                {t('header.changePassword')}
+              </button>
+              <button
                 onClick={handleLogout}
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-[13px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
               >
@@ -234,6 +244,15 @@ export function Header({ onMenuClick }: HeaderProps) {
           )}
         </div>
       </div>
+
+      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('settings.password.title')}</DialogTitle>
+          </DialogHeader>
+          <ChangePasswordForm onSuccess={() => setPasswordDialogOpen(false)} />
+        </DialogContent>
+      </Dialog>
 
       {!isSuperAdmin && (
         <PaymentModal open={paymentModalOpen} onOpenChange={setPaymentModalOpen} monthlyFee={monthlyFee} />

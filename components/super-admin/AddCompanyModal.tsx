@@ -60,7 +60,7 @@ export function AddCompanyModal({ open, onOpenChange, onCreated }: AddCompanyMod
 
   function copyCredentials() {
     if (!success) return
-    const text = `Login: ${success.login}\nParol: ${success.password}\nURL: localhost:3000/login`
+    const text = `Login: ${success.login}\nParol: ${success.password}\nURL: ${window.location.host}/login`
     navigator.clipboard.writeText(text)
     toast.success('Nusxalandi')
   }
@@ -84,7 +84,7 @@ export function AddCompanyModal({ open, onOpenChange, onCreated }: AddCompanyMod
                 Parol: <span className="font-medium text-gray-900 dark:text-gray-100">{success.password}</span>
               </p>
               <p className="text-gray-600 dark:text-gray-400">
-                URL: <span className="font-medium text-gray-900 dark:text-gray-100">localhost:3000/login</span>
+                URL: <span className="font-medium text-gray-900 dark:text-gray-100">{window.location.host}/login</span>
               </p>
             </div>
             <p className="mt-2 text-[12px] text-gray-400 dark:text-gray-500">

@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { ImportModal } from '@/components/mahsulotlar/ImportModal'
 import { BarcodeModal } from '@/components/mahsulotlar/BarcodeModal'
+import { CompanionSection } from '@/components/mahsulotlar/CompanionSection'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
@@ -444,6 +445,7 @@ export default function MahsulotlarPage() {
               <textarea rows={2} value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
                 className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 resize-none transition-colors" />
             </div>
+            {editProduct && <CompanionSection productId={editProduct.id} />}
             <div>
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('products.modal.colors')}</label>
               <div className="flex flex-wrap gap-1.5">

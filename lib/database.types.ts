@@ -661,6 +661,61 @@ export type Database = {
           },
         ]
       }
+      murojat_messages: {
+        Row: {
+          company_id: string
+          customer_id: string | null
+          id: string
+          message: string
+          request_id: string
+          sender: string
+          sent_at: string | null
+          telegram_message_id: number | null
+        }
+        Insert: {
+          company_id: string
+          customer_id?: string | null
+          id?: string
+          message: string
+          request_id: string
+          sender: string
+          sent_at?: string | null
+          telegram_message_id?: number | null
+        }
+        Update: {
+          company_id?: string
+          customer_id?: string | null
+          id?: string
+          message?: string
+          request_id?: string
+          sender?: string
+          sent_at?: string | null
+          telegram_message_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "murojat_messages_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "murojat_messages_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "murojat_messages_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       nasiya_transactions: {
         Row: {
           amount: number
@@ -877,6 +932,7 @@ export type Database = {
         Row: {
           barcode: string | null
           color: string
+          companion_product_size_id: string | null
           company_id: string
           created_at: string | null
           id: string
@@ -892,6 +948,7 @@ export type Database = {
         Insert: {
           barcode?: string | null
           color?: string
+          companion_product_size_id?: string | null
           company_id: string
           created_at?: string | null
           id?: string
@@ -907,6 +964,7 @@ export type Database = {
         Update: {
           barcode?: string | null
           color?: string
+          companion_product_size_id?: string | null
           company_id?: string
           created_at?: string | null
           id?: string
@@ -920,6 +978,13 @@ export type Database = {
           warehouse_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "product_sizes_companion_product_size_id_fkey"
+            columns: ["companion_product_size_id"]
+            isOneToOne: false
+            referencedRelation: "product_sizes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "product_sizes_company_id_fkey"
             columns: ["company_id"]
@@ -1172,6 +1237,7 @@ export type Database = {
           priority: string
           source: string
           status: string
+          ticket_number: number
           type: string
           updated_at: string
         }
@@ -1187,6 +1253,7 @@ export type Database = {
           priority?: string
           source?: string
           status?: string
+          ticket_number?: number
           type: string
           updated_at?: string
         }
@@ -1202,6 +1269,7 @@ export type Database = {
           priority?: string
           source?: string
           status?: string
+          ticket_number?: number
           type?: string
           updated_at?: string
         }
@@ -2180,6 +2248,19 @@ export type Database = {
         Args: { p_customer_id: string }
         Returns: number
       }
+      get_murojat_messages: {
+        Args: { p_request_id: string }
+        Returns: {
+          company_id: string
+          customer_id: string | null
+          id: string
+          message: string
+          request_id: string
+          sender: string
+          sent_at: string | null
+          telegram_message_id: number | null
+        }[]
+      }
       give_nasiya: {
         Args: {
           p_amount: number
@@ -2202,6 +2283,19 @@ export type Database = {
       sell_cart: {
         Args: { p_customer_id: string; p_items: Json; p_payment: Json }
         Returns: string
+      }
+      send_murojat_reply: {
+        Args: { p_message: string; p_request_id: string }
+        Returns: {
+          company_id: string
+          customer_id: string | null
+          id: string
+          message: string
+          request_id: string
+          sender: string
+          sent_at: string | null
+          telegram_message_id: number | null
+        }
       }
       set_customer_vip: {
         Args: { p_customer_id: string; p_vip_discount_percent: number | null }

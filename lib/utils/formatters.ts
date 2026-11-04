@@ -37,6 +37,12 @@ export function formatDuration(startIso: string, endIso?: string | null): string
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
+/** Formats a requests.ticket_number as "#001", "#002", etc. (zero-padded to
+ * at least 3 digits - see 20260806000002_murojat_chat_history.sql). */
+export function formatTicketNumber(n: number): string {
+  return `#${String(n).padStart(3, '0')}`
+}
+
 export function formatPhone(phone: string): string {
   const d = phone.replace(/\D/g, '')
   if (d.length === 12) {
