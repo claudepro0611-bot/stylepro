@@ -54,17 +54,52 @@ export function PrintLabelsModal({ labels, open, onOpenChange }: PrintLabelsModa
     document.body.appendChild(script)
   }, [open])
 
-  // One label per unit — quantity=5 renders 5 identical labels.
+  // One label per product/colour/size by default (a stock-in of 10 units still
+  // shows a single label). The user can raise the copy count per row when they
+  // do want several identical stickers.
+  const [copies, setCopies] = useState<Record<number, number>>({})
+  const copiesFor = (i: number) => copies[i] ?? 1
+  // Forget the copy counts whenever the dialog closes so the next stock-in starts at 1 again.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setCopies({})
+    onOpenChange(next)
+  }
   const expanded = labels.flatMap((label, i) =>
-    Array.from({ length: label.quantity }, (_, unit) => ({ ...label, key: `${i}-${unit}` })),
+    Array.from({ length: copiesFor(i) }, (_, unit) => ({ ...label, key: `${i}-${unit}` })),
   )
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t('kirim.printLabels.button')}</DialogTitle>
         </DialogHeader>
+
+        {labels.length > 0 && (
+          <div className="mt-2 space-y-1.5 print:hidden">
+            {labels.map((label, i) => (
+              <div key={i} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate text-gray-700 dark:text-gray-300">
+                  {label.productName} · {label.color ? `${label.color} / ${label.size}` : label.size}
+                </span>
+                <label className="flex shrink-0 items-center gap-2 text-gray-500 dark:text-gray-400">
+                  {t('kirim.printLabels.copies')}
+                  <input
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={copiesFor(i)}
+                    onChange={e => {
+                      const n = Math.min(999, Math.max(1, Math.floor(Number(e.target.value) || 1)))
+                      setCopies(prev => ({ ...prev, [i]: n }))
+                    }}
+                    className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900 focus:border-gray-400 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-500"
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div id="kirim-labels-print-area" className="mt-2 max-h-[60vh] overflow-y-auto">
           {!scriptReady ? (
@@ -119,7 +154,7 @@ export function PrintLabelsModal({ labels, open, onOpenChange }: PrintLabelsModa
         `}</style>
 
         <DialogFooter className="mt-4 print:hidden">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.close')}</Button>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>{t('common.close')}</Button>
           <Button onClick={() => window.print()} disabled={!scriptReady || expanded.length === 0}>
             <Printer className="h-3.5 w-3.5" />
             {t('kirim.printLabels.print')}

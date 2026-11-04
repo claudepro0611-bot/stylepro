@@ -321,6 +321,7 @@ export const translations = {
         button: "Yorliq chop etish",
         print: "Chop etish",
         noBarcode: "Shtrix-kod yo'q",
+        copies: "Nusxa soni",
       },
     },
     chiqim: {
@@ -1901,6 +1902,7 @@ export const translations = {
         button: "Печать этикеток",
         print: "Печать",
         noBarcode: "Штрихкод отсутствует",
+        copies: "Количество копий",
       },
     },
     chiqim: {
@@ -3481,6 +3483,7 @@ export const translations = {
         button: "Print labels",
         print: "Print",
         noBarcode: "No barcode",
+        copies: "Copies",
       },
     },
     chiqim: {
