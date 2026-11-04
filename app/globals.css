@@ -209,70 +209,70 @@
     }
   }}
 
-/* NIGHT (default) — "Beach Sunset": #BEE9E8 #62B6CB #1B4965 #CAE9FF #5FA8D3 */
+/* NIGHT — soft neutral charcoal with periwinkle accent */
 :root,
 .dark {
-  --g-50:  #F2F9FC;
-  --g-100: #EAF6FF;
-  --g-200: #CAE9FF;
-  --g-300: #A9CCE3;
-  --g-400: #8FB3CC;
-  --g-500: #7BA0BA;
-  --g-600: #5F86A1;
-  --g-700: #2B536F;
-  --g-800: #1F4059;
-  --g-900: #16334A;
-  --g-950: #0E2233;
+  --g-50:  #FAFAFA;
+  --g-100: #F4F4F5;
+  --g-200: #E4E4E7;
+  --g-300: #D4D4D8;
+  --g-400: #A1A1AA;
+  --g-500: #A1A1AA;
+  --g-600: #71717A;
+  --g-700: #3F3F46;
+  --g-800: #2A2A2F;
+  --g-900: #1B1B1F;
+  --g-950: #131316;
 
-  --acc: #62B6CB;
-  --acc-hover: #7CC6D8;
-  --acc-fg: #0A1824;
-  --acc-gradient: linear-gradient(135deg, #1B4965 0%, #2F7399 55%, #4A93BD 100%);
-  --success: #3FBF8A;
+  --acc: #9AA8E0;
+  --acc-hover: #B0BBEA;
+  --acc-fg: #131316;
+  --acc-gradient: linear-gradient(135deg, #2C3766 0%, #3B4A8C 55%, #4A5AA8 100%);
+  --success: #4CC38A;
   --warning: #E6B450;
-  --error: #E5534B;
-  --shadow-card: 0 12px 32px -18px rgba(3, 12, 20, 0.7);
+  --error: #EF6A62;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
 
-  --background: #0E2233;
-  --foreground: #EAF6FF;
-  --card: #16334A;
-  --card-foreground: #EAF6FF;
-  --popover: #16334A;
-  --popover-foreground: #EAF6FF;
-  --primary: #62B6CB;
-  --primary-foreground: #0A1824;
-  --secondary: #1F4059;
-  --secondary-foreground: #EAF6FF;
-  --muted: #1F4059;
-  --muted-foreground: #8FB3CC;
-  --accent: #1F4059;
-  --accent-foreground: #EAF6FF;
-  --destructive: #E5534B;
-  --destructive-foreground: #E5534B;
-  --border: rgba(202, 233, 255, 0.1);
-  --input: rgba(202, 233, 255, 0.1);
-  --ring: #5FA8D3;
-  --chart-1: #62B6CB;
-  --chart-2: #5FA8D3;
-  --chart-3: #BEE9E8;
-  --chart-4: #2F7399;
-  --chart-5: #CAE9FF;
+  --background: #131316;
+  --foreground: #FAFAFA;
+  --card: #1B1B1F;
+  --card-foreground: #FAFAFA;
+  --popover: #1B1B1F;
+  --popover-foreground: #FAFAFA;
+  --primary: #9AA8E0;
+  --primary-foreground: #131316;
+  --secondary: #27272A;
+  --secondary-foreground: #FAFAFA;
+  --muted: #27272A;
+  --muted-foreground: #A1A1AA;
+  --accent: #27272A;
+  --accent-foreground: #FAFAFA;
+  --destructive: #EF6A62;
+  --destructive-foreground: #EF6A62;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #71717A;
+  --chart-1: #9AA8E0;
+  --chart-2: #71717A;
+  --chart-3: #5E6BB5;
+  --chart-4: #C7CEF2;
+  --chart-5: #A1A1AA;
   --radius: 0.5rem;
-  --page-bg: #0E2233;
-  --table-header-bg: #1F4059;
-  --sidebar: #0A1824;
-  --sidebar-foreground: #EAF6FF;
-  --sidebar-primary: #62B6CB;
-  --sidebar-primary-foreground: #0A1824;
-  --sidebar-accent: #16334A;
-  --sidebar-accent-foreground: #EAF6FF;
-  --sidebar-accent-border: #62B6CB;
-  --sidebar-border: rgba(202, 233, 255, 0.1);
-  --sidebar-ring: #5FA8D3;
+  --page-bg: #131316;
+  --table-header-bg: #1F1F23;
+  --sidebar: #0F0F11;
+  --sidebar-foreground: #FAFAFA;
+  --sidebar-primary: #9AA8E0;
+  --sidebar-primary-foreground: #131316;
+  --sidebar-accent: #1B1B1F;
+  --sidebar-accent-foreground: #FAFAFA;
+  --sidebar-accent-border: #9AA8E0;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #71717A;
   color-scheme: dark;
 }
 
-/* DAY */
+/* DAY (default) — Beach Sunset day, as deployed on stylepro-delta */
 .light {
   --g-50:  #F2F9FC;
   --g-100: #E3F1F6;

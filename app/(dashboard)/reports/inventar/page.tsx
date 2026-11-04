@@ -130,7 +130,7 @@ const TOP_PRODUCT_COUNT = 7
 // Cyclic palette for the donut's top-N slices. Reserved separately: slate-400
 // (OTHER_COLOR) is always used for the "Boshqalar" bucket regardless of how
 // many regular slices precede it — it is never assigned via the cyclic index.
-const CATEGORY_COLORS = ['#1B4965', '#62B6CB', '#5FA8D3', '#BEE9E8', '#CAE9FF', '#2F7399']
+const CATEGORY_COLORS = ['#2F7399', '#62B6CB', '#5FA8D3', '#8B9BE0', '#BEE9E8', '#A1A1AA']
 const OTHER_COLOR = '#94a3b8'
 
 type PieTab = 'product' | 'category'
@@ -313,11 +313,11 @@ export default function InventarReportPage() {
 
   const pieData = pieTab === 'product' ? productRevenueData : categoryData
 
-  const axisColor = isDark ? '#8FB3CC' : '#5F86A1'
-  const gridColor = isDark ? 'rgba(202,233,255,0.1)' : '#D3E6EE'
+  const axisColor = isDark ? '#A1A1AA' : '#5F86A1'
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : '#D3E6EE'
   const tooltipStyle = {
-    contentStyle: { background: isDark ? '#16334A' : '#fff', border: '1px solid ' + (isDark ? 'rgba(202,233,255,0.1)' : '#D3E6EE'), borderRadius: 8, fontSize: 12 },
-    labelStyle: { color: isDark ? '#EAF6FF' : '#12324A' },
+    contentStyle: { background: isDark ? '#1B1B1F' : '#fff', border: '1px solid ' + (isDark ? 'rgba(255,255,255,0.08)' : '#D3E6EE'), borderRadius: 8, fontSize: 12 },
+    labelStyle: { color: isDark ? '#FAFAFA' : '#12324A' },
   }
 
   // ─── KPI cards ────────────────────────────────────────────────────────────
@@ -478,7 +478,7 @@ export default function InventarReportPage() {
                 <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
                 <Tooltip {...tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="stockIn" name={t('reports.inventar.charts.stockIn')} fill="#5FA8D3" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="stockIn" name={t('reports.inventar.charts.stockIn')} fill="#A1A1AA" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="sold" name={t('reports.inventar.charts.sold')} fill="#059669" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="returned" name={t('reports.inventar.charts.returned')} fill="#f59e0b" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="brak" name={t('reports.inventar.charts.brak')} fill="#ef4444" radius={[2, 2, 0, 0]} />

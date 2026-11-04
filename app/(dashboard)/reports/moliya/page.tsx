@@ -326,18 +326,18 @@ export default function MoliyaReportPage() {
   // 5th slice color (returnsAmount) is a slate/gray tone — only 4 semantic
   // colors (blue/emerald/amber/red) were specified for the 5 expense slices.
   const expenseData = useMemo<DonutSlice[]>(() => ([
-    { key: 'cogs', name: t('reports.moliya.pnl.cogs'), value: cogs, color: '#5FA8D3' },
+    { key: 'cogs', name: t('reports.moliya.pnl.cogs'), value: cogs, color: '#5E6BB5' },
     { key: 'discounts', name: t('reports.moliya.pnl.discounts'), value: discounts, color: '#f59e0b' },
     { key: 'brakLoss', name: t('reports.moliya.pnl.brakLoss'), value: brakLoss, color: '#ef4444' },
     { key: 'opex', name: t('reports.moliya.pnl.opex'), value: opex, color: '#059669' },
     { key: 'returns', name: t('reports.moliya.pnl.returns'), value: returnsAmount, color: '#64748b' },
   ].filter(s => s.value > 0)), [t, cogs, discounts, brakLoss, opex, returnsAmount])
 
-  const axisColor = isDark ? '#8FB3CC' : '#5F86A1'
-  const gridColor = isDark ? 'rgba(202,233,255,0.1)' : '#D3E6EE'
+  const axisColor = isDark ? '#A1A1AA' : '#5F86A1'
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : '#D3E6EE'
   const tooltipStyle = {
-    contentStyle: { background: isDark ? '#16334A' : '#fff', border: '1px solid ' + (isDark ? 'rgba(202,233,255,0.1)' : '#D3E6EE'), borderRadius: 8, fontSize: 12 },
-    labelStyle: { color: isDark ? '#EAF6FF' : '#12324A' },
+    contentStyle: { background: isDark ? '#1B1B1F' : '#fff', border: '1px solid ' + (isDark ? 'rgba(255,255,255,0.08)' : '#D3E6EE'), borderRadius: 8, fontSize: 12 },
+    labelStyle: { color: isDark ? '#FAFAFA' : '#12324A' },
   }
 
   // ─── Section 2: Nasiya / qarzdorlik ───────────────────────────────────────
