@@ -97,7 +97,7 @@ export default function LoginPage() {
         <ShimmerButton
           type="submit"
           disabled={loading}
-          shimmerColor="#ADC178"
+          shimmerColor="#62B6CB"
           background="rgba(0, 0, 0, 0.9)"
           shimmerDuration="2s"
           shimmerSize="0.1em"
