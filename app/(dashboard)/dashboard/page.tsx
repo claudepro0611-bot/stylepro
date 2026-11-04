@@ -31,7 +31,7 @@ import type { Product, Transaction } from '@/lib/types'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const SLICE_COLORS = ['#5E60CE', '#4EA8DE', '#64DFDF', '#7400B8', '#48BFE3', '#80FFDB']
+const SLICE_COLORS = ['#6C584C', '#ADC178', '#A98467', '#8A9A5B', '#DDE5B6', '#4F4037']
 
 function TrendBadge({ value }: { value: number }) {
   const up = value >= 0
@@ -486,12 +486,12 @@ export default function DashboardPage() {
 
   const isPending = dataLoading || filterPending
 
-  const axisTick = { fill: isDark ? '#9EA3D0' : '#666D94', fontSize: 11 }
-  const gridProps = { strokeDasharray: '3 3', stroke: isDark ? 'rgba(255,255,255,0.08)' : '#DEE2F3', vertical: false } as const
-  const monoStrong = isDark ? '#4EA8DE' : '#5E60CE'
-  const monoSoft   = '#8F94C4'
-  const cursorArea = isDark ? 'rgba(255,255,255,0.08)' : '#DEE2F3'
-  const primaryLineColor = isDark ? '#4EA8DE' : '#5E60CE'
+  const axisTick = { fill: isDark ? '#B9A58C' : '#7D6A5C', fontSize: 11 }
+  const gridProps = { strokeDasharray: '3 3', stroke: isDark ? 'rgba(240,234,210,0.1)' : '#E1DBC3', vertical: false } as const
+  const monoStrong = isDark ? '#ADC178' : '#6C584C'
+  const monoSoft   = '#A98467'
+  const cursorArea = isDark ? 'rgba(240,234,210,0.1)' : '#E1DBC3'
+  const primaryLineColor = isDark ? '#ADC178' : '#6C584C'
 
   const curRevenue = useMemo(() => filteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [filteredTransactions])
   const prvRevenue = useMemo(() => prevFilteredTransactions.reduce((s, tx) => s + tx.totalAmount, 0), [prevFilteredTransactions])
@@ -715,12 +715,12 @@ export default function DashboardPage() {
                 <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(chartBuckets.length / 8))} />
                 <YAxis tickFormatter={formatShortPrice} tick={axisTick} axisLine={false} tickLine={false} width={52} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 8, border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#DEE2F3'}`, background: isDark ? '#1B1C3A' : '#fff', fontSize: 12, color: isDark ? '#EEF0FF' : '#1E2140' }}
+                  contentStyle={{ borderRadius: 8, border: `1px solid ${isDark ? 'rgba(240,234,210,0.1)' : '#E1DBC3'}`, background: isDark ? '#2E2520' : '#FFFDF6', fontSize: 12, color: isDark ? '#F0EAD2' : '#2B221D' }}
                   formatter={(v, name) => [formatPrice(v as number), name === 'current' ? t('dashboard.current') : t('dashboard.previous')]}
                   cursor={{ stroke: cursorArea, strokeWidth: 1 }}
                 />
                 <Area type="monotone" dataKey="previous" stroke={monoSoft} strokeWidth={1.5} strokeDasharray="5 4" fill="url(#gradPrv)" dot={false} />
-                <Area type="monotone" dataKey="current"  stroke={primaryLineColor} strokeWidth={2} fill="url(#gradCur)" dot={false} activeDot={{ r: 4, fill: primaryLineColor, stroke: isDark ? '#1B1C3A' : '#fff', strokeWidth: 2 }} />
+                <Area type="monotone" dataKey="current"  stroke={primaryLineColor} strokeWidth={2} fill="url(#gradCur)" dot={false} activeDot={{ r: 4, fill: primaryLineColor, stroke: isDark ? '#2E2520' : '#FFFDF6', strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -761,7 +761,7 @@ export default function DashboardPage() {
                   <CartesianGrid {...gridProps} />
                   <XAxis
                     dataKey="label"
-                    tick={{ fill: isDark ? '#9EA3D0' : '#666D94', fontSize: 10 }}
+                    tick={{ fill: isDark ? '#B9A58C' : '#7D6A5C', fontSize: 10 }}
                     axisLine={false}
                     tickLine={false}
                     interval={Math.max(0, Math.floor(chartBuckets.length / 8))}
