@@ -170,7 +170,7 @@ function ProductGroupCardView({ group, onOpen }: { group: ProductGroupCard; onOp
     <div
       onClick={onOpen}
       className={cn(
-        'flex flex-col rounded-xl border border-[#E5E7EB] dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden transition-colors cursor-pointer hover:border-gray-300 dark:hover:border-gray-600',
+        'flex flex-col rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden transition-colors cursor-pointer hover:border-gray-300 dark:hover:border-gray-600',
         outOfStock && 'opacity-50',
       )}
     >
@@ -907,7 +907,7 @@ export default function POSPage() {
 
         <div className="flex flex-1 flex-col lg:flex-row min-h-0">
           {/* LEFT — Products (65%) */}
-          <div className="flex flex-col lg:w-[65%] bg-gray-50 dark:bg-gray-800 min-h-0">
+          <div className="flex flex-col lg:w-[65%] bg-gray-50 dark:bg-gray-950 min-h-0">
             <div className="shrink-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-5 py-4 space-y-3">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
