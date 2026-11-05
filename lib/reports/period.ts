@@ -4,10 +4,11 @@
 // supported week/month/year/custom; 'today' and 'lastMonth' are added here
 // rather than duplicated as a parallel implementation.
 import type { TranslationKey } from '@/lib/i18n/translations'
+import { localYmd } from '@/lib/utils/date'
 
 export type Period = 'today' | 'week' | 'month' | 'lastMonth' | 'year' | 'custom'
 
-export const TODAY = new Date().toISOString().slice(0, 10)
+
 
 export const DATE_PERIODS: { value: Period; labelKey: TranslationKey }[] = [
   { value: 'today', labelKey: 'reports.periods.today' },
@@ -23,6 +24,7 @@ function ymd(y: number, m: number, d: number) {
 }
 
 export function periodRange(period: Period, customFrom: string, customTo: string): [string, string] {
+  const TODAY = localYmd()
   const [ty, tm, td] = TODAY.split('-').map(Number)
   switch (period) {
     case 'today':

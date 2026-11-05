@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import { MessageSquare, CheckCircle, Clock, Loader2, Search } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { StatCard } from '@/components/ui/StatCard'
@@ -113,9 +114,9 @@ export default function RequestsPage() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const today = useMemo(() => localYmd(), [])
   const totalCount = requests.length
-  const resolvedToday = requests.filter(r => r.status === 'resolved' && r.createdAt.slice(0, 10) === today).length
+  const resolvedToday = requests.filter(r => r.status === 'resolved' && localYmd(new Date(r.createdAt)) === today).length
   const pendingCount = requests.filter(r => r.status !== 'resolved').length
 
   function openDetail(r: Request) {

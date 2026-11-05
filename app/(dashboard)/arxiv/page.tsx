@@ -9,6 +9,7 @@ import { ReturnModal, type ReturnableItem } from '@/components/arxiv/ReturnModal
 import { createClient } from '@/lib/supabase/client'
 import { formatDateTime, formatDuration, formatTicketNumber } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
+import { DateRangeFilter, toYmd, type DateRangeValue } from '@/components/ui/date-range-filter'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import type { TranslationKey } from '@/lib/i18n/translations'
@@ -27,28 +28,14 @@ const TYPE_LABEL_KEY: Record<string, TranslationKey> = {
 
 const ITEMS_PER_PAGE = 20
 const PAYMENT_METHODS = ['Naqd', 'Karta', 'Click', 'Payme']
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = toYmd(new Date())
 
 type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
 
-const DATE_PRESETS: { value: DatePreset; labelKey: TranslationKey }[] = [
-  { value: 'today', labelKey: 'chiqim.datePresets.today' },
-  { value: 'yesterday', labelKey: 'chiqim.datePresets.yesterday' },
-  { value: 'week', labelKey: 'chiqim.datePresets.week' },
-  { value: 'month', labelKey: 'chiqim.datePresets.month' },
-  { value: 'custom', labelKey: 'chiqim.datePresets.custom' },
-]
-
-const pillCls = (active: boolean) =>
-  cn(
-    'px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors',
-    active
-      ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
-      : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
-  )
-
 const selectCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
-const dateInputCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 text-[13px] text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
+
+const toRangeValue = (range: [string, string] | null): DateRangeValue | null =>
+  range ? { from: range[0], to: range[1] } : null
 
 function ymd(y: number, m: number, d: number): string {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
@@ -341,23 +328,10 @@ export default function ArxivPage() {
           <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3 transition-colors duration-200">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[12px] font-medium text-gray-400 dark:text-gray-500 mr-1 shrink-0">{t('arxiv.filters.period')}</span>
-              {DATE_PRESETS.map(dp => (
-                <button
-                  key={dp.value}
-                  onClick={() => { setShiftDatePreset(shiftDatePreset === dp.value ? null : dp.value); setShiftPage(1) }}
-                  className={pillCls(shiftDatePreset === dp.value)}
-                >
-                  {t(dp.labelKey)}
-                </button>
-              ))}
-              {shiftDatePreset === 'custom' && (
-                <div className="flex flex-wrap items-center gap-2 ml-1">
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.from')}</span>
-                  <input type="date" value={shiftCustomFrom} onChange={e => { setShiftCustomFrom(e.target.value); setShiftPage(1) }} className={dateInputCls} />
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.to')}</span>
-                  <input type="date" value={shiftCustomTo} onChange={e => { setShiftCustomTo(e.target.value); setShiftPage(1) }} className={dateInputCls} />
-                </div>
-              )}
+              <DateRangeFilter
+                value={toRangeValue(presetRange(shiftDatePreset, shiftCustomFrom, shiftCustomTo))}
+                onChange={r => { setShiftDatePreset(r ? 'custom' : null); setShiftCustomFrom(r?.from ?? ''); setShiftCustomTo(r?.to ?? ''); setShiftPage(1) }}
+              />
             </div>
             <div className="h-px bg-gray-100 dark:bg-gray-800" />
             <div className="flex flex-wrap items-center gap-2">
@@ -426,23 +400,10 @@ export default function ArxivPage() {
           <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3 transition-colors duration-200">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[12px] font-medium text-gray-400 dark:text-gray-500 mr-1 shrink-0">{t('arxiv.filters.date')}</span>
-              {DATE_PRESETS.map(dp => (
-                <button
-                  key={dp.value}
-                  onClick={() => { setSaleDatePreset(saleDatePreset === dp.value ? null : dp.value); setSalePage(1) }}
-                  className={pillCls(saleDatePreset === dp.value)}
-                >
-                  {t(dp.labelKey)}
-                </button>
-              ))}
-              {saleDatePreset === 'custom' && (
-                <div className="flex flex-wrap items-center gap-2 ml-1">
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.from')}</span>
-                  <input type="date" value={saleCustomFrom} onChange={e => { setSaleCustomFrom(e.target.value); setSalePage(1) }} className={dateInputCls} />
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.to')}</span>
-                  <input type="date" value={saleCustomTo} onChange={e => { setSaleCustomTo(e.target.value); setSalePage(1) }} className={dateInputCls} />
-                </div>
-              )}
+              <DateRangeFilter
+                value={toRangeValue(presetRange(saleDatePreset, saleCustomFrom, saleCustomTo))}
+                onChange={r => { setSaleDatePreset(r ? 'custom' : null); setSaleCustomFrom(r?.from ?? ''); setSaleCustomTo(r?.to ?? ''); setSalePage(1) }}
+              />
             </div>
             <div className="h-px bg-gray-100 dark:bg-gray-800" />
             <div className="flex flex-wrap items-center gap-2">
@@ -549,23 +510,10 @@ export default function ArxivPage() {
           <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3 transition-colors duration-200">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[12px] font-medium text-gray-400 dark:text-gray-500 mr-1 shrink-0">{t('arxiv.filters.period')}</span>
-              {DATE_PRESETS.map(dp => (
-                <button
-                  key={dp.value}
-                  onClick={() => { setComplaintDatePreset(complaintDatePreset === dp.value ? null : dp.value); setComplaintPage(1) }}
-                  className={pillCls(complaintDatePreset === dp.value)}
-                >
-                  {t(dp.labelKey)}
-                </button>
-              ))}
-              {complaintDatePreset === 'custom' && (
-                <div className="flex flex-wrap items-center gap-2 ml-1">
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.from')}</span>
-                  <input type="date" value={complaintCustomFrom} onChange={e => { setComplaintCustomFrom(e.target.value); setComplaintPage(1) }} className={dateInputCls} />
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.to')}</span>
-                  <input type="date" value={complaintCustomTo} onChange={e => { setComplaintCustomTo(e.target.value); setComplaintPage(1) }} className={dateInputCls} />
-                </div>
-              )}
+              <DateRangeFilter
+                value={toRangeValue(presetRange(complaintDatePreset, complaintCustomFrom, complaintCustomTo))}
+                onChange={r => { setComplaintDatePreset(r ? 'custom' : null); setComplaintCustomFrom(r?.from ?? ''); setComplaintCustomTo(r?.to ?? ''); setComplaintPage(1) }}
+              />
             </div>
             <div className="h-px bg-gray-100 dark:bg-gray-800" />
             <div className="flex flex-wrap items-center gap-2">

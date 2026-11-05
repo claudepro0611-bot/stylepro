@@ -1,13 +1,12 @@
 'use client'
 
-import { DATE_PERIODS, type Period } from '@/lib/reports/period'
-import { useLanguage } from '@/lib/i18n/LanguageContext'
-import { DatePickerField } from '@/components/ui/date-picker-field'
+import { periodRange, type Period } from '@/lib/reports/period'
+import { DateRangeFilter, type DateRangeValue } from '@/components/ui/date-range-filter'
 
-// Shared period-filter bar for the two reports pages (moliya/inventar) —
-// same pill/date-input conventions as the original reports/page.tsx and
-// customers/page.tsx's Karta tab filters, extracted here so both pages don't
-// duplicate the pill row + custom date range inputs.
+// Shared period filter for the two reports pages (moliya/inventar), using the
+// same calendar range picker as kirim/chiqim/arxiv/dashboard. A pick that
+// matches a named period (today, last 7/30 days, last month, this year) maps
+// back onto it; anything else becomes 'custom'.
 
 interface ReportPeriodFilterBarProps {
   period: Period
@@ -18,34 +17,34 @@ interface ReportPeriodFilterBarProps {
   onCustomToChange: (v: string) => void
 }
 
-const PILL_CLS = (active: boolean) =>
-  `px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
-    active
-      ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
-      : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
-  }`
-
-const DATE_INPUT_CLS = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 text-[13px] text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
+const DEFAULT_PERIOD: Period = 'month'
+const NAMED_PERIODS: Exclude<Period, 'custom'>[] = ['today', 'week', 'month', 'lastMonth', 'year']
 
 export function ReportPeriodFilterBar({
   period, onPeriodChange, customFrom, onCustomFromChange, customTo, onCustomToChange,
 }: ReportPeriodFilterBarProps) {
-  const { t } = useLanguage()
+  const [from, to] = periodRange(period, customFrom, customTo)
+
+  function handleChange(r: DateRangeValue | null) {
+    if (!r) {
+      onCustomFromChange('')
+      onCustomToChange('')
+      onPeriodChange(DEFAULT_PERIOD)
+      return
+    }
+    const named = NAMED_PERIODS.find(p => {
+      const [pf, pt] = periodRange(p, '', '')
+      return pf === r.from && pt === r.to
+    })
+    if (named) { onPeriodChange(named); return }
+    onCustomFromChange(r.from)
+    onCustomToChange(r.to)
+    onPeriodChange('custom')
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {DATE_PERIODS.map(dp => (
-        <button key={dp.value} onClick={() => onPeriodChange(dp.value)} className={PILL_CLS(period === dp.value)}>
-          {t(dp.labelKey)}
-        </button>
-      ))}
-      {period === 'custom' && (
-        <div className="flex flex-wrap items-center gap-2 ml-1">
-          <DatePickerField className={DATE_INPUT_CLS} onChange={onCustomFromChange} value={customFrom} />
-          <span className="text-[12px] text-gray-400">—</span>
-          <DatePickerField className={DATE_INPUT_CLS} onChange={onCustomToChange} value={customTo} />
-        </div>
-      )}
+      <DateRangeFilter value={{ from, to }} onChange={handleChange} />
     </div>
   )
 }

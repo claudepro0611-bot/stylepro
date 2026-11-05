@@ -1,19 +1,22 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import {
-  Plus, Search, X, Download, Package,
+  Plus, Search, X, Download,
   PackageSearch, ArrowUpDown, Printer, Trash2, Loader2,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { StatsPanel } from '@/components/ui/StatsPanel'
 import { Pagination } from '@/components/ui/Pagination'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { DatePickerField } from '@/components/ui/date-picker-field'
+import { DateRangeFilter, toYmd } from '@/components/ui/date-range-filter'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
 import { PrintLabelsModal, type LabelRow } from '@/components/kirim/PrintLabelsModal'
+import { ProductPicker } from '@/components/kirim/ProductPicker'
 import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -24,7 +27,7 @@ import { type SizeType, getSizesForType, parseVolume, formatVolume } from '@/lib
 import { WAREHOUSE_TYPE_LABEL_KEYS, type WarehouseType } from '@/lib/warehouses'
 
 const ITEMS_PER_PAGE = 20
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = toYmd(new Date())
 
 type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
 type SortKey = 'date' | 'quantity' | 'unitPrice' | 'totalAmount' | 'purchasePrice' | 'sellingPrice'
@@ -37,13 +40,7 @@ const DATE_PRESETS: { value: DatePreset; labelKey: TranslationKey }[] = [
   { value: 'custom', labelKey: 'kirim.datePresets.custom' },
 ]
 
-const pillCls = (active: boolean) =>
-  `px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
-    active ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100' : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
-  }`
-
 const selectCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
-const dateInputCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 text-[13px] text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 const fieldCls = 'w-full h-11 rounded-lg border border-gray-200 dark:border-gray-700 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:focus:ring-emerald-900/40 transition-colors'
 
 function formatDMY(dateStr: string): string {
@@ -200,65 +197,6 @@ function ProductMultiSelect({
   )
 }
 
-// ─── Name-based product search dropdown ────────────────────────────────────
-
-function ProductNameSearch({
-  products, value, onChange, placeholder, noWarehouseLabel,
-}: {
-  products: { id: string; name: string; category: string; warehouseId: string }[]
-  value: string
-  onChange: (productId: string) => void
-  placeholder: string
-  noWarehouseLabel: string
-}) {
-  const [search, setSearch] = useState('')
-
-  useEffect(() => {
-    const selected = products.find(p => p.id === value)
-    setSearch(selected?.name ?? '')
-  }, [value, products])
-
-  const q = search.trim().toLowerCase()
-  const filtered = q ? products.filter(p => p.name.toLowerCase().includes(q)) : products
-
-  return (
-    <div className="relative">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder={placeholder}
-          className="w-full rounded-lg border border-gray-200 focus:border-gray-400 dark:focus:border-gray-500 px-4 py-2.5 pl-10 text-sm outline-none"
-        />
-      </div>
-      {filtered.length > 0 && (
-        <div className="mt-2 rounded-lg border border-gray-200 bg-white shadow-sm overflow-y-auto max-h-52">
-          {filtered.map(p => (
-            <div
-              key={p.id}
-              onClick={() => { onChange(p.id); setSearch(p.name) }}
-              className={cn(
-                'flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0',
-                p.id === value && 'bg-gray-50 border-l-2 border-blue-600',
-              )}
-            >
-              <div className="flex items-center min-w-0">
-                <Package className="w-4 h-4 text-gray-400 shrink-0 mr-2" />
-                <span className="text-sm font-medium text-gray-800 truncate">{p.name}</span>
-                {!p.warehouseId && (
-                  <span className="ml-2 shrink-0 text-[11px] text-amber-600 italic">({noWarehouseLabel})</span>
-                )}
-              </div>
-              <span className="shrink-0 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{p.category}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ─── Sortable column header ─────────────────────────────────────────────────
 
 function SortHeader({ label, active, dir, align = 'left', onClick }: { label: string; active: boolean; dir: 'asc' | 'desc'; align?: 'left' | 'right'; onClick: () => void }) {
@@ -281,7 +219,15 @@ const emptyForm = {
   supplier: '',
   note: '',
   purchasePrice: '',
-  markupPercent: '',
+  markup: '',
+}
+
+type MarkupType = 'percent' | 'amount'
+
+// Selling price from purchase price + markup, given either as a percentage of
+// the purchase price or as a fixed so'm amount added on top.
+function computeSellingPrice(purchasePrice: number, markup: number, type: MarkupType): number {
+  return Math.round(type === 'percent' ? purchasePrice * (1 + markup / 100) : purchasePrice + markup)
 }
 
 interface MatrixColumn { id: string; size: string; price: string }
@@ -354,6 +300,7 @@ export default function KirimPage() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [addStep, setAddStep] = useState<'form' | 'done'>('form')
   const [form, setForm] = useState(emptyForm)
+  const [markupType, setMarkupType] = useLocalStorage<MarkupType>('kirim-markup-type', 'percent')
   const [columns, setColumns] = useState<MatrixColumn[]>([])
   const [cellQty, setCellQty] = useState<Record<string, string>>({})
   const colIdRef = useRef(0)
@@ -410,7 +357,7 @@ export default function KirimPage() {
   // matching product category to warehouse type was the old, broken
   // approach (see the warehouses migration for that incident writeup).
   // Legacy products with no warehouse assigned show up under every
-  // warehouse (flagged with a muted badge in ProductNameSearch) rather
+  // warehouse (flagged with a muted badge in ProductPicker) rather
   // than being hidden, so they can still be stocked in and then fixed.
   const warehouseProducts = useMemo(() => {
     if (!activeWarehouse) return []
@@ -507,8 +454,7 @@ export default function KirimPage() {
     if (!product || !activeWarehouse) return
 
     const purchasePrice = Number(form.purchasePrice) || 0
-    const markupPercent = Number(form.markupPercent) || 0
-    const sellingPrice = Math.round(purchasePrice * (1 + markupPercent / 100))
+    const sellingPrice = computeSellingPrice(purchasePrice, Number(form.markup) || 0, markupType)
 
     // Matrix cells: empty and 0 are both treated as "skip". Columns with no
     // size picked are skipped too.
@@ -535,7 +481,7 @@ export default function KirimPage() {
           selling_price: entryPrice,
           warehouse_id: activeWarehouse.id,
           supplier: form.supplier.trim(),
-          date: form.datetime ? `${form.datetime}:00` : new Date().toISOString(),
+          date: form.datetime ? `${form.datetime}:00` : localYmd(),
           note: form.note.trim(),
         })
       }
@@ -677,19 +623,10 @@ export default function KirimPage() {
       <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3 transition-colors duration-200">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[12px] font-medium text-gray-400 dark:text-gray-500 mr-1 shrink-0">{t('kirim.dateLabel')}</span>
-          {DATE_PRESETS.map(dp => (
-            <button key={dp.value} onClick={() => { setDatePreset(datePreset === dp.value ? null : dp.value); setPage(1) }} className={pillCls(datePreset === dp.value)}>
-              {t(dp.labelKey)}
-            </button>
-          ))}
-          {datePreset === 'custom' && (
-            <div className="flex flex-wrap items-center gap-2 ml-1">
-              <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('kirim.from')}</span>
-              <DatePickerField className={dateInputCls} onChange={v => { setCustomFrom(v); setPage(1) }} value={customFrom} />
-              <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('kirim.to')}</span>
-              <DatePickerField className={dateInputCls} onChange={v => { setCustomTo(v); setPage(1) }} value={customTo} />
-            </div>
-          )}
+          <DateRangeFilter
+            value={dateRange ? { from: dateRange[0], to: dateRange[1] } : null}
+            onChange={r => { setDatePreset(r ? 'custom' : null); setCustomFrom(r?.from ?? ''); setCustomTo(r?.to ?? ''); setPage(1) }}
+          />
         </div>
         <div className="h-px bg-gray-100 dark:bg-gray-800" />
         <div className="flex flex-wrap items-center gap-2">
@@ -850,10 +787,10 @@ export default function KirimPage() {
                     type="button"
                     onClick={() => setForm(prev => ({ ...prev, warehouseId: w.id, productId: '' }))}
                     className={cn(
-                      'rounded-lg px-4 py-2 transition-colors',
+                      'rounded-lg px-4 py-2 text-sm transition-colors',
                       form.warehouseId === w.id
-                        ? 'bg-blue-600 text-white border border-blue-600'
-                        : 'border border-gray-200 text-gray-600 hover:bg-gray-50',
+                        ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-medium'
+                        : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                     )}
                   >
                     {w.name}
@@ -866,11 +803,15 @@ export default function KirimPage() {
             {/* Product selector */}
             <div>
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kirim.modal.selectProduct')}</label>
-              <ProductNameSearch
+              <ProductPicker
+                key={form.warehouseId}
+                autoFocus
                 products={warehouseProducts}
                 value={form.productId}
                 onChange={productId => { setForm(prev => ({ ...prev, productId })); resetMatrix() }}
-                placeholder={t('kirim.modal.selectProductPlaceholder')}
+                placeholder={t('kirim.modal.productSearchPlaceholder')}
+                notFoundLabel={t('kirim.modal.productNotFound')}
+                changeLabel={t('kirim.modal.changeProduct')}
                 noWarehouseLabel={t('products.noWarehouse')}
               />
             </div>
@@ -878,10 +819,10 @@ export default function KirimPage() {
             {/* Shared pricing */}
             {form.productId && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-200 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Olish narxi <span className="text-red-500">*</span>
+                      {t('kirim.pricing.purchasePrice')} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text" inputMode="numeric" placeholder="0"
@@ -890,24 +831,62 @@ export default function KirimPage() {
                       className={!form.purchasePrice ? `${fieldCls} border-red-300 focus:border-red-500` : fieldCls}
                     />
                     {!form.purchasePrice && (
-                      <p className="text-xs text-red-500 mt-1">Olish narxini kiriting</p>
+                      <p className="text-xs text-red-500 mt-1">{t('kirim.pricing.purchasePriceRequired')}</p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">Ustama foizi (%)</label>
-                    <input
-                      type="number" min="0" step="0.1" placeholder="0"
-                      value={form.markupPercent ?? ''}
-                      onChange={e => setForm(p => ({ ...p, markupPercent: e.target.value }))}
-                      className={fieldCls}
-                    />
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <label className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{t('kirim.pricing.markup')}</label>
+                      <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+                        {(['percent', 'amount'] as const).map(type => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => { setMarkupType(type); setForm(p => ({ ...p, markup: '' })) }}
+                            className={cn(
+                              'rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors',
+                              markupType === type
+                                ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                                : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100',
+                            )}
+                          >
+                            {type === 'percent' ? '%' : t('kirim.pricing.currencySom')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode={markupType === 'percent' ? 'decimal' : 'numeric'}
+                        placeholder="0"
+                        value={markupType === 'amount' && form.markup ? new Intl.NumberFormat('ru-RU').format(Number(form.markup)) : form.markup}
+                        onChange={e => {
+                          const raw = markupType === 'percent'
+                            ? e.target.value.replace(',', '.').replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1')
+                            : e.target.value.replace(/\D/g, '')
+                          setForm(p => ({ ...p, markup: raw }))
+                        }}
+                        className={`${fieldCls} pr-14`}
+                      />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-gray-400 dark:text-gray-500">
+                        {markupType === 'percent' ? '%' : t('kirim.pricing.currencySom')}
+                      </span>
+                    </div>
+                    {Number(form.purchasePrice) > 0 && Number(form.markup) > 0 && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                        {markupType === 'percent'
+                          ? `= ${formatPrice(Math.round(Number(form.purchasePrice) * Number(form.markup) / 100))}`
+                          : `= ${(Number(form.markup) / Number(form.purchasePrice) * 100).toFixed(1).replace(/\.0$/, '')}%`}
+                      </p>
+                    )}
                   </div>
                 </div>
                 {activeSizeType !== 'volume' && (
                 <div className="flex items-center justify-between rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-4 py-3">
-                  <span className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">Sotuv narxi</span>
+                  <span className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">{t('kirim.pricing.salePrice')}</span>
                   <span className="text-[15px] font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">
-                    {formatPrice(Math.round(Number(form.purchasePrice || 0) * (1 + Number(form.markupPercent || 0) / 100)))}
+                    {formatPrice(computeSellingPrice(Number(form.purchasePrice) || 0, Number(form.markup) || 0, markupType))}
                   </span>
                 </div>
                 )}

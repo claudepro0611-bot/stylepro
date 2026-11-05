@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import {
   Plus, Minus, Search, X, Download,
   PackageSearch, ArrowUpDown, Pencil, Trash2, AlertTriangle, Loader2,
@@ -12,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { DatePickerField } from '@/components/ui/date-picker-field'
+import { DateRangeFilter, toYmd } from '@/components/ui/date-range-filter'
 import { createClient } from '@/lib/supabase/client'
 import { formatDateTime } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -23,7 +24,7 @@ import type { StockOutEntry, Product, Customer } from '@/lib/types'
 import type { WarehouseType } from '@/lib/warehouses'
 
 const ITEMS_PER_PAGE = 20
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = toYmd(new Date())
 const PAYMENT_METHODS = ['Naqd', 'Karta', 'Click', 'Payme']
 
 const PAYMENT_DOTS: Record<string, string> = {
@@ -41,13 +42,7 @@ const DATE_PRESETS: { value: DatePreset; labelKey: TranslationKey }[] = [
   { value: 'custom', labelKey: 'chiqim.datePresets.custom' },
 ]
 
-const pillCls = (active: boolean) =>
-  `px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
-    active ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100' : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
-  }`
-
 const selectCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
-const dateInputCls = 'h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 text-[13px] text-gray-700 dark:text-gray-300 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 const fieldCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950 transition-colors'
 
 function formatDMY(dateStr: string): string {
@@ -402,7 +397,7 @@ export default function ChiqimPage() {
         quantity, sell_price: sellPrice,
         customer_id: customer.id, customer_name: customer.fullName,
         payment_method: form.paymentMethod,
-        date: form.datetime ? `${form.datetime}:00` : new Date().toISOString(),
+        date: form.datetime ? `${form.datetime}:00` : localYmd(),
         note: form.note.trim(),
       }],
       p_entry_type: 'manual',
@@ -503,19 +498,10 @@ export default function ChiqimPage() {
       <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 space-y-3 transition-colors duration-200">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[12px] font-medium text-gray-400 dark:text-gray-500 mr-1 shrink-0">{t('chiqim.dateLabel')}</span>
-          {DATE_PRESETS.map(dp => (
-            <button key={dp.value} onClick={() => { setDatePreset(datePreset === dp.value ? null : dp.value); setPage(1) }} className={pillCls(datePreset === dp.value)}>
-              {t(dp.labelKey)}
-            </button>
-          ))}
-          {datePreset === 'custom' && (
-            <div className="flex flex-wrap items-center gap-2 ml-1">
-              <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.from')}</span>
-              <DatePickerField className={dateInputCls} onChange={v => { setCustomFrom(v); setPage(1) }} value={customFrom} />
-              <span className="text-[12px] text-gray-400 dark:text-gray-500">{t('chiqim.to')}</span>
-              <DatePickerField className={dateInputCls} onChange={v => { setCustomTo(v); setPage(1) }} value={customTo} />
-            </div>
-          )}
+          <DateRangeFilter
+            value={dateRange ? { from: dateRange[0], to: dateRange[1] } : null}
+            onChange={r => { setDatePreset(r ? 'custom' : null); setCustomFrom(r?.from ?? ''); setCustomTo(r?.to ?? ''); setPage(1) }}
+          />
         </div>
         <div className="h-px bg-gray-100 dark:bg-gray-800" />
         <div className="flex flex-wrap items-center gap-2">

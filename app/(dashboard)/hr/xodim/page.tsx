@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import { UserPlus, Users, UserCheck, UserX, Clock3, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -224,7 +225,7 @@ export default function XodimPage() {
     const supabase = createClient()
     const companyId = await getCompanyId(supabase)
     if (!companyId) { setSaving(false); toast.error(t('common.error')); return }
-    const startDate = form.startDate || new Date().toISOString().split('T')[0]
+    const startDate = form.startDate || localYmd()
     const { error: empError } = await supabase.rpc('create_employee', {
       p_data: {
         first_name: form.firstName,

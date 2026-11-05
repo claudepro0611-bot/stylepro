@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { Plus, Grid, List, Edit2, Tag, Loader2, ImagePlus, X } from 'lucide-react'
+import { Plus, Grid, List, Edit2, Tag, Loader2, ImagePlus, X, ScanBarcode } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Pagination } from '@/components/ui/Pagination'
 import { MiniBadge } from '@/components/ui/MiniBadge'
@@ -11,7 +11,7 @@ import { ImportModal } from '@/components/mahsulotlar/ImportModal'
 import { BarcodeModal } from '@/components/mahsulotlar/BarcodeModal'
 import { CompanionSection } from '@/components/mahsulotlar/CompanionSection'
 import { createClient } from '@/lib/supabase/client'
-import { getCompanyId } from '@/lib/supabase/helpers'
+import { getCompanyId, fetchAllRows } from '@/lib/supabase/helpers'
 import { generateUniqueBarcode } from '@/lib/barcode'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
@@ -112,6 +112,7 @@ export default function MahsulotlarPage() {
   const { t } = useLanguage()
   const { formatPrice } = useCurrency()
   const [products, setProducts] = useState<Product[]>([])
+  const [skuCounts, setSkuCounts] = useState<Map<string, number>>(new Map())
   const [groups, setGroups] = useState<ProductGroup[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -138,9 +139,18 @@ export default function MahsulotlarPage() {
   const fetchProducts = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const { data, error } = await supabase.from('products').select('*').order('name')
+    const [{ data, error }, { data: sizeData, error: sizeErr }] = await Promise.all([
+      supabase.from('products').select('*').order('name'),
+      fetchAllRows<{ product_id: string }>((from, to) =>
+        supabase.from('product_sizes').select('product_id').order('id').range(from, to)),
+    ])
     if (error) toast.error(t('common.error'))
     else setProducts((data as ProductRow[]).map(mapProduct))
+    if (!sizeErr) {
+      const counts = new Map<string, number>()
+      for (const r of sizeData) counts.set(r.product_id, (counts.get(r.product_id) ?? 0) + 1)
+      setSkuCounts(counts)
+    }
     setLoading(false)
   }, [t])
 
@@ -340,7 +350,7 @@ export default function MahsulotlarPage() {
           >
             Excel import
           </button>
-          <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 transition-colors">
+          <button onClick={openAdd} className="flex items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white px-3.5 py-2 text-[13px] font-medium text-white dark:text-slate-900 transition-colors">
             <Plus className="h-3.5 w-3.5" />
             {t('products.addNew')}
           </button>
@@ -392,7 +402,7 @@ export default function MahsulotlarPage() {
                       <Edit2 className="h-3 w-3" />{t('products.edit')}
                     </button>
                     <button onClick={e => openBarcode(p, e)} className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                      🏷️ Shtrix-kod
+                      <ScanBarcode className="h-3.5 w-3.5" /> Shtrix-kod
                     </button>
                   </div>
                 </div>
@@ -411,6 +421,7 @@ export default function MahsulotlarPage() {
                 <tr className="border-b border-gray-100 dark:border-gray-800">
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('products.table.product')}</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('products.table.sku')}</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{t('products.table.skuCount')}</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('products.table.category')}</th>
                   <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('products.table.price')}</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('products.table.status')}</th>
@@ -421,10 +432,27 @@ export default function MahsulotlarPage() {
                 {paginated.map((p, i) => (
                   <tr key={p.id} className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors ${i % 2 !== 0 ? 'bg-gray-50/50 dark:bg-gray-800/30' : ''}`}>
                     <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{p.name}</p>
-                      {p.colors.length > 0 && <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">{p.colors.join(', ')}</p>}
+                      <div className="flex items-center gap-3">
+                        <div className="flex w-9 h-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-50 dark:bg-gray-800">
+                          {p.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <Tag className="h-4 w-4 text-gray-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{p.name}</p>
+                          {p.colors.length > 0 && <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">{p.colors.join(', ')}</p>}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-[11px] text-gray-400 dark:text-gray-500">{p.sku}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs tabular-nums text-gray-600 dark:text-gray-400">
+                        {skuCounts.get(p.id) ?? 0}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{p.category}</td>
                     <td className="px-4 py-3 text-sm text-right font-medium tabular-nums text-gray-900 dark:text-gray-100">{formatPrice(p.price)}</td>
                     <td className="px-4 py-3"><MiniBadge status={p.status} /></td>
@@ -434,7 +462,7 @@ export default function MahsulotlarPage() {
                           <Edit2 className="h-3 w-3" />{t('products.edit')}
                         </button>
                         <button onClick={e => openBarcode(p, e)} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                          🏷️ Shtrix-kod
+                          <ScanBarcode className="h-3.5 w-3.5" /> Shtrix-kod
                         </button>
                       </div>
                     </td>
@@ -521,7 +549,7 @@ export default function MahsulotlarPage() {
               <div className="flex flex-wrap gap-1.5">
                 {COLORS_LIST.map(c => (
                   <button key={c} type="button" onClick={() => setAddForm(f => ({ ...f, colors: toggleColor(f.colors, c) }))}
-                    className={`px-3 py-1 rounded-md text-[13px] font-medium border transition-colors ${addForm.colors.includes(c) ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                    className={`px-3 py-1 rounded-md text-[13px] font-medium border transition-colors ${addForm.colors.includes(c) ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900 dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 dark:border-slate-100' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
                     {c}
                   </button>
                 ))}
@@ -627,7 +655,7 @@ export default function MahsulotlarPage() {
               <div className="flex flex-wrap gap-1.5">
                 {COLORS_LIST.map(c => (
                   <button key={c} type="button" onClick={() => setEditForm(f => ({ ...f, colors: toggleColor(f.colors, c) }))}
-                    className={`px-3 py-1 rounded-md text-[13px] font-medium border transition-colors ${editForm.colors.includes(c) ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                    className={`px-3 py-1 rounded-md text-[13px] font-medium border transition-colors ${editForm.colors.includes(c) ? 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900 dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 dark:border-slate-100' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
                     {c}
                   </button>
                 ))}

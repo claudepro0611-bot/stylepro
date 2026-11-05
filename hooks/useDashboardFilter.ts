@@ -43,7 +43,9 @@ function startOfWeekUTC(d: Date) {
 }
 
 function computeRange(period: DashboardPeriod, customStart: string, customEnd: string): { range: DateRange; prevRange: DateRange } {
-  const today = parseUTC(ymd(new Date()))
+  // Local calendar date, not the UTC one (Tashkent is UTC+5).
+  const now = new Date()
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
 
   let start: Date
   let end: Date

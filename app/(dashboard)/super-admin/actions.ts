@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient, supabaseServer } from '@/lib/supabase/server'
+import { tashkentYmd } from '@/lib/utils/date'
 
 const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 const LOGIN_DOMAIN = '@stylepro.local'
@@ -78,7 +79,7 @@ export async function getCompanies(): Promise<{ companies: CompanyRow[]; stats: 
 
   if (warehousesError) throw new Error(warehousesError.message)
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = tashkentYmd()
 
   const rows: CompanyRow[] = (companies ?? []).map(c => {
     const companyUsers = (users ?? []).filter(u => u.company_id === c.id)
@@ -106,7 +107,7 @@ export async function getCompanies(): Promise<{ companies: CompanyRow[]; stats: 
   const stats: CompanyStats = {
     total: rows.length,
     active: rows.filter(r => r.status === 'active').length,
-    addedToday: rows.filter(r => r.createdAt.slice(0, 10) === todayStr).length,
+    addedToday: rows.filter(r => r.createdAt && tashkentYmd(new Date(r.createdAt)) === todayStr).length,
   }
 
   return { companies: rows, stats }

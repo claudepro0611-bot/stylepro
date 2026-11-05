@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import { useRouter } from 'next/navigation'
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -44,7 +45,7 @@ interface GroupLiteRow { id: string; name: string; status: string }
 
 function isPromotionCurrentlyActive(p: Promotion): boolean {
   if (!p.isActive) return false
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localYmd()
   if (p.startsOn && p.startsOn > today) return false
   if (p.endsOn && p.endsOn < today) return false
   return true

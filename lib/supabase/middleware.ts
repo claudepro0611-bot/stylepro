@@ -31,6 +31,7 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/hr': 'hr',
   '/jamoa': 'jamoa',
   '/inventory': 'inventory',
+  '/omborlar': 'inventory',
 }
 
 export async function updateSession(request: NextRequest) {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import { Search, Plus, Minus, X, Tag, Loader2, Printer, Clock, ScanBarcode } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -743,7 +744,7 @@ export default function POSPage() {
       setPromotionsLoading(false)
       return
     }
-    const today = new Date().toISOString().slice(0, 10)
+    const today = localYmd()
     const rows = (data as PromotionRow[])
       .filter(r => (!r.starts_on || r.starts_on <= today) && (!r.ends_on || r.ends_on >= today))
       .map(mapPromotion)
@@ -808,7 +809,7 @@ export default function POSPage() {
     setSelling(true)
     const supabase = createClient()
 
-    const today = new Date().toISOString().slice(0, 10)
+    const today = localYmd()
     const customerName = customer?.fullName ?? t('dashboard.recentSales.guestCustomer')
 
     // Bottle lines are separate cart lines but merge here if the same bottle

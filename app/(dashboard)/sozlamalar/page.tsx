@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import { useTheme } from 'next-themes'
 import { SlidersHorizontal, Store, Target, Info, Sun, Moon, AlertTriangle } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -109,8 +110,8 @@ export default function SettingsPage() {
     let active = true
     const supabase = createClient()
     const now = new Date()
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10)
-    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10)
+    const start = localYmd(new Date(now.getFullYear(), now.getMonth(), 1))
+    const end = localYmd(new Date(now.getFullYear(), now.getMonth() + 1, 0))
 
     supabase
       .from('transactions_net')

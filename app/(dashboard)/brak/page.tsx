@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import {
   Plus, Trash2, Loader2, PackageSearch,
 } from 'lucide-react'
@@ -20,7 +21,7 @@ import type { Product } from '@/lib/types'
 import type { WarehouseType } from '@/lib/warehouses'
 
 const ITEMS_PER_PAGE = 20
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = localYmd()
 
 const fieldCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950 transition-colors'
 
@@ -240,7 +241,7 @@ export default function BrakPage() {
         customer_id: null,
         customer_name: '',
         payment_method: '',
-        date: form.datetime ? `${form.datetime}:00` : new Date().toISOString(),
+        date: form.datetime ? `${form.datetime}:00` : localYmd(),
         note: form.reason.trim(),
       }],
       p_entry_type: 'brak',

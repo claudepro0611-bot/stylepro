@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import { useRouter } from 'next/navigation'
 import { Gift, ShieldAlert, Wallet, CalendarDays, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -201,12 +202,12 @@ export default function MukofotJarimalarPage() {
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
   function openReward() {
-    setRewardForm({ employeeId: '', typeId: '', amount: '', date: new Date().toISOString().split('T')[0], note: '' })
+    setRewardForm({ employeeId: '', typeId: '', amount: '', date: localYmd(), note: '' })
     setIsRewardOpen(true)
   }
 
   function openPenalty() {
-    setPenaltyForm({ employeeId: '', typeId: '', amount: '', date: new Date().toISOString().split('T')[0], reason: '' })
+    setPenaltyForm({ employeeId: '', typeId: '', amount: '', date: localYmd(), reason: '' })
     setIsPenaltyOpen(true)
   }
 
@@ -233,7 +234,7 @@ export default function MukofotJarimalarPage() {
         employee_id: emp.id,
         type_id: type.id,
         amount: Number(rewardForm.amount),
-        date: rewardForm.date || new Date().toISOString().split('T')[0],
+        date: rewardForm.date || localYmd(),
         note: rewardForm.note,
       },
     })
@@ -262,7 +263,7 @@ export default function MukofotJarimalarPage() {
         employee_id: emp.id,
         type_id: type.id,
         amount: Number(penaltyForm.amount),
-        date: penaltyForm.date || new Date().toISOString().split('T')[0],
+        date: penaltyForm.date || localYmd(),
         note: penaltyForm.reason,
       },
     })

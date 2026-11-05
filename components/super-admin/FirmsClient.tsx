@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Edit2, Trash2, LogIn, AlertTriangle, Building2, CheckCircle2, CalendarPlus, Blocks } from 'lucide-react'
@@ -161,7 +162,7 @@ export function FirmsClient({ companies, stats }: FirmsClientProps) {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 tabular-nums">
-                      {new Date(c.createdAt).toISOString().split('T')[0]}
+                      {localYmd(new Date(c.createdAt))}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">

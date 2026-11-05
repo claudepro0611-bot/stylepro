@@ -8,7 +8,7 @@ import {
   ShoppingBag, BarChart2, Megaphone,
   MessageSquare, Settings, ArrowDownCircle, ArrowUpCircle, Trash2, ChevronDown, ShoppingCart,
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
-  Receipt,
+  Receipt, Warehouse,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -56,6 +56,7 @@ export const NAV_ITEMS: NavEntry[] = [
     children: [
       { href: '/mahsulotlar', labelKey: 'sidebar.products', icon: ShoppingBag, permKey: 'mahsulotlar' },
       { href: '/mahsulot-guruhi', labelKey: 'sidebar.productGroups', icon: Tag, permKey: 'mahsulot_guruhi' },
+      { href: '/omborlar', labelKey: 'sidebar.warehouses', icon: Warehouse, permKey: 'inventory' },
     ],
   },
   {

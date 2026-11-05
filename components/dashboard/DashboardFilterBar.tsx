@@ -3,11 +3,10 @@
 import { useState, useEffect } from 'react'
 import { CalendarDays, Download, Filter, X } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
-import { cn } from '@/lib/utils'
 import { FILTER_ALL, type DashboardPeriod } from '@/hooks/useDashboardFilter'
 import type { DashboardConfig } from '@/hooks/useDashboardConfig'
 import { Switch } from '@/components/ui/switch'
-import { DatePickerField } from '@/components/ui/date-picker-field'
+import { DateRangeFilter, toYmd, type DateRangeValue } from '@/components/ui/date-range-filter'
 import {
   Dialog,
   DialogContent,
@@ -27,6 +26,25 @@ const PERIODS: { value: DashboardPeriod; key: TranslationKey }[] = [
   { value: 'year', key: 'dashboard.filters.periods.year' },
   { value: 'custom', key: 'dashboard.filters.periods.custom' },
 ]
+
+type NamedPeriod = Exclude<DashboardPeriod, 'custom'>
+
+// Display ranges for the named periods, ending today (the hook still filters
+// month/week/year to their full calendar span; future days have no data).
+function periodRanges(): Record<NamedPeriod, DateRangeValue> {
+  const now = new Date()
+  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate()
+  const today = toYmd(now)
+  const yesterday = toYmd(new Date(y, m, d - 1))
+  const weekStart = toYmd(new Date(y, m, d - ((now.getDay() + 6) % 7)))
+  return {
+    today: { from: today, to: today },
+    yesterday: { from: yesterday, to: yesterday },
+    week: { from: weekStart, to: today },
+    month: { from: toYmd(new Date(y, m, 1)), to: today },
+    year: { from: toYmd(new Date(y, 0, 1)), to: today },
+  }
+}
 
 const FILTER_SECTIONS: { titleKey: TranslationKey; rows: { key: keyof DashboardConfig; labelKey: TranslationKey }[] }[] = [
   {
@@ -160,37 +178,29 @@ export function DashboardFilterBar({
 }: DashboardFilterBarProps) {
   const { t } = useLanguage()
 
-  // draft custom-range inputs, committed via "Qo'llash"
-  const [draftStart, setDraftStart] = useState(customStart)
-  const [draftEnd, setDraftEnd] = useState(customEnd)
-  useEffect(() => { setDraftStart(customStart) }, [customStart])
-  useEffect(() => { setDraftEnd(customEnd) }, [customEnd])
-
-  function applyCustomRange() {
-    setCustomStart(draftStart)
-    setCustomEnd(draftEnd)
+  // Map the calendar pick back onto the named periods where it matches one, so
+  // KPI titles ("Bugungi daromad", …) keep working; anything else is 'custom'.
+  function handleRangeChange(r: DateRangeValue | null) {
+    if (!r) { setPeriod('month'); setCustomStart(''); setCustomEnd(''); return }
+    const named = (Object.keys(namedRanges) as NamedPeriod[]).find(
+      p => namedRanges[p].from === r.from && namedRanges[p].to === r.to,
+    )
+    if (named) { setPeriod(named); return }
+    setCustomStart(r.from)
+    setCustomEnd(r.to)
+    setPeriod('custom')
   }
+
+  const namedRanges = periodRanges()
+  const rangeValue: DateRangeValue | null =
+    period === 'custom'
+      ? (customStart && customEnd ? { from: customStart, to: customEnd } : null)
+      : namedRanges[period]
 
   return (
     <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4 transition-colors duration-200 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Period tabs */}
-        <div className="flex flex-wrap gap-1 rounded-lg bg-gray-100 dark:bg-gray-800 p-1">
-          {PERIODS.map(p => (
-            <button
-              key={p.value}
-              onClick={() => setPeriod(p.value)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors duration-150',
-                period === p.value
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-white/60 dark:hover:bg-gray-900/40 hover:text-gray-700 dark:hover:text-gray-300',
-              )}
-            >
-              {t(p.key)}
-            </button>
-          ))}
-        </div>
+        <DateRangeFilter value={rangeValue} onChange={handleRangeChange} />
 
         <div className="flex items-center gap-2">
           <FilterPanel config={config} onSave={onCustomizeSave} />
@@ -203,28 +213,6 @@ export function DashboardFilterBar({
           </button>
         </div>
       </div>
-
-      {/* Custom range */}
-      {period === 'custom' && (
-        <div className="flex flex-wrap items-center gap-2">
-          <DatePickerField
-            onChange={setDraftStart}
-            placeholder={t('dashboard.filters.customRange.start')}
-            value={draftStart}
-          />
-          <DatePickerField
-            onChange={setDraftEnd}
-            placeholder={t('dashboard.filters.customRange.end')}
-            value={draftEnd}
-          />
-          <button
-            onClick={applyCustomRange}
-            className="h-9 px-4 rounded-lg bg-blue-600 text-white text-[13px] font-medium transition-colors hover:bg-blue-700"
-          >
-            {t('dashboard.filters.customRange.apply')}
-          </button>
-        </div>
-      )}
 
       {/* Active filter chips */}
       {hasActiveFilters && (

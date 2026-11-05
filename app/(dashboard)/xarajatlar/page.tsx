@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
+import { localYmd } from '@/lib/utils/date'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -58,7 +59,7 @@ const emptyExpenseForm = {
   categoryId: '',
   amount: '',
   paymentMethod: 'cash' as PaymentMethod,
-  date: new Date().toISOString().slice(0, 10),
+  date: localYmd(),
   note: '',
 }
 
