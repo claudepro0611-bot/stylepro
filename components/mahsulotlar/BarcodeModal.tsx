@@ -1,11 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Printer, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { BarcodeLabel } from '@/components/barcode/BarcodeLabel'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { LabelPrintPanel } from '@/components/barcode/LabelPrintPanel'
 import { createClient } from '@/lib/supabase/client'
 import { getCompanyId } from '@/lib/supabase/helpers'
 import { generateEAN13, generateUniqueBarcode } from '@/lib/barcode'
@@ -104,37 +103,17 @@ export function BarcodeModal({ product, open, onOpenChange }: BarcodeModalProps)
             Bu mahsulot uchun razmerlar topilmadi
           </div>
         ) : (
-          <div id="barcode-print-area" className="flex flex-wrap gap-3 max-h-[60vh] overflow-y-auto py-2">
-            {rows.map(row => (
-              <BarcodeLabel
-                key={row.id}
-                productName={product?.name ?? ''}
-                size={row.color ? `${row.color} / ${row.size}` : row.size}
-                price={row.sellingPrice}
-                barcode={row.barcode}
-              />
-            ))}
-          </div>
+          <LabelPrintPanel
+            labels={rows.map(row => ({
+              key: row.id,
+              productName: product?.name ?? '',
+              variant: row.color ? `${row.color} / ${row.size}` : row.size,
+              price: row.sellingPrice,
+              barcode: row.barcode,
+            }))}
+            onClose={() => onOpenChange(false)}
+          />
         )}
-
-        <style>{`
-          @media print {
-            body * { visibility: hidden; }
-            #barcode-print-area, #barcode-print-area * { visibility: visible; }
-            #barcode-print-area {
-              position: absolute; top: 0; left: 0; width: 100%;
-              max-height: none; overflow: visible;
-            }
-          }
-        `}</style>
-
-        <DialogFooter className="mt-4 print:hidden">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Yopish</Button>
-          <Button onClick={() => window.print()} disabled={loading || rows.length === 0}>
-            <Printer className="h-3.5 w-3.5" />
-            Barchasini chop etish
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
