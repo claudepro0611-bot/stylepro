@@ -46,7 +46,7 @@ export function CompanionSection({ productId }: Props) {
       const nameById = new Map(((prods ?? []) as { id: string; name: string }[]).map(p => [p.id, p.name]))
       setRows(all.filter(s => s.product_id === productId && parseVolume(s.size) !== null))
       setOptions(all
-        .filter(s => parseVolume(s.size) === null)
+        .filter(s => s.product_id !== productId)
         .map(s => ({
           value: s.id,
           label: `${nameById.get(s.product_id) ?? ''} · ${s.size}${s.color ? ` · ${s.color}` : ''}`,
