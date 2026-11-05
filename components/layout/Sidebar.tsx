@@ -8,7 +8,7 @@ import {
   ShoppingBag, BarChart2, Megaphone,
   MessageSquare, Settings, ArrowDownCircle, ArrowUpCircle, Trash2, ChevronDown, ShoppingCart,
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
-  Receipt, Warehouse,
+  Receipt, Warehouse, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -41,13 +41,26 @@ interface SidebarProps {
 export const NAV_ITEMS: NavEntry[] = [
   { href: '/dashboard', labelKey: 'sidebar.dashboard', icon: LayoutDashboard, permKey: 'dashboard' },
   { href: '/pos', labelKey: 'sidebar.pos', icon: ShoppingCart, permKey: 'pos' },
-  { href: '/customers', labelKey: 'sidebar.customers', icon: Users, permKey: 'customers' },
+  {
+    href: '/mijozlar', labelKey: 'sidebar.customersGroup', icon: Users, noLink: true,
+    children: [
+      { href: '/customers', labelKey: 'sidebar.customers', icon: Contact, permKey: 'customers' },
+      { href: '/sotuvlar', labelKey: 'sidebar.sales', icon: Receipt, permKey: 'arxiv' },
+      { href: '/qaytarishlar', labelKey: 'sidebar.returns', icon: RotateCcw, permKey: 'arxiv' },
+      { href: '/tolovlar', labelKey: 'sidebar.payments', icon: CreditCard, permKey: 'arxiv' },
+    ],
+  },
   {
     href: '/tovarlar', labelKey: 'sidebar.tovarlar', icon: Package, noLink: true,
     children: [
-      { href: '/inventory', labelKey: 'sidebar.inventory', icon: Package, permKey: 'inventory' },
       { href: '/kirim', labelKey: 'sidebar.kirim', icon: ArrowDownCircle, permKey: 'kirim' },
       { href: '/chiqim', labelKey: 'sidebar.chiqim', icon: ArrowUpCircle, permKey: 'chiqim' },
+    ],
+  },
+  {
+    href: '/operatsiyalar', labelKey: 'sidebar.operations', icon: ClipboardList, noLink: true,
+    children: [
+      { href: '/inventarizatsiya', labelKey: 'sidebar.inventarizatsiya', icon: ClipboardCheck, permKey: 'inventory' },
       { href: '/brak', labelKey: 'sidebar.brak', icon: Trash2, permKey: 'brak' },
     ],
   },
@@ -57,6 +70,7 @@ export const NAV_ITEMS: NavEntry[] = [
       { href: '/mahsulotlar', labelKey: 'sidebar.products', icon: ShoppingBag, permKey: 'mahsulotlar' },
       { href: '/mahsulot-guruhi', labelKey: 'sidebar.productGroups', icon: Tag, permKey: 'mahsulot_guruhi' },
       { href: '/omborlar', labelKey: 'sidebar.warehouses', icon: Warehouse, permKey: 'inventory' },
+      { href: '/prays-list', labelKey: 'sidebar.priceLists', icon: ListOrdered, permKey: 'mahsulotlar' },
     ],
   },
   {
@@ -77,7 +91,13 @@ export const NAV_ITEMS: NavEntry[] = [
       { href: '/reports/inventar', labelKey: 'sidebar.reportsInventar', icon: Package },
     ],
   },
-  { href: '/xarajatlar', labelKey: 'sidebar.expenses', icon: Receipt, permKey: 'xarajatlar', featureKey: 'expenses' },
+  {
+    href: '/moliya', labelKey: 'sidebar.finance', icon: Wallet, noLink: true,
+    children: [
+      { href: '/xarajatlar', labelKey: 'sidebar.expenses', icon: Receipt, permKey: 'xarajatlar', featureKey: 'expenses' },
+      { href: '/valyuta-kurslari', labelKey: 'sidebar.exchangeRates', icon: TrendingUp, permKey: 'sozlamalar' },
+    ],
+  },
   { href: '/marketing', labelKey: 'sidebar.marketing', icon: Megaphone, permKey: 'marketing', featureKey: 'marketing' },
   { href: '/requests', labelKey: 'sidebar.requests', icon: MessageSquare, permKey: 'requests' },
   { href: '/jamoa', labelKey: 'sidebar.jamoa', icon: UserCog, permKey: 'jamoa' },
@@ -109,7 +129,12 @@ function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: bo
     if (item.featureKey && !features[item.featureKey]) return acc
     if (!isOwner && item.permKey && !permissions[item.permKey]) return acc
     if (item.children) {
-      const children = isOwner ? item.children : item.children.filter(c => !c.permKey || permissions[c.permKey])
+      // Child-level featureKey applies to owners too (module disabled for the
+      // company); child-level permKey only to non-owners, same as top level.
+      const children = item.children.filter(c =>
+        (!c.featureKey || features[c.featureKey]) &&
+        (isOwner || !c.permKey || permissions[c.permKey]),
+      )
       if (item.noLink && children.length === 0) return acc
       acc.push({ ...item, children })
       return acc

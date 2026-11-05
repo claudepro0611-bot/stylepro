@@ -5,10 +5,33 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * function - required when inserting rows, since company_id is NOT NULL
  * and RLS only checks it after the row is built.
  */
-export async function getCompanyId(supabase: SupabaseClient): Promise<string | null> {
+async function fetchCompanyId(supabase: SupabaseClient): Promise<string | null> {
   const { data, error } = await supabase.rpc('get_company_id')
   if (error) return null
   return (data as string | null) ?? null
+}
+
+// Browser-side cache: a user's company never changes, but nearly every page
+// and hook called get_company_id() on mount, adding a full network round
+// trip to every navigation. Keyed by the session's user id (read locally,
+// no network) so signing in as someone else never reuses a stale value.
+let cachedCompany: { userId: string; companyId: string } | null = null
+let inflightCompany: { userId: string; promise: Promise<string | null> } | null = null
+
+export async function getCompanyId(supabase: SupabaseClient): Promise<string | null> {
+  if (typeof window === 'undefined') return fetchCompanyId(supabase)
+  const { data: { session } } = await supabase.auth.getSession()
+  const userId = session?.user.id
+  if (!userId) return fetchCompanyId(supabase)
+  if (cachedCompany?.userId === userId) return cachedCompany.companyId
+  if (inflightCompany?.userId !== userId) {
+    const promise = fetchCompanyId(supabase).then(id => {
+      if (id) cachedCompany = { userId, companyId: id }
+      return id
+    }).finally(() => { if (inflightCompany?.promise === promise) inflightCompany = null })
+    inflightCompany = { userId, promise }
+  }
+  return inflightCompany!.promise
 }
 
 const PAGE_SIZE = 1000

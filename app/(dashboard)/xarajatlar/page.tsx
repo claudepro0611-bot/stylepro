@@ -273,7 +273,7 @@ export default function XarajatlarPage() {
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium transition-colors',
               tab === key
-                ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
                 : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
             )}
           >
@@ -292,7 +292,7 @@ export default function XarajatlarPage() {
                 className={cn(
                   'px-4 py-1.5 rounded-md text-sm font-medium transition-all',
                   period === key
-                    ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                    ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700',
                 )}
               >
@@ -463,7 +463,7 @@ export default function XarajatlarPage() {
                     className={cn(
                       'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                       form.paymentMethod === m
-                        ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                        ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
                         : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                     )}
                   >

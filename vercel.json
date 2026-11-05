@@ -1,0 +1,6 @@
+{
+  "regions": ["icn1"],
+  "crons": [
+    { "path": "/api/cron/exchange-rates", "schedule": "0 1 * * *" }
+  ]
+}

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Bell, Menu, LogOut, Sun, Moon, KeyRound } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { PaymentModal } from '@/components/PaymentModal'
@@ -67,6 +68,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const pathname = usePathname()
   const { t } = useLanguage()
   const { resolvedTheme, setTheme } = useTheme()
+  const { currency, setCurrency, usdRate } = useCurrency()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   const isNight = resolvedTheme !== 'light'
@@ -179,6 +181,28 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
           <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 ring-1 ring-white dark:ring-gray-900" />
         </button>
+
+        {/* Currency switch */}
+        <div
+          className="flex items-center rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5"
+          title={`1 USD = ${new Intl.NumberFormat('ru-RU').format(usdRate)} UZS`}
+        >
+          {(['UZS', 'USD'] as const).map(c => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCurrency(c)}
+              className={cn(
+                'rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                currency === c
+                  ? 'bg-slate-900 dark:bg-white shadow-sm text-white dark:text-gray-900'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100',
+              )}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
 
         {/* Day / Night switch */}
         <button

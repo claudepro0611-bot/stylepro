@@ -121,7 +121,7 @@ export function DateRangeFilter({ value, onChange, className }: DateRangeFilterP
                   className={cn(
                     'shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-[13px] transition-colors',
                     active
-                      ? 'border border-gray-100 bg-white text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100'
+                      ? 'border border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-gray-900'
                       : 'border border-transparent text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100',
                   )}
                 >

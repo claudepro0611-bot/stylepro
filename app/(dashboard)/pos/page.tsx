@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { localYmd } from '@/lib/utils/date'
-import { Search, Plus, Minus, X, Tag, Loader2, Printer, Clock, ScanBarcode } from 'lucide-react'
+import { Search, Plus, Minus, X, Tag, Loader2, Printer, Clock, ScanBarcode, Gift } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,9 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { useFeatures } from '@/lib/features'
 import type { Shift, Promotion } from '@/lib/types'
+import { isPerMl } from '@/lib/sizes'
+import { computeListPrice, mapPriceList, type PriceList, type PriceListRow } from '@/lib/price-lists'
+import { fetchAllRows } from '@/lib/supabase/helpers'
 
 const CATEGORIES = ['Barchasi', "Ko'ylak", 'Shim', 'Kurtka', 'Libos']
 const PAYMENT_METHODS = ['Naqd', 'Karta', 'Click', 'Payme']
@@ -67,10 +70,10 @@ interface ProductGroupCard {
   variants: PosItem[]
 }
 
-interface CustomerLite { id: string; fullName: string; phone: string }
-interface CustomerRow { id: string; full_name: string; phone: string | null }
+interface CustomerLite { id: string; fullName: string; phone: string; priceListId: string | null }
+interface CustomerRow { id: string; full_name: string; phone: string | null; price_list_id?: string | null }
 function mapCustomerLite(row: CustomerRow): CustomerLite {
-  return { id: row.id, fullName: row.full_name, phone: row.phone ?? '' }
+  return { id: row.id, fullName: row.full_name, phone: row.phone ?? '', priceListId: row.price_list_id ?? null }
 }
 
 interface CartLine {
@@ -86,6 +89,7 @@ interface CartLine {
   purchasePrice: number
   quantity: number
   maxStock: number
+  isGift: boolean  // free gift line: sold at 0, still decrements stock
 }
 
 interface SelectedPromotion {
@@ -120,7 +124,9 @@ function syncBottles(cart: CartLine[], items: PosItem[]): CartLine[] {
     out.push({
       key: `bottle:${line.key}`, productSizeId: b.id, companionId: null, bottleDropped: false, companionOf: line.key,
       productId: b.productId, productName: b.productName, size: b.size,
-      unitPrice: b.price, purchasePrice: b.purchasePrice, quantity: line.quantity, maxStock: b.stock,
+      unitPrice: b.price, purchasePrice: b.purchasePrice,
+      // Per-ml perfume: one bottle per pour, not one per ml.
+      quantity: isPerMl(line.size) ? 1 : line.quantity, maxStock: b.stock, isGift: line.isGift,
     })
   }
   return out
@@ -158,7 +164,7 @@ const pillCls = (active: boolean) =>
   cn(
     'rounded-lg px-3 py-1.5 text-sm transition-colors',
     active
-      ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+      ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
       : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800',
   )
 
@@ -186,7 +192,7 @@ function ProductGroupCardView({ group, onOpen }: { group: ProductGroupCard; onOp
       <div className="p-3 space-y-1">
         <p className="text-xs text-gray-400 dark:text-gray-500">{group.category}</p>
         <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight">{group.productName}</p>
-        <p className="text-xs text-gray-400 dark:text-gray-500">{group.totalStock} ta</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500">{group.totalStock} {group.variants.every(v => isPerMl(v.size)) ? 'ml' : 'ta'}</p>
       </div>
     </div>
   )
@@ -293,6 +299,9 @@ export default function POSPage() {
 
   const [companyName, setCompanyName] = useState('')
   const [currentUser, setCurrentUser] = useState<{ id: string; fullName: string } | null>(null)
+  const [userRole, setUserRole] = useState('')
+  const [giftSettings, setGiftSettings] = useState<{ maxPercent: number; staffAllowed: boolean } | null>(null)
+  const canGift = !!giftSettings && giftSettings.maxPercent > 0 && userRole !== '' && (userRole !== 'staff' || giftSettings.staffAllowed)
   const [activeShift, setActiveShift] = useState<Shift | null>(null)
   const [shiftLoading, setShiftLoading] = useState(true)
   const [startingShift, setStartingShift] = useState(false)
@@ -306,10 +315,13 @@ export default function POSPage() {
 
   const fetchShiftState = useCallback(async () => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // Local session read (no Auth round trip); RLS still enforces access.
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user) { setShiftLoading(false); return }
-    const { data: userRow } = await supabase.from('users').select('id, full_name').eq('id', user.id).single()
+    const { data: userRow } = await supabase.from('users').select('id, full_name, role').eq('id', user.id).single()
     setCurrentUser({ id: user.id, fullName: userRow?.full_name ?? user.email ?? '' })
+    setUserRole(userRow?.role ?? '')
     const { data: shiftRow } = await supabase.from('shifts').select('*')
       .eq('cashier_id', user.id).eq('status', 'active').order('started_at', { ascending: false }).limit(1).maybeSingle()
     setActiveShift(shiftRow as Shift | null)
@@ -323,6 +335,14 @@ export default function POSPage() {
       if (data) {
         const row = data as unknown as { name: string }
         setCompanyName(row.name)
+      }
+    })
+    // Gift settings — separate query so the company name still loads if the
+    // gift migration hasn't been applied yet.
+    supabase.from('companies').select('max_gift_percent, gift_staff_allowed').single().then(({ data }) => {
+      if (data) {
+        const row = data as unknown as { max_gift_percent: number; gift_staff_allowed: boolean }
+        setGiftSettings({ maxPercent: Number(row.max_gift_percent) || 0, staffAllowed: !!row.gift_staff_allowed })
       }
     })
   }, [])
@@ -417,15 +437,30 @@ export default function POSPage() {
 
   const fetchCustomers = useCallback(async () => {
     const supabase = createClient()
-    const { data, error } = await supabase.from('customers').select('id, full_name, phone')
+    const { data, error } = await supabase.from('customers').select('id, full_name, phone, price_list_id')
     if (error) toast.error(t('common.error'))
     else setCustomers((data as CustomerRow[]).map(mapCustomerLite))
   }, [t])
 
+  // Price lists (wholesale etc.) for customers attached to one. Preview only —
+  // sell_cart recomputes the same price server-side.
+  const [priceLists, setPriceLists] = useState<PriceList[]>([])
+  const [plOverrides, setPlOverrides] = useState<Map<string, number>>(new Map())
+  const fetchPriceLists = useCallback(async () => {
+    const supabase = createClient()
+    const [{ data: lists }, { data: items }] = await Promise.all([
+      supabase.from('price_lists').select('id, name, base, adjust_percent, rounding, is_active'),
+      fetchAllRows<{ price_list_id: string; product_size_id: string; price: number }>((from, to) =>
+        supabase.from('price_list_items').select('price_list_id, product_size_id, price').order('product_size_id').range(from, to)),
+    ])
+    setPriceLists(((lists ?? []) as PriceListRow[]).map(mapPriceList))
+    setPlOverrides(new Map(items.map(i => [`${i.price_list_id}|${i.product_size_id}`, Number(i.price)])))
+  }, [])
+
   useEffect(() => {
     setLoading(true)
-    Promise.all([fetchProducts(), fetchCustomers()]).finally(() => setLoading(false))
-  }, [fetchProducts, fetchCustomers])
+    Promise.all([fetchProducts(), fetchCustomers(), fetchPriceLists()]).finally(() => setLoading(false))
+  }, [fetchProducts, fetchCustomers, fetchPriceLists])
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Barchasi')
@@ -435,7 +470,7 @@ export default function POSPage() {
   const [activeTabId, setActiveTabId] = useState('tab-1')
 
   const activeTab = tabs.find(tb => tb.id === activeTabId) ?? tabs[0]
-  const { cart, customerId, paymentMethod, amountReceived, selectedPromotion } = activeTab
+  const { cart: rawCart, customerId, paymentMethod, amountReceived, selectedPromotion: tabPromotion } = activeTab
 
   function updateActiveTab(updater: (tab: OrderTab) => OrderTab) {
     setTabs(prev => prev.map(tb => (tb.id === activeTabId ? updater(tb) : tb)))
@@ -516,19 +551,35 @@ export default function POSPage() {
   const manualBarcodeInputRef = useRef<HTMLInputElement>(null)
 
   const customer = customers.find(c => c.id === customerId) ?? null
+  const customerPriceList = customer?.priceListId ? priceLists.find(p => p.id === customer.priceListId && p.isActive) ?? null : null
+  // With a price list the list price is final (server ignores promotions
+  // for these customers), so the promotion preview is switched off too.
+  const cart = customerPriceList
+    ? rawCart.map(l => ({ ...l, unitPrice: computeListPrice(customerPriceList, l.unitPrice, l.purchasePrice, plOverrides.get(`${customerPriceList.id}|${l.productSizeId}`)) }))
+    : rawCart
+  const selectedPromotion = customerPriceList ? null : tabPromotion
 
-  function addToCart(item: PosItem) {
+  // Per-ml perfume: ask the cashier how many ml before adding.
+  const [mlPrompt, setMlPrompt] = useState<{ item: PosItem; value: string } | null>(null)
+
+  function addToCart(item: PosItem, mlQty?: number) {
     if (item.stock <= 0) { toast.error(t('pos.noSizesAvailable')); return }
+    const qty = mlQty ?? 1
+    if (isPerMl(item.size) && mlQty === undefined) {
+      setMatrixProduct(null)
+      setMlPrompt({ item, value: '' })
+      return
+    }
     const key = item.id  // product_sizes.id
     updateActiveTab(tab => {
       const existing = tab.cart.find(l => l.key === key)
       if (existing) {
         if (existing.quantity >= item.stock) return tab
-        return { ...tab, cart: syncBottles(tab.cart.map(l => l.key === key ? { ...l, quantity: l.quantity + 1 } : l), posItems) }
+        return { ...tab, cart: syncBottles(tab.cart.map(l => l.key === key ? { ...l, quantity: Math.min(item.stock, l.quantity + qty) } : l), posItems) }
       }
       return {
         ...tab,
-        cart: syncBottles([...tab.cart, { key, productSizeId: item.id, companionId: item.companionId, bottleDropped: false, productId: item.productId, productName: item.productName, size: item.size, unitPrice: item.price, purchasePrice: item.purchasePrice, quantity: 1, maxStock: item.stock }], posItems),
+        cart: syncBottles([...tab.cart, { key, productSizeId: item.id, companionId: item.companionId, bottleDropped: false, productId: item.productId, productName: item.productName, size: item.size, unitPrice: item.price, purchasePrice: item.purchasePrice, quantity: Math.min(item.stock, qty), maxStock: item.stock, isGift: false }], posItems),
       }
     })
   }
@@ -614,6 +665,7 @@ export default function POSPage() {
     }
 
     addToCart(item)
+    if (isPerMl(item.size)) { setManualBarcodeOpen(false); return }
     toast.success(t('pos.barcode.added'), {
       description: `${colorOrDefault(item.color)} ${item.size} — ${item.productName}`,
       duration: 1500,
@@ -705,6 +757,22 @@ export default function POSPage() {
     }))
   }
 
+  function setLineQty(key: string, qty: number) {
+    updateActiveTab(tab => ({
+      ...tab,
+      cart: syncBottles(tab.cart.map(l => (l.key === key && !l.companionOf) ? { ...l, quantity: Math.max(1, Math.min(l.maxStock, Math.floor(qty) || 1)) } : l), posItems),
+    }))
+  }
+
+  function confirmMlPrompt() {
+    if (!mlPrompt) return
+    const ml = Math.floor(Number(mlPrompt.value))
+    if (!ml || ml <= 0) return
+    if (ml > mlPrompt.item.stock) { toast.error(`${t('pos.perMl.notEnough')}: ${mlPrompt.item.stock} ml`); return }
+    addToCart(mlPrompt.item, ml)
+    setMlPrompt(null)
+  }
+
   function decrementLine(key: string) {
     updateActiveTab(tab => {
       const line = tab.cart.find(l => l.key === key)
@@ -722,6 +790,29 @@ export default function POSPage() {
         return { ...tab, cart: syncBottles(tab.cart.map(l => l.key === line.companionOf ? { ...l, bottleDropped: true } : l), posItems) }
       }
       return { ...tab, cart: syncBottles(tab.cart.filter(l => l.key !== key), posItems) }
+    })
+  }
+
+  // Flip a line between paid and gift. Gift lines live under their own key
+  // (`gift:<product_size_id>`) so scanning the same item again adds a paid
+  // line instead of growing the gift; flipping merges into an existing line
+  // of the target kind.
+  function toggleGift(key: string) {
+    updateActiveTab(tab => {
+      const line = tab.cart.find(l => l.key === key)
+      if (!line || line.companionOf) return tab
+      const toGift = !line.isGift
+      const targetKey = toGift ? `gift:${line.productSizeId}` : line.productSizeId
+      const target = tab.cart.find(l => l.key === targetKey)
+      let next: CartLine[]
+      if (target) {
+        next = tab.cart
+          .filter(l => l.key !== key)
+          .map(l => l.key === targetKey ? { ...l, quantity: l.quantity + line.quantity } : l)
+      } else {
+        next = tab.cart.map(l => l.key === key ? { ...l, key: targetKey, isGift: toGift } : l)
+      }
+      return { ...tab, cart: syncBottles(next, posItems) }
     })
   }
 
@@ -781,7 +872,8 @@ export default function POSPage() {
   // Catalog-price estimate only — the actual charged amount is derived
   // server-side by sell_cart from active promotions and the customer's VIP
   // status, so this is not a guaranteed final price.
-  const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0)
+  const subtotal = cart.reduce((s, l) => s + (l.isGift ? 0 : l.unitPrice * l.quantity), 0)
+  const giftAmount = cart.reduce((s, l) => s + (l.isGift ? l.unitPrice * l.quantity : 0), 0)
   // Client-side preview only: applies the selected promotion's percent
   // uniformly across the cart (no scope_type/product/category matching —
   // sell_cart doesn't read promotion_id yet, so this is a simplified
@@ -793,6 +885,7 @@ export default function POSPage() {
   // distribution needed — that only existed to split a single whole-cart
   // cashback amount across lines, which no longer applies here).
   const cartLineDiscounts = cart.map(line => {
+    if (line.isGift) return { promoUnitPrice: 0, finalLineTotal: 0 }
     const promoUnitPrice = selectedPromotion
       ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100))
       : line.unitPrice
@@ -801,8 +894,22 @@ export default function POSPage() {
   const received = Number(amountReceived) || 0
   const change = Math.max(0, received - total)
 
-  const hasStockShortage = cart.some(l => l.quantity > l.maxStock)
-  const canSell = cart.length > 0 && !hasStockShortage && paymentMethod !== '' && (!features.shift_system || !!activeShift)
+  // Paid and gift lines of the same variant share one stock pool.
+  const qtyBySize = new Map<string, number>()
+  for (const l of cart) qtyBySize.set(l.productSizeId, (qtyBySize.get(l.productSizeId) ?? 0) + l.quantity)
+  const isLineShort = (l: CartLine) => (qtyBySize.get(l.productSizeId) ?? 0) > l.maxStock
+  const hasStockShortage = cart.some(isLineShort)
+  const giftLimit = giftSettings ? Math.floor(total * giftSettings.maxPercent / 100) : 0
+  const giftError = giftAmount <= 0
+    ? null
+    : !canGift
+      ? t('pos.gift.forbidden')
+      : total <= 0
+        ? t('pos.gift.needsPaidItem')
+        : giftAmount > giftLimit
+          ? t('pos.gift.limitExceeded')
+          : null
+  const canSell = cart.length > 0 && !hasStockShortage && !giftError && paymentMethod !== '' && (!features.shift_system || !!activeShift)
 
   async function handleSell() {
     if (!canSell) return
@@ -815,9 +922,14 @@ export default function POSPage() {
     // Bottle lines are separate cart lines but merge here if the same bottle
     // is also present twice (e.g. two perfumes sharing one bottle size) so
     // sell_cart sees one line per product_size.
-    const merged = new Map<string, number>()
-    for (const line of cart) merged.set(line.productSizeId, (merged.get(line.productSizeId) ?? 0) + line.quantity)
-    const items = Array.from(merged, ([product_size_id, quantity]) => ({ product_size_id, quantity }))
+    const merged = new Map<string, { product_size_id: string; quantity: number; is_gift: boolean }>()
+    for (const line of cart) {
+      const k = `${line.productSizeId}|${line.isGift ? 1 : 0}`
+      const prev = merged.get(k)
+      if (prev) prev.quantity += line.quantity
+      else merged.set(k, { product_size_id: line.productSizeId, quantity: line.quantity, is_gift: line.isGift })
+    }
+    const items = Array.from(merged.values())
 
     const { data: transactionId, error } = await supabase.rpc('sell_cart', {
       p_items: items,
@@ -841,7 +953,13 @@ export default function POSPage() {
     setSelling(false)
 
     if (error || !transactionId) {
-      if (error?.message.includes('forbidden')) {
+      if (error?.message.includes('gift_forbidden')) {
+        toast.error(t('pos.gift.forbidden'))
+      } else if (error?.message.includes('gift_requires_paid_item')) {
+        toast.error(t('pos.gift.needsPaidItem'))
+      } else if (error?.message.includes('gift_limit_exceeded')) {
+        toast.error(t('pos.gift.limitExceeded'))
+      } else if (error?.message.includes('forbidden')) {
         toast.error(t('common.forbidden'))
       } else if (error?.message.includes('Invalid customer_id for this company')) {
         // sell_cart raises this when the selected customer doesn't belong
@@ -869,10 +987,10 @@ export default function POSPage() {
       // saw during the sale (the actual charged amount is still confirmed
       // server-side by sell_cart).
       items: cart.map(line => ({
-        name: line.productName,
-        size: line.size,
-        quantity: line.quantity,
-        price: selectedPromotion ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100)) : line.unitPrice,
+        name: line.isGift ? `${line.productName} (${t('pos.gift.badge')})` : line.productName,
+        size: isPerMl(line.size) ? `${line.quantity} ml` : line.size,
+        quantity: isPerMl(line.size) ? 1 : line.quantity,
+        price: (isPerMl(line.size) ? line.quantity : 1) * (line.isGift ? 0 : selectedPromotion ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100)) : line.unitPrice),
       })),
       total,
       paymentType: paymentMethod,
@@ -925,7 +1043,7 @@ export default function POSPage() {
           {tabs.map((tb, i) => (
             <button key={tb.id} onClick={() => setActiveTabId(tb.id)}
               className={cn('flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors shrink-0',
-                tb.id === activeTabId ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800')}>
+                tb.id === activeTabId ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800')}>
               <span>{t('pos.tabs.label')} #{i + 1}</span>
               {tb.cart.length > 0 && <span className="tabular-nums opacity-70">({tb.cart.reduce((s, l) => s + l.quantity, 0)})</span>}
               {tabs.length > 1 && <X className="h-3.5 w-3.5 opacity-60 hover:opacity-100" onClick={e => { e.stopPropagation(); closeTab(tb.id) }} />}
@@ -1006,6 +1124,11 @@ export default function POSPage() {
                       <div className="min-w-0">
                         <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">{customer.fullName}</p>
                         <p className="text-[11px] text-gray-400 dark:text-gray-500">{formatPhone(customer.phone)}</p>
+                        {customerPriceList && (
+                          <span className="mt-1 inline-block rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 text-[10.5px] font-medium text-gray-700 dark:text-gray-300">
+                            {t('pos.priceList')}: {customerPriceList.name}
+                          </span>
+                        )}
                       </div>
                       <button onClick={() => updateActiveTab(tab => ({ ...tab, customerId: '' }))} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                         <X className="h-3.5 w-3.5" />
@@ -1032,23 +1155,33 @@ export default function POSPage() {
                   {cart.map((line, i) => {
                     // Preview-only estimate — see promoDiscountAmount comment above.
                     const { promoUnitPrice, finalLineTotal } = cartLineDiscounts[i]
-                    const hasLineDiscount = !!selectedPromotion
+                    const hasLineDiscount = !!selectedPromotion && !line.isGift
                     return (
                     <div key={line.key} className={cn('flex items-center justify-between gap-2 py-3', i > 0 && 'border-t border-gray-100 dark:border-gray-800')}>
                       <div className="min-w-0">
                         <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
-                          {line.productName} <span className="text-gray-400 dark:text-gray-500">· {line.size}</span>
+                          {line.productName} <span className="text-gray-400 dark:text-gray-500">· {isPerMl(line.size) ? `${line.quantity} ml` : line.size}</span>
                           {line.companionOf && (
                             <span className="ml-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                               {t('pos.bottleBadge')}
                             </span>
                           )}
+                          {line.isGift && (
+                            <span className="ml-1.5 rounded-full bg-green-100 dark:bg-green-950/40 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-400 whitespace-nowrap">
+                              {t('pos.gift.badge')}
+                            </span>
+                          )}
                         </p>
-                        {line.quantity > line.maxStock && (
+                        {isLineShort(line) && (
                           <p className="text-xs text-red-500 mt-0.5">{t('pos.noSizesAvailable')}</p>
                         )}
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                          {selectedPromotion ? (
+                          {line.isGift ? (
+                            <>
+                              <span className="line-through text-gray-300 dark:text-gray-600 mr-1">{formatPrice(line.unitPrice)}</span>
+                              {formatPrice(0)}
+                            </>
+                          ) : selectedPromotion ? (
                             <>
                               <span className="line-through text-gray-300 dark:text-gray-600 mr-1">{formatPrice(line.unitPrice)}</span>
                               {formatPrice(promoUnitPrice)}
@@ -1056,6 +1189,7 @@ export default function POSPage() {
                           ) : (
                             formatPrice(line.unitPrice)
                           )}
+                          {isPerMl(line.size) && ` / 1 ml`}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -1066,7 +1200,17 @@ export default function POSPage() {
                           <button onClick={() => decrementLine(line.key)} className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                             <Minus className="h-3 w-3" />
                           </button>
+                          {isPerMl(line.size) ? (
+                            <input
+                              type="number" min={1} max={line.maxStock}
+                              value={line.quantity}
+                              onChange={e => setLineQty(line.key, Number(e.target.value))}
+                              aria-label="ml"
+                              className="h-6 w-12 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-1 text-center text-sm text-gray-900 dark:text-gray-100 tabular-nums outline-none focus:border-gray-400 dark:focus:border-gray-500"
+                            />
+                          ) : (
                           <span className="w-5 text-center text-sm text-gray-900 dark:text-gray-100 tabular-nums">{line.quantity}</span>
+                          )}
                           <button onClick={() => incrementLine(line.key)} className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                             <Plus className="h-3 w-3" />
                           </button>
@@ -1084,8 +1228,29 @@ export default function POSPage() {
                               )}
                             </div>
                           </div>
+                        ) : line.isGift ? (
+                          <div className="flex flex-col items-end min-w-20">
+                            <span className="text-[11px] line-through text-gray-300 dark:text-gray-600 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
+                            <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(0)}</span>
+                          </div>
                         ) : (
                           <span className="w-20 text-right text-sm text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(line.unitPrice * line.quantity)}</span>
+                        )}
+                        {canGift && !line.companionOf && (
+                          <button
+                            type="button"
+                            onClick={() => toggleGift(line.key)}
+                            aria-label={line.isGift ? t('pos.gift.unmark') : t('pos.gift.mark')}
+                            title={line.isGift ? t('pos.gift.unmark') : t('pos.gift.mark')}
+                            className={cn(
+                              'flex h-6 w-6 items-center justify-center rounded-md transition-colors',
+                              line.isGift
+                                ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+                            )}
+                          >
+                            <Gift className="h-4 w-4" />
+                          </button>
                         )}
                         <button onClick={() => removeLine(line.key)} aria-label={line.companionOf ? t('pos.removeBottle') : undefined} title={line.companionOf ? t('pos.removeBottle') : undefined} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                           <X className="h-4 w-4" />
@@ -1102,7 +1267,7 @@ export default function POSPage() {
                   server-side by sell_cart (highest of promotion vs. VIP),
                   this only carries the chosen promotion_id through for
                   future attribution. */}
-              {cart.length > 0 && (
+              {cart.length > 0 && !customerPriceList && (
                 <div className="space-y-2">
                   <button
                     type="button"
@@ -1139,6 +1304,18 @@ export default function POSPage() {
                       <span className="text-gray-900 dark:text-gray-100 tabular-nums">−{formatPrice(promoDiscountAmount)}</span>
                     </div>
                   )}
+                  {giftAmount > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500 dark:text-gray-400">
+                        {t('pos.gift.total')}
+                        {giftSettings && giftSettings.maxPercent > 0 && (
+                          <span className="ml-1 text-[11px] text-gray-400 dark:text-gray-500">({t('pos.gift.limit')}: {formatPrice(giftLimit)})</span>
+                        )}
+                      </span>
+                      <span className="text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(giftAmount)}</span>
+                    </div>
+                  )}
+                  {giftError && <p className="text-xs text-red-500">{giftError}</p>}
                   <div className="flex items-center justify-between">
                     <span className="text-base font-bold text-gray-900 dark:text-gray-100">{t('pos.payment')}</span>
                     <span className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(total)}</span>
@@ -1228,6 +1405,59 @@ export default function POSPage() {
           if (item) addToCart(item)
         }}
       />
+
+      {/* Per-ml perfume: how many ml to pour */}
+      <Dialog open={mlPrompt !== null} onOpenChange={open => { if (!open) setMlPrompt(null) }}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle>{t('pos.perMl.title')}</DialogTitle>
+          </DialogHeader>
+          {mlPrompt && (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {mlPrompt.item.productName}{mlPrompt.item.color ? ` · ${mlPrompt.item.color}` : ''}
+              </p>
+              <div className="relative">
+                <input
+                  autoFocus
+                  type="number" min={1} max={mlPrompt.item.stock}
+                  value={mlPrompt.value}
+                  onChange={e => setMlPrompt(p => (p ? { ...p, value: e.target.value.replace(/\D/g, '') } : p))}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmMlPrompt() } }}
+                  placeholder="10"
+                  className="h-11 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 pr-12 text-lg text-gray-900 dark:text-gray-100 tabular-nums outline-none focus:border-gray-400 dark:focus:border-gray-500"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 dark:text-gray-500">ml</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[5, 10, 15, 20, 30, 50].map(ml => (
+                  <button key={ml} type="button" onClick={() => setMlPrompt(p => (p ? { ...p, value: String(ml) } : p))} className={pillCls(mlPrompt.value === String(ml))}>
+                    {ml} ml
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                  <span>1 ml</span><span className="tabular-nums">{formatPrice(mlPrompt.item.price)}</span>
+                </div>
+                <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                  <span>{t('pos.perMl.inStock')}</span><span className="tabular-nums">{mlPrompt.item.stock} ml</span>
+                </div>
+                <div className="flex justify-between font-semibold text-gray-900 dark:text-gray-100">
+                  <span>{t('pos.perMl.total')}</span>
+                  <span className="tabular-nums">{formatPrice((Number(mlPrompt.value) || 0) * mlPrompt.item.price)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMlPrompt(null)}>{t('common.cancel')}</Button>
+            <Button onClick={confirmMlPrompt} disabled={!mlPrompt || !(Number(mlPrompt.value) > 0)} className="bg-slate-900 hover:bg-slate-800 text-white">
+              {t('pos.perMl.add')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Manual barcode entry (fallback for when a scanner isn't available) */}
       <Dialog open={manualBarcodeOpen} onOpenChange={setManualBarcodeOpen}>

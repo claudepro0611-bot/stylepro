@@ -271,6 +271,7 @@ export type Database = {
           id: string
           last_purchase_date: string | null
           phone: string | null
+          price_list_id: string | null
           status: string
           telegram_id: number | null
           total_purchases: number
@@ -288,6 +289,7 @@ export type Database = {
           id?: string
           last_purchase_date?: string | null
           phone?: string | null
+          price_list_id?: string | null
           status?: string
           telegram_id?: number | null
           total_purchases?: number
@@ -305,6 +307,7 @@ export type Database = {
           id?: string
           last_purchase_date?: string | null
           phone?: string | null
+          price_list_id?: string | null
           status?: string
           telegram_id?: number | null
           total_purchases?: number
@@ -444,6 +447,50 @@ export type Database = {
             columns: ["position_id"]
             isOneToOne: false
             referencedRelation: "positions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exchange_rates: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          id: string
+          rate: number
+          rate_date: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          rate: number
+          rate_date: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          rate?: number
+          rate_date?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exchange_rates_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -1342,6 +1389,60 @@ export type Database = {
           },
         ]
       }
+      price_list_items: {
+        Row: {
+          company_id: string
+          price: number
+          price_list_id: string
+          product_size_id: string
+        }
+        Insert: {
+          company_id: string
+          price: number
+          price_list_id: string
+          product_size_id: string
+        }
+        Update: {
+          company_id?: string
+          price?: number
+          price_list_id?: string
+          product_size_id?: string
+        }
+        Relationships: []
+      }
+      price_lists: {
+        Row: {
+          adjust_percent: number
+          base: string
+          company_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          rounding: number
+        }
+        Insert: {
+          adjust_percent?: number
+          base?: string
+          company_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          rounding?: number
+        }
+        Update: {
+          adjust_percent?: number
+          base?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          rounding?: number
+        }
+        Relationships: []
+      }
       returns: {
         Row: {
           company_id: string
@@ -1585,6 +1686,124 @@ export type Database = {
           },
         ]
       }
+      stock_count_items: {
+        Row: {
+          company_id: string
+          count_id: string
+          counted_qty: number
+          created_at: string
+          expected_qty: number | null
+          id: string
+          product_size_id: string
+          purchase_price: number | null
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          count_id: string
+          counted_qty: number
+          created_at?: string
+          expected_qty?: number | null
+          id?: string
+          product_size_id: string
+          purchase_price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          count_id?: string
+          counted_qty?: number
+          created_at?: string
+          expected_qty?: number | null
+          id?: string
+          product_size_id?: string
+          purchase_price?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_count_items_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_count_items_count_id_fkey"
+            columns: ["count_id"]
+            isOneToOne: false
+            referencedRelation: "stock_counts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_count_items_product_size_id_fkey"
+            columns: ["product_size_id"]
+            isOneToOne: false
+            referencedRelation: "product_sizes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_counts: {
+        Row: {
+          company_id: string
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          number: number
+          status: string
+          updated_at: string
+          warehouse_id: string
+          zero_uncounted: boolean
+        }
+        Insert: {
+          company_id: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          number: number
+          status?: string
+          updated_at?: string
+          warehouse_id: string
+          zero_uncounted?: boolean
+        }
+        Update: {
+          company_id?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          number?: number
+          status?: string
+          updated_at?: string
+          warehouse_id?: string
+          zero_uncounted?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_counts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_counts_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_in_entries: {
         Row: {
           category: string | null
@@ -1767,6 +1986,7 @@ export type Database = {
           company_id: string
           discount_percent: number
           id: string
+          is_gift: boolean
           list_price: number
           price: number
           product_id: string | null
@@ -1781,6 +2001,7 @@ export type Database = {
           company_id: string
           discount_percent?: number
           id?: string
+          is_gift?: boolean
           list_price?: number
           price?: number
           product_id?: string | null
@@ -1795,6 +2016,7 @@ export type Database = {
           company_id?: string
           discount_percent?: number
           id?: string
+          is_gift?: boolean
           list_price?: number
           price?: number
           product_id?: string | null
@@ -2192,6 +2414,11 @@ export type Database = {
       }
     }
     Functions: {
+      cancel_stock_count: { Args: { p_count_id: string }; Returns: undefined }
+      complete_stock_count: {
+        Args: { p_count_id: string; p_zero_uncounted?: boolean }
+        Returns: undefined
+      }
       create_customer: {
         Args: {
           p_address: string | null
@@ -2223,11 +2450,16 @@ export type Database = {
       }
       create_reward_penalty_entry: { Args: { p_data: Json }; Returns: string }
       create_reward_penalty_type: { Args: { p_data: Json }; Returns: string }
+      create_stock_count: {
+        Args: { p_note?: string | null; p_warehouse_id: string }
+        Returns: string
+      }
       create_warehouse: {
         Args: { p_name: string; p_type: string }
         Returns: string
       }
       delete_department: { Args: { p_id: string }; Returns: undefined }
+      delete_exchange_rate: { Args: { p_id: string }; Returns: undefined }
       delete_expense: { Args: { p_id: string }; Returns: undefined }
       delete_expense_category: { Args: { p_id: string }; Returns: undefined }
       delete_position: { Args: { p_id: string }; Returns: undefined }
@@ -2235,6 +2467,7 @@ export type Database = {
       delete_product_group: { Args: { p_id: string }; Returns: undefined }
       delete_promotion: { Args: { p_id: string }; Returns: undefined }
       delete_reward_penalty_type: { Args: { p_id: string }; Returns: undefined }
+      delete_stock_count: { Args: { p_count_id: string }; Returns: undefined }
       delete_stock_in_entry: { Args: { p_id: string }; Returns: undefined }
       delete_stock_out_entry: { Args: { p_id: string }; Returns: undefined }
       delete_warehouse: { Args: { p_id: string }; Returns: undefined }
@@ -2274,6 +2507,10 @@ export type Database = {
         Returns: undefined
       }
       has_permission: { Args: { p_key: string }; Returns: boolean }
+      increment_stock_count_item: {
+        Args: { p_count_id: string; p_delta?: number; p_product_size_id: string }
+        Returns: number
+      }
       is_super_admin: { Args: never; Returns: boolean }
       repay_nasiya: {
         Args: { p_amount: number; p_customer_id: string; p_note: string | null }
@@ -2300,12 +2537,53 @@ export type Database = {
           telegram_message_id: number | null
         }
       }
+      save_price_list: {
+        Args: { p_id: string | null; p_name: string; p_base: string; p_adjust_percent: number; p_rounding: number; p_is_active: boolean }
+        Returns: string
+      }
+      delete_price_list: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
+      set_price_list_item: {
+        Args: { p_price_list_id: string; p_product_size_id: string; p_price: number | null }
+        Returns: undefined
+      }
+      set_customer_price_list: {
+        Args: { p_customer_id: string; p_price_list_id: string | null }
+        Returns: undefined
+      }
+      price_list_price: {
+        Args: { p_price_list_id: string; p_product_size_id: string }
+        Returns: number
+      }
+      set_gift_settings: {
+        Args: { p_max_gift_percent: number; p_gift_staff_allowed: boolean }
+        Returns: undefined
+      }
       set_customer_vip: {
         Args: { p_customer_id: string; p_vip_discount_percent: number | null }
         Returns: undefined
       }
+      set_exchange_rate: {
+        Args: {
+          p_currency?: string
+          p_date: string
+          p_rate: number
+          p_source?: string
+        }
+        Returns: string
+      }
       set_product_size_barcode: {
         Args: { p_barcode: string; p_id: string }
+        Returns: undefined
+      }
+      set_stock_count_item: {
+        Args: {
+          p_count_id: string
+          p_counted_qty: number | null
+          p_product_size_id: string
+        }
         Returns: undefined
       }
       stock_in: { Args: { p_entries: Json }; Returns: undefined }

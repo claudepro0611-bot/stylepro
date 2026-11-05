@@ -209,20 +209,18 @@ export default function CustomersPage() {
   // shown reflects the sale-time discount only; "To'langan" uses net_amount
   // (post-return) for the same reason.
   const loadSalesHistory = useCallback(async (c: Customer) => {
-    if (!c.vipSince) {
-      setSalesHistory([])
-      return
-    }
     const supabase = createClient()
 
+    // VIP customers: history since they became VIP; everyone else: all purchases.
+    let txnQuery = supabase
+      .from('transactions_net')
+      .select('id, date, total_amount, net_amount, payment_method, transaction_items(quantity, list_price)')
+      .eq('customer_id', c.id)
+      .eq('status', 'completed')
+    if (c.vipSince) txnQuery = txnQuery.gte('date', c.vipSince)
+
     const [{ data: txnRows, error: txnError }, { data: earnRows }, { data: nasiyaGivenRows }] = await Promise.all([
-      supabase
-        .from('transactions_net')
-        .select('id, date, total_amount, net_amount, payment_method, transaction_items(quantity, list_price)')
-        .eq('customer_id', c.id)
-        .eq('status', 'completed')
-        .gte('date', c.vipSince)
-        .order('date', { ascending: false }),
+      txnQuery.order('date', { ascending: false }),
       supabase
         .from('loyalty_transactions')
         .select('transaction_id, amount')
@@ -523,7 +521,7 @@ export default function CustomersPage() {
               onClick={() => { setFilter(f); setPage(1) }}
               className={`px-3.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${
                 filter === f
-                  ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                  ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
                   : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
               }`}
             >

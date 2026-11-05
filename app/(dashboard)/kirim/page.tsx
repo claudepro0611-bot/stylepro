@@ -23,7 +23,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import type { TranslationKey } from '@/lib/i18n/translations'
 import type { StockInEntry, Product } from '@/lib/types'
-import { type SizeType, getSizesForType, parseVolume, formatVolume } from '@/lib/sizes'
+import { type SizeType, getSizesForType, PER_ML_SIZE } from '@/lib/sizes'
 import { WAREHOUSE_TYPE_LABEL_KEYS, type WarehouseType } from '@/lib/warehouses'
 
 const ITEMS_PER_PAGE = 20
@@ -163,9 +163,9 @@ function ProductMultiSelect({
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen(o => !o)}
-        className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors ${selected.length ? 'bg-white dark:bg-gray-900 shadow-sm border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+        className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors ${selected.length ? 'bg-slate-900 dark:bg-white shadow-sm border-slate-900 dark:border-white text-white dark:text-gray-900' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
         {t('kirim.productFilter')}
-        {selected.length > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 px-1 text-[11px] font-semibold">{selected.length}</span>}
+        {selected.length > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 px-1 text-[11px] font-semibold text-gray-900 dark:text-gray-100">{selected.length}</span>}
       </button>
       {open && (
         <div className="absolute z-30 mt-1.5 w-72 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2 shadow-lg">
@@ -339,9 +339,6 @@ export default function KirimPage() {
     setColumns(prev => prev.map(c => (c.id === id ? { ...c, size } : c)))
   }
 
-  function setColumnPrice(id: string, price: string) {
-    setColumns(prev => prev.map(c => (c.id === id ? { ...c, price: price.replace(/\D/g, '') } : c)))
-  }
 
   function cellKey(color: string, colId: string): string {
     return `${color}::${colId}`
@@ -432,6 +429,9 @@ export default function KirimPage() {
   const colorRows = selectedProduct?.colors.length ? selectedProduct.colors : ['']
   const activeSizeType = selectedProduct ? (categoryToSizeType.get(selectedProduct.category) ?? 'clothing') : 'clothing'
   const activeSizes = getSizesForType(activeSizeType)
+  // Perfume (volume) is stocked per ml: a single fixed '1 ml' column.
+  const isVolume = activeSizeType === 'volume'
+  const matrixColumns: MatrixColumn[] = isVolume ? [{ id: 'ml', size: PER_ML_SIZE, price: '' }] : columns
 
   function openAdd() {
     setForm({ ...emptyForm, datetime: nowLocal(), warehouseId: warehouses[0]?.id ?? '' })
@@ -460,16 +460,11 @@ export default function KirimPage() {
     // size picked are skipped too.
     const entries = []
     for (const color of colorRows) {
-      for (const col of columns) {
+      for (const col of matrixColumns) {
         if (!col.size) continue
         const qty = Number(cellQty[cellKey(color, col.id)] || 0)
         if (qty <= 0) continue
-        // Volume (perfume) sizes carry their own selling price per column.
-        const entryPrice = activeSizeType === 'volume' ? Number(col.price) || 0 : sellingPrice
-        if (activeSizeType === 'volume' && entryPrice <= 0) {
-          toast.error(t('kirim.matrix.sellingPrice'))
-          return
-        }
+        const entryPrice = sellingPrice
         entries.push({
           product_id: product.id,
           product_name: product.name,
@@ -789,7 +784,7 @@ export default function KirimPage() {
                     className={cn(
                       'rounded-lg px-4 py-2 text-sm transition-colors',
                       form.warehouseId === w.id
-                        ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-medium'
+                        ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900 font-medium'
                         : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                     )}
                   >
@@ -822,7 +817,7 @@ export default function KirimPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      {t('kirim.pricing.purchasePrice')} <span className="text-red-500">*</span>
+                      {t('kirim.pricing.purchasePrice')}{isVolume && <span className="text-gray-400 dark:text-gray-500"> ({t('kirim.matrix.perMl')})</span>} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text" inputMode="numeric" placeholder="0"
@@ -846,7 +841,7 @@ export default function KirimPage() {
                             className={cn(
                               'rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors',
                               markupType === type
-                                ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                                ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
                                 : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100',
                             )}
                           >
@@ -882,9 +877,9 @@ export default function KirimPage() {
                     )}
                   </div>
                 </div>
-                {activeSizeType !== 'volume' && (
+                {(
                 <div className="flex items-center justify-between rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-4 py-3">
-                  <span className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">{t('kirim.pricing.salePrice')}</span>
+                  <span className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">{t('kirim.pricing.salePrice')}{isVolume && ` (${t('kirim.matrix.perMl')})`}</span>
                   <span className="text-[15px] font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">
                     {formatPrice(computeSellingPrice(Number(form.purchasePrice) || 0, Number(form.markup) || 0, markupType))}
                   </span>
@@ -900,11 +895,11 @@ export default function KirimPage() {
                   <label className="text-[13px] font-medium text-gray-700 dark:text-gray-300">
                     {t('kirim.matrix.color')} / {t('kirim.table.size')}
                   </label>
-                  <button type="button"
+                  {!isVolume && <button type="button"
                     onClick={addColumn}
                     className="flex items-center gap-1 text-[12px] font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors">
                     <Plus className="h-3.5 w-3.5" /> {t('kirim.matrix.addSize')}
-                  </button>
+                  </button>}
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                   <table className="w-full border-collapse">
@@ -913,25 +908,14 @@ export default function KirimPage() {
                         <th className="w-32 px-2 py-2 text-left text-[11px] font-medium text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700">
                           {t('kirim.matrix.color')}
                         </th>
-                        {columns.map(col => (
+                        {isVolume && (
+                          <th className="px-2 py-2 text-left text-[11px] font-medium text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700">
+                            {t('kirim.matrix.qtyMl')}
+                          </th>
+                        )}
+                        {!isVolume && columns.map(col => (
                           <th key={col.id} className="px-2 py-2 border-b border-gray-200 dark:border-gray-700">
                             <div className="flex items-center gap-1">
-                              {activeSizeType === 'volume' && (
-                                <div className="space-y-1">
-                                  <input
-                                    type="number" min="1" placeholder={t('kirim.matrix.customVolume')}
-                                    value={parseVolume(col.size) !== null && !activeSizes.includes(col.size) ? String(parseVolume(col.size)) : ''}
-                                    onChange={e => setColumnSize(col.id, e.target.value ? formatVolume(Number(e.target.value)) : '')}
-                                    className="h-9 w-28 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500"
-                                  />
-                                  <input
-                                    type="text" inputMode="numeric" placeholder={t('kirim.matrix.sellingPrice')}
-                                    value={col.price ? new Intl.NumberFormat('ru-RU').format(Number(col.price)) : ''}
-                                    onChange={e => setColumnPrice(col.id, e.target.value)}
-                                    className="h-9 w-28 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500"
-                                  />
-                                </div>
-                              )}
                               <Select
                                 onValueChange={value => setColumnSize(col.id, value ?? '')}
                                 value={col.size || null}
@@ -960,7 +944,7 @@ export default function KirimPage() {
                           <td className="px-2 py-2 text-sm text-gray-700 dark:text-gray-300">
                             {color || t('kirim.matrix.defaultColor')}
                           </td>
-                          {columns.map(col => (
+                          {matrixColumns.map(col => (
                             <td key={col.id} className="px-2 py-2">
                               <input
                                 type="number" min="0" placeholder="0"

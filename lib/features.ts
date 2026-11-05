@@ -22,14 +22,19 @@ const DEFAULT_FEATURES: Record<string, boolean> = {
   shift_system: false,
 }
 
+// Last successful load, shared across every mount (Sidebar + each page) so
+// navigating between pages renders instantly from it instead of waiting on
+// two more round trips. It is still refreshed in the background on mount.
+let cachedFeatures: { companyId: string; map: Record<string, boolean> } | null = null
+
 export function useFeatures() {
-  const [features, setFeatures] = useState<Record<string, boolean>>(DEFAULT_FEATURES)
+  const [features, setFeatures] = useState<Record<string, boolean>>(() => cachedFeatures?.map ?? DEFAULT_FEATURES)
   // Starts true, not false: a fetch is always about to run on mount, and
   // consumers gate redirects on `!loading && !features.X`. Starting this
   // false made that check pass with defaults still in place for the one
   // render before load() actually flips it — see load()'s early return
   // below for xarajatlar's specific failure mode this caused.
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => cachedFeatures === null)
 
   useEffect(() => {
     let cancelled = false
@@ -40,7 +45,7 @@ export function useFeatures() {
         const companyId = await getCompanyId(supabase)
         if (!companyId) return
 
-        if (!cancelled) setLoading(true)
+        if (!cancelled && cachedFeatures?.companyId !== companyId) setLoading(true)
         const { data, error } = await supabase
           .from('company_features')
           .select('feature_key, is_active')
@@ -57,6 +62,7 @@ export function useFeatures() {
         const map: Record<string, boolean> = { ...DEFAULT_FEATURES }
         data.forEach(f => { map[f.feature_key] = f.is_active })
 
+        cachedFeatures = { companyId, map }
         if (!cancelled) setFeatures(map)
       } catch (err) {
         console.error('[useFeatures] unexpected error, denying all features:', err)

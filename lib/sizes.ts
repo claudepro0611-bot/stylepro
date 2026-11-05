@@ -2,6 +2,13 @@ export type SizeType = 'clothing' | 'shoe' | 'universal' | 'volume'
 
 export const CLOTHING_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 export const SHOE_SIZES = ['36', '37', '38', '39', '40', '41', '42', '43', '44', '45']
+// Perfume sold per ml: one variant per color with size '1 ml', stock counted
+// in ml and selling_price per 1 ml. POS asks the cashier for the ml amount.
+export const PER_ML_SIZE = '1 ml'
+export function isPerMl(size: string): boolean {
+  return size.trim().toLowerCase() === PER_ML_SIZE
+}
+
 export const VOLUME_SIZES = ['5 ml', '10 ml', '15 ml', '20 ml', '30 ml', '50 ml', '100 ml']
 
 const SIZE_ORDER = new Map<string, number>([

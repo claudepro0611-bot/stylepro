@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { localYmd } from '@/lib/utils/date'
 import { useTheme } from 'next-themes'
 import { SlidersHorizontal, Store, Target, Info, Sun, Moon, AlertTriangle } from 'lucide-react'
@@ -20,7 +21,7 @@ const segCls = (active: boolean) =>
   cn(
     'flex h-8 items-center justify-center rounded-md px-3 text-[12.5px] font-medium transition-colors',
     active
-      ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+      ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
       : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
   )
 
@@ -70,7 +71,7 @@ function Card({ title, description, children }: { title?: string; description?: 
 
 export default function SettingsPage() {
   const { t, language, setLanguage } = useLanguage()
-  const { currency, setCurrency, formatPrice } = useCurrency()
+  const { currency, setCurrency, formatPrice, usdRate } = useCurrency()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -126,6 +127,42 @@ export default function SettingsPage() {
 
     return () => { active = false }
   }, [])
+
+  // ─── POS gift ("Sovg'a") settings — owner only ───────────────────────
+  const [isOwner, setIsOwner] = useState(false)
+  const [giftPercent, setGiftPercent] = useState('10')
+  const [giftStaffAllowed, setGiftStaffAllowed] = useState(false)
+  const [savingGift, setSavingGift] = useState(false)
+  useEffect(() => {
+    let active = true
+    const supabase = createClient()
+    ;(async () => {
+      // Local session read (no Auth round trip); RLS still enforces access.
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
+      if (!user) return
+      const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).single()
+      if (!active) return
+      setIsOwner(userRow?.role === 'owner')
+      const { data } = await supabase.from('companies').select('max_gift_percent, gift_staff_allowed').single()
+      if (!active || !data) return
+      const row = data as unknown as { max_gift_percent: number; gift_staff_allowed: boolean }
+      setGiftPercent(String(Number(row.max_gift_percent) || 0))
+      setGiftStaffAllowed(!!row.gift_staff_allowed)
+    })()
+    return () => { active = false }
+  }, [])
+
+  async function handleSaveGift() {
+    const pct = Number(giftPercent)
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast.error(t('settings.gift.invalidPercent')); return }
+    setSavingGift(true)
+    const supabase = createClient()
+    const { error } = await supabase.rpc('set_gift_settings', { p_max_gift_percent: pct, p_gift_staff_allowed: giftStaffAllowed })
+    setSavingGift(false)
+    if (error) toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+    else toast.success(t('settings.gift.saved'))
+  }
 
   const goalPct = Math.min(100, monthlyGoal > 0 ? Math.round((currentMonthRevenue / monthlyGoal) * 100) : 0)
 
@@ -235,9 +272,17 @@ export default function SettingsPage() {
               </Card>
 
               <Card title={t('settings.general.currency')} description={t('settings.general.currencyDescription')}>
-                <div className={pill}>
-                  <button onClick={() => setCurrency('UZS')} className={segCls(currency === 'UZS')}>UZS</button>
-                  <button onClick={() => setCurrency('USD')} className={segCls(currency === 'USD')}>USD</button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className={pill}>
+                    <button onClick={() => setCurrency('UZS')} className={segCls(currency === 'UZS')}>UZS</button>
+                    <button onClick={() => setCurrency('USD')} className={segCls(currency === 'USD')}>USD</button>
+                  </div>
+                  <span className="text-sm tabular-nums text-gray-500 dark:text-gray-400">
+                    1 USD = {new Intl.NumberFormat('ru-RU').format(usdRate)} UZS
+                  </span>
+                  <Link href="/valyuta-kurslari" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 underline-offset-4 hover:underline transition-colors">
+                    {t('sidebar.exchangeRates')}
+                  </Link>
                 </div>
               </Card>
 
@@ -292,6 +337,40 @@ export default function SettingsPage() {
             </Card>
           )}
 
+          {activeTab === 'store' && isOwner && (
+            <Card title={t('settings.gift.title')} description={t('settings.gift.description')}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('settings.gift.maxPercent')}</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={giftPercent}
+                      onChange={e => setGiftPercent(e.target.value)}
+                      className={cn(inputCls, 'pr-8')}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 dark:text-gray-500">%</span>
+                  </div>
+                  <p className="text-[12px] text-gray-400 dark:text-gray-500 mt-1">{t('settings.gift.maxPercentHint')}</p>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{t('settings.gift.whoCanGive')}</label>
+                  <div className={pill}>
+                    <button type="button" onClick={() => setGiftStaffAllowed(false)} className={segCls(!giftStaffAllowed)}>{t('settings.gift.managersOnly')}</button>
+                    <button type="button" onClick={() => setGiftStaffAllowed(true)} className={segCls(giftStaffAllowed)}>{t('settings.gift.allCashiers')}</button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button onClick={handleSaveGift} disabled={savingGift} className={cn(saveBtnCls, savingGift && 'opacity-60')}>
+                  {t('common.save')}
+                </button>
+              </div>
+            </Card>
+          )}
+
           {activeTab === 'store' && (
             <Card title="Mahsulot sozlamalari">
               <div className="space-y-4">
@@ -306,7 +385,7 @@ export default function SettingsPage() {
                         onClick={() => toggleUnit(unit)}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           unitTypes.includes(unit)
-                            ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                            ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
                             : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                         }`}
                       >

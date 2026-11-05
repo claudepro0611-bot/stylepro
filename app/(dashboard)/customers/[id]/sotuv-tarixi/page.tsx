@@ -17,7 +17,7 @@ const PILL_CLS = (active: boolean) =>
   cn(
     'px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors',
     active
-      ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+      ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
       : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
   )
 
@@ -63,10 +63,6 @@ export default function SotuvTarixiPage() {
   // reflects the sale-time discount only; "To'langan" uses net_amount
   // (post-return) for consistency with the purchases tab.
   const loadSalesHistory = useCallback(async (c: CustomerHeader) => {
-    if (!c.vipSince) {
-      setSalesHistory([])
-      return
-    }
     const supabase = createClient()
 
     const [{ data: txnRows, error: txnError }, { data: earnRows }, { data: nasiyaGivenRows }] = await Promise.all([
@@ -75,7 +71,6 @@ export default function SotuvTarixiPage() {
         .select('id, date, total_amount, net_amount, payment_method, transaction_items(quantity, list_price)')
         .eq('customer_id', c.id)
         .eq('status', 'completed')
-        .gte('date', c.vipSince)
         .order('date', { ascending: false }),
       supabase
         .from('loyalty_transactions')
@@ -218,9 +213,7 @@ export default function SotuvTarixiPage() {
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('customers.karta.salesHistory')}</p>
           </div>
 
-          {!customer.vipSince ? (
-            <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">{t('customers.karta.notVipYet')}</p>
-          ) : (
+          {(
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <input type="date" value={salesDateFrom} onChange={e => setSalesDateFrom(e.target.value)} className={DATE_INPUT_CLS} />

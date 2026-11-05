@@ -9,7 +9,7 @@ const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 // server-to-server (e.g. by Telegram's webhook infra) with no browser
 // session/cookies, so they can never satisfy the `user` check and would
 // otherwise get redirected to /login on every request.
-const BYPASS_PATHS = ['/api/telegram/webhook']
+const BYPASS_PATHS = ['/api/telegram/webhook', '/api/cron']
 
 // Route-prefix -> PERMISSION_KEY. /dashboard, /sozlamalar, /pos stay
 // role-based-only (every authenticated company user can reach them).
@@ -22,6 +22,9 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/chiqim': 'chiqim',
   '/brak': 'brak',
   '/arxiv': 'pos',
+  '/sotuvlar': 'arxiv',
+  '/qaytarishlar': 'arxiv',
+  '/tolovlar': 'arxiv',
   '/customers': 'customers',
   '/reports': 'reports',
   '/marketing': 'marketing',
@@ -32,6 +35,9 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/jamoa': 'jamoa',
   '/inventory': 'inventory',
   '/omborlar': 'inventory',
+  '/inventarizatsiya': 'inventory',
+  '/valyuta-kurslari': 'sozlamalar',
+  '/prays-list': 'mahsulotlar',
 }
 
 export async function updateSession(request: NextRequest) {
@@ -60,7 +66,12 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // getClaims() verifies the JWT locally against the project's cached
+  // asymmetric (ES256) signing keys — no Auth-server round trip on every
+  // navigation, unlike getUser(). It still refreshes an expired session.
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const claims = claimsData?.claims
+  const user = claims?.sub ? { id: claims.sub, email: typeof claims.email === 'string' ? claims.email : undefined } : null
 
   const isPublicPath = PUBLIC_PATHS.includes(pathname)
 

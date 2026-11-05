@@ -215,7 +215,7 @@ export default function BrakPage() {
       return
     }
     if (!productPurchasePrice || productPurchasePrice <= 0) {
-      toast.error('Narx kiritilishi shart')
+      toast.error(t('brak.priceRequired'))
       return
     }
     const product = warehouseProducts.find(p => p.id === form.productId)
@@ -224,7 +224,7 @@ export default function BrakPage() {
     const quantity = qty
     const unitPrice = productPurchasePrice
     if (quantity > sizeRow.stock) {
-      toast.error(`${t('common.error')} — mavjud: ${sizeRow.stock}`)
+      toast.error(`${t('common.error')} — ${t('brak.available')}: ${sizeRow.stock}`)
       return
     }
     setSaving(true)
@@ -249,7 +249,7 @@ export default function BrakPage() {
     setSaving(false)
     if (error) {
       if (error.message.includes('Insufficient stock')) {
-        toast.error(`${t('common.error')} — mavjud: ${sizeRow.stock}`)
+        toast.error(`${t('common.error')} — ${t('brak.available')}: ${sizeRow.stock}`)
       } else if (error.message.includes('forbidden')) {
         toast.error(t('common.forbidden'))
       } else {
@@ -441,12 +441,12 @@ export default function BrakPage() {
                     <button key={s.id} type="button" onClick={() => onSizeSelect(s.id)}
                       className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors ${form.sizeRowId === s.id ? 'border-red-500 bg-red-500 text-white' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'}`}>
                       <span>{sizeLabel(s)}</span>
-                      <span className={`text-[11px] ${form.sizeRowId === s.id ? 'text-red-100' : 'text-gray-400 dark:text-gray-500'}`}>({s.stock} ta)</span>
+                      <span className={`text-[11px] ${form.sizeRowId === s.id ? 'text-red-100' : 'text-gray-400 dark:text-gray-500'}`}>({s.stock} {t('brak.unitsSuffix')})</span>
                     </button>
                   ))}
                 </div>
                 {form.sizeRowId && (!productPurchasePrice || productPurchasePrice <= 0) && (
-                  <p className="text-xs text-red-500 mt-1">Narx kiritilishi shart</p>
+                  <p className="text-xs text-red-500 mt-1">{t('brak.priceRequired')}</p>
                 )}
               </div>
             )}
@@ -463,7 +463,7 @@ export default function BrakPage() {
             {productPurchasePrice > 0 && form.quantity && (
               <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 px-3 py-2">
                 <p className="text-[12px] text-red-600 dark:text-red-400 font-medium">
-                  Zarar: {formatPrice(productPurchasePrice * parseInt(form.quantity || '0'))}
+                  {t('brak.table.total')}: {formatPrice(productPurchasePrice * parseInt(form.quantity || '0'))}
                 </p>
               </div>
             )}

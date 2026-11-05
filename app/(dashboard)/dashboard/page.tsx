@@ -280,7 +280,7 @@ function LowStockCard({ count, isPending }: { count: number; isPending?: boolean
   const { t } = useLanguage()
   const hasLow = count > 0
   return (
-    <Link href="/inventory" className="block h-full">
+    <Link href="/omborlar" className="block h-full">
       <div className={cn(KPI_CARD_CLS, 'h-full hover:border-gray-200 dark:hover:border-gray-700')}>
         <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400 mb-1.5 truncate">{t('dashboard.kpi.lowStock')}</p>
         {isPending ? (
