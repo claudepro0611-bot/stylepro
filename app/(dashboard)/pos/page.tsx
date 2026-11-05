@@ -559,6 +559,38 @@ export default function POSPage() {
       .maybeSingle()
 
     if (error || !data) {
+      // Fallback: no variant matched — try the product-level barcode and, if
+      // it matches, open that product's variant matrix so the cashier can
+      // pick the size themselves.
+      const { data: productMatch } = await supabase
+        .from('products')
+        .select('id')
+        .eq('barcode', value)
+        .eq('company_id', companyId)
+        .maybeSingle()
+      if (productMatch) {
+        let group = productGroups.find(g => g.productId === productMatch.id)
+        if (!group) {
+          // Product may not be in local state yet — refetch and rebuild the card.
+          const refreshed = await fetchProducts()
+          const variants = refreshed.filter(p => p.productId === productMatch.id)
+          if (variants.length > 0) {
+            group = {
+              productId: productMatch.id,
+              productName: variants[0].productName,
+              category: variants[0].category,
+              imageUrl: variants[0].imageUrl,
+              totalStock: variants.reduce((sum, v) => sum + v.stock, 0),
+              variants,
+            }
+          }
+        }
+        if (group) {
+          setMatrixProduct(group)
+          setManualBarcodeOpen(false)
+          return
+        }
+      }
       toast.error(t('pos.barcode.notFound'))
       return
     }

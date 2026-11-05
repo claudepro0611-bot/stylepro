@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { Plus, Grid, List, Edit2, Tag, Loader2 } from 'lucide-react'
+import { Plus, Grid, List, Edit2, Tag, Loader2, ImagePlus, X } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Pagination } from '@/components/ui/Pagination'
 import { MiniBadge } from '@/components/ui/MiniBadge'
@@ -11,6 +11,8 @@ import { ImportModal } from '@/components/mahsulotlar/ImportModal'
 import { BarcodeModal } from '@/components/mahsulotlar/BarcodeModal'
 import { CompanionSection } from '@/components/mahsulotlar/CompanionSection'
 import { createClient } from '@/lib/supabase/client'
+import { getCompanyId } from '@/lib/supabase/helpers'
+import { generateUniqueBarcode } from '@/lib/barcode'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import type { Product, ProductGroup } from '@/lib/types'
@@ -29,6 +31,7 @@ interface ProductRow {
   colors: string[] | null
   min_stock: number
   image_url: string | null
+  barcode: string | null
   status: 'active' | 'inactive'
   warehouse_id: string | null
 }
@@ -46,6 +49,7 @@ function mapProduct(row: ProductRow): Product {
     colors: row.colors ?? [],
     minStock: row.min_stock,
     imageUrl: row.image_url ?? '',
+    barcode: row.barcode ?? '',
     status: row.status,
     warehouseId: row.warehouse_id ?? '',
   }
@@ -59,11 +63,47 @@ function mapProductGroup(row: ProductGroupRow): ProductGroup {
 }
 
 const emptyAddForm = {
-  name: '', skuPrefix: '', category: '', price: '', colors: [] as string[], description: '', warehouseId: '',
+  name: '', skuPrefix: '', barcode: '', category: '', price: '', colors: [] as string[], description: '', warehouseId: '',
 }
 const emptyEditForm = {
-  name: '', sku: '', category: '', price: '', minStock: '',
+  name: '', sku: '', barcode: '', category: '', price: '', minStock: '',
   colors: [] as string[], description: '', status: 'active' as Product['status'], warehouseId: '',
+}
+
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024
+
+/** Generate an EAN-13 candidate and re-roll while it collides with an
+ *  existing products.barcode or product_sizes.barcode (same dupe-check
+ *  pattern as BarcodeModal). */
+async function generateUniqueProductBarcode(
+  supabase: ReturnType<typeof createClient>,
+  companyId: string,
+): Promise<string> {
+  let candidate = generateUniqueBarcode()
+  for (let i = 0; i < 5; i++) {
+    const [{ data: productDupe }, { data: sizeDupe }] = await Promise.all([
+      supabase.from('products').select('id').eq('company_id', companyId).eq('barcode', candidate).maybeSingle(),
+      supabase.from('product_sizes').select('id').eq('company_id', companyId).eq('barcode', candidate).maybeSingle(),
+    ])
+    if (!productDupe && !sizeDupe) return candidate
+    candidate = generateUniqueBarcode()
+  }
+  return candidate
+}
+
+/** Upload a product image to the public `product-images` bucket and return
+ *  its public URL, or null on failure. */
+async function uploadProductImage(
+  supabase: ReturnType<typeof createClient>,
+  file: File,
+): Promise<string | null> {
+  const companyId = await getCompanyId(supabase)
+  if (!companyId) return null
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+  const path = `${companyId}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('product-images').upload(path, file)
+  if (error) return null
+  return supabase.storage.from('product-images').getPublicUrl(path).data.publicUrl
 }
 
 const inputCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
@@ -88,6 +128,12 @@ export default function MahsulotlarPage() {
 
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [barcodeProduct, setBarcodeProduct] = useState<Product | null>(null)
+
+  const [barcodeGenBusy, setBarcodeGenBusy] = useState(false)
+  const [addImageFile, setAddImageFile] = useState<File | null>(null)
+  const [addImagePreview, setAddImagePreview] = useState('')
+  const [editImageFile, setEditImageFile] = useState<File | null>(null)
+  const [editImagePreview, setEditImagePreview] = useState('')
 
   const fetchProducts = useCallback(async () => {
     setLoading(true)
@@ -124,10 +170,54 @@ export default function MahsulotlarPage() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
+  function rpcErrorMessage(error: { code?: string; message: string }) {
+    if (error.message.includes('forbidden')) return t('common.forbidden')
+    if (error.code === '23505' && error.message.includes('barcode')) return t('products.toasts.barcodeDuplicate')
+    return t('common.error')
+  }
+
   function openAdd() {
     const defaultCat = activeGroups[0]?.name ?? "Ko'ylak"
     setAddForm({ ...emptyAddForm, category: defaultCat, warehouseId: warehouses[0]?.id ?? '' })
+    setAddImageFile(null)
+    setAddImagePreview('')
     setIsAddOpen(true)
+  }
+
+  async function autoBarcode(apply: (code: string) => void) {
+    setBarcodeGenBusy(true)
+    const supabase = createClient()
+    const companyId = await getCompanyId(supabase)
+    if (!companyId) { setBarcodeGenBusy(false); toast.error(t('common.error')); return }
+    apply(await generateUniqueProductBarcode(supabase, companyId))
+    setBarcodeGenBusy(false)
+  }
+
+  function handleImageSelect(
+    e: React.ChangeEvent<HTMLInputElement>,
+    setFile: (file: File | null) => void,
+    setPreview: React.Dispatch<React.SetStateAction<string>>,
+  ) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > MAX_IMAGE_SIZE) { toast.error(t('products.toasts.imageTooLarge')); return }
+    setFile(file)
+    setPreview(prev => {
+      if (prev.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+  }
+
+  function removeImage(
+    setFile: (file: File | null) => void,
+    setPreview: React.Dispatch<React.SetStateAction<string>>,
+  ) {
+    setFile(null)
+    setPreview(prev => {
+      if (prev.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return ''
+    })
   }
 
   async function saveAdd() {
@@ -139,10 +229,17 @@ export default function MahsulotlarPage() {
     const supabase = createClient()
     const sku = addForm.skuPrefix.trim() || addForm.name.trim().slice(0, 3).toUpperCase()
 
+    let imageUrl: string | null = null
+    if (addImageFile) {
+      imageUrl = await uploadProductImage(supabase, addImageFile)
+      if (!imageUrl) { setSaving(false); toast.error(t('common.error')); return }
+    }
+
     const { error } = await supabase.rpc('create_product', {
       p_data: {
         name: addForm.name.trim(),
         sku,
+        barcode: addForm.barcode.trim() || null,
         category: addForm.category,
         price: Number(addForm.price),
         min_stock: 5,
@@ -150,11 +247,12 @@ export default function MahsulotlarPage() {
         description: addForm.description.trim(),
         status: 'active',
         warehouse_id: addForm.warehouseId,
+        image_url: imageUrl,
       },
     })
 
     setSaving(false)
-    if (error) { toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error')); return }
+    if (error) { toast.error(rpcErrorMessage(error)); return }
     toast.success(t('products.toasts.addSuccess'))
     setIsAddOpen(false)
     fetchProducts()
@@ -164,11 +262,13 @@ export default function MahsulotlarPage() {
     e.stopPropagation()
     setEditProduct(p)
     setEditForm({
-      name: p.name, sku: p.sku, category: p.category,
+      name: p.name, sku: p.sku, barcode: p.barcode ?? '', category: p.category,
       price: String(p.price), minStock: String(p.minStock),
       colors: [...p.colors], description: p.description, status: p.status,
       warehouseId: p.warehouseId || warehouses[0]?.id || '',
     })
+    setEditImageFile(null)
+    setEditImagePreview(p.imageUrl)
   }
 
   async function saveEdit() {
@@ -179,11 +279,23 @@ export default function MahsulotlarPage() {
     }
     setSaving(true)
     const supabase = createClient()
+
+    // Keep the existing image unless a new file was chosen (replace) or the
+    // preview was cleared (remove).
+    let imageUrl: string | null = editProduct.imageUrl || null
+    if (editImageFile) {
+      imageUrl = await uploadProductImage(supabase, editImageFile)
+      if (!imageUrl) { setSaving(false); toast.error(t('common.error')); return }
+    } else if (!editImagePreview) {
+      imageUrl = null
+    }
+
     const { error } = await supabase.rpc('update_product', {
       p_id: editProduct.id,
       p_data: {
         name: editForm.name.trim(),
         sku: editForm.sku.trim(),
+        barcode: editForm.barcode.trim() || null,
         category: editForm.category,
         price: Number(editForm.price),
         min_stock: Number(editForm.minStock || 5),
@@ -191,10 +303,11 @@ export default function MahsulotlarPage() {
         description: editForm.description.trim(),
         status: editForm.status,
         warehouse_id: editForm.warehouseId,
+        image_url: imageUrl,
       },
     })
     setSaving(false)
-    if (error) { toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error')); return }
+    if (error) { toast.error(rpcErrorMessage(error)); return }
     toast.success(t('products.toasts.updateSuccess'))
     setEditProduct(null)
     fetchProducts()
@@ -257,8 +370,13 @@ export default function MahsulotlarPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
             {paginated.map(p => (
               <div key={p.id} className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm transition-all">
-                <div className="flex h-36 items-center justify-center bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-800">
-                  <Tag className="h-8 w-8 text-gray-300 dark:text-gray-600" />
+                <div className="flex h-36 items-center justify-center bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-800 overflow-hidden">
+                  {p.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <Tag className="h-8 w-8 text-gray-300 dark:text-gray-600" />
+                  )}
                 </div>
                 <div className="p-3">
                   <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500 mb-0.5">{p.sku}</p>
@@ -344,6 +462,16 @@ export default function MahsulotlarPage() {
                 <input value={addForm.skuPrefix} onChange={e => setAddForm(f => ({ ...f, skuPrefix: e.target.value }))} className={inputCls} placeholder="FIN (auto)" />
               </div>
             </div>
+            <div>
+              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('products.modal.barcode')}</label>
+              <div className="flex gap-2">
+                <input value={addForm.barcode} onChange={e => setAddForm(f => ({ ...f, barcode: e.target.value }))} className={inputCls} inputMode="numeric" placeholder="4780000000000" />
+                <button type="button" disabled={barcodeGenBusy} onClick={() => autoBarcode(code => setAddForm(f => ({ ...f, barcode: code })))}
+                  className="h-9 shrink-0 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 px-2.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50">
+                  {t('products.modal.barcodeAuto')}
+                </button>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('products.modal.category')}</label>
@@ -368,6 +496,25 @@ export default function MahsulotlarPage() {
               <textarea rows={2} value={addForm.description} onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))}
                 placeholder="Mahsulot haqida qisqacha..."
                 className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 resize-none transition-colors" />
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('products.modal.image')}</label>
+              {addImagePreview ? (
+                <div className="relative inline-block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={addImagePreview} alt="" className="h-24 w-24 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
+                  <button type="button" title={t('products.modal.imageRemove')} onClick={() => removeImage(setAddImageFile, setAddImagePreview)}
+                    className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shadow-sm transition-colors">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+                  <ImagePlus className="h-5 w-5 text-gray-400" />
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500">{t('products.modal.imageHint')}</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={e => handleImageSelect(e, setAddImageFile, setAddImagePreview)} />
+                </label>
+              )}
             </div>
             <div>
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('products.modal.colors')}</label>
@@ -404,6 +551,16 @@ export default function MahsulotlarPage() {
               <div>
                 <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('products.modal.sku')}</label>
                 <input value={editForm.sku} onChange={e => setEditForm(f => ({ ...f, sku: e.target.value }))} className={inputCls} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('products.modal.barcode')}</label>
+              <div className="flex gap-2">
+                <input value={editForm.barcode} onChange={e => setEditForm(f => ({ ...f, barcode: e.target.value }))} className={inputCls} inputMode="numeric" placeholder="4780000000000" />
+                <button type="button" disabled={barcodeGenBusy} onClick={() => autoBarcode(code => setEditForm(f => ({ ...f, barcode: code })))}
+                  className="h-9 shrink-0 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 px-2.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50">
+                  {t('products.modal.barcodeAuto')}
+                </button>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -444,6 +601,25 @@ export default function MahsulotlarPage() {
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">Tavsif</label>
               <textarea rows={2} value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
                 className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 resize-none transition-colors" />
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('products.modal.image')}</label>
+              {editImagePreview ? (
+                <div className="relative inline-block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={editImagePreview} alt="" className="h-24 w-24 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
+                  <button type="button" title={t('products.modal.imageRemove')} onClick={() => removeImage(setEditImageFile, setEditImagePreview)}
+                    className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shadow-sm transition-colors">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+                  <ImagePlus className="h-5 w-5 text-gray-400" />
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500">{t('products.modal.imageHint')}</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={e => handleImageSelect(e, setEditImageFile, setEditImagePreview)} />
+                </label>
+              )}
             </div>
             {editProduct && <CompanionSection productId={editProduct.id} />}
             <div>

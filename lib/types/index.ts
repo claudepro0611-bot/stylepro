@@ -33,6 +33,7 @@ export interface Product {
   colors: string[]
   minStock: number
   imageUrl: string
+  barcode?: string
   status: 'active' | 'inactive'
   warehouseId: string
 }
