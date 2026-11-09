@@ -24,6 +24,7 @@ export default function NewFirmPage() {
       address: form.address,
       status: form.status,
       warehouseLimit: form.warehouseLimit,
+      businessType: form.businessType,
     })
     setSubmitting(false)
 

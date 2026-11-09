@@ -2,6 +2,7 @@
 
 import { createClient, supabaseServer } from '@/lib/supabase/server'
 import { tashkentYmd } from '@/lib/utils/date'
+import { toBusinessType, type BusinessType } from '@/lib/business-type'
 
 const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 const LOGIN_DOMAIN = '@stylepro.local'
@@ -20,6 +21,8 @@ export interface CompanyRow {
   warehousesCount: number
   warehouseLimit: number
   branchLimit: number
+  /** Immutable after creation (DB trigger). */
+  businessType: BusinessType
 }
 
 export interface CompanyStats {
@@ -37,6 +40,8 @@ export interface CreateCompanyInput {
   status?: 'active' | 'inactive'
   warehouseLimit?: number
   branchLimit?: number
+  /** Set once on create; updateCompany never sends it. Defaults to 'retail'. */
+  businessType?: BusinessType
 }
 
 export interface UpdateCompanyInput {
@@ -104,6 +109,7 @@ export async function getCompanies(): Promise<{ companies: CompanyRow[]; stats: 
       warehousesCount: (warehouses ?? []).filter(w => w.company_id === c.id).length,
       warehouseLimit: c.warehouse_limit ?? 2,
       branchLimit: c.branch_limit ?? 1,
+      businessType: toBusinessType(c.business_type),
     }
   })
 
@@ -157,6 +163,7 @@ export async function createCompany(data: CreateCompanyInput) {
       status: data.status ?? 'active',
       warehouse_limit: Math.min(100, Math.max(1, data.warehouseLimit ?? 2)),
       branch_limit: Math.max(1, Math.floor(data.branchLimit ?? 1)),
+      business_type: toBusinessType(data.businessType),
     })
     .select()
     .single()
@@ -271,6 +278,8 @@ export interface FeatureDefinitionRow {
   priceUsd: number
   isCore: boolean
   companiesUsing: number
+  /** Business types the module applies to (feature_definitions.business_types). */
+  businessTypes: BusinessType[]
 }
 
 export async function getFeatureDefinitions(): Promise<FeatureDefinitionRow[]> {
@@ -278,7 +287,7 @@ export async function getFeatureDefinitions(): Promise<FeatureDefinitionRow[]> {
 
   const { data: defs, error: defsError } = await supabaseServer
     .from('feature_definitions')
-    .select('key, name, description, price_usd, is_core')
+    .select('key, name, description, price_usd, is_core, business_types')
     .order('is_core', { ascending: false })
     .order('name')
 
@@ -302,6 +311,7 @@ export async function getFeatureDefinitions(): Promise<FeatureDefinitionRow[]> {
     priceUsd: Number(d.price_usd),
     isCore: d.is_core,
     companiesUsing: usageCounts.get(d.key) ?? 0,
+    businessTypes: (d.business_types ?? ['retail']).map(toBusinessType),
   }))
 }
 

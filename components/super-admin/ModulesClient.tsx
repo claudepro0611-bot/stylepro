@@ -7,6 +7,7 @@ import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 import {
   createFeatureDefinition, updateFeatureDefinition, deleteFeatureDefinition,
   type FeatureDefinitionRow,
@@ -33,6 +34,7 @@ interface ModulesClientProps {
 
 export function ModulesClient({ modules }: ModulesClientProps) {
   const router = useRouter()
+  const { t } = useLanguage()
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [addForm, setAddForm] = useState(emptyAddForm)
   const [saving, setSaving] = useState(false)
@@ -163,6 +165,13 @@ export function ModulesClient({ modules }: ModulesClientProps) {
 
               <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{m.name}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 font-mono">{m.key}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {m.businessTypes.map(bt => (
+                  <span key={bt} className="inline-flex rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-400">
+                    {bt === 'production' ? t('production.superAdmin.production') : t('production.superAdmin.retail')}
+                  </span>
+                ))}
+              </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 flex-1">
                 {m.description || '—'}
               </p>

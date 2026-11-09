@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { createClient } from '@/lib/supabase/client'
 import { primeCompanyId } from '@/lib/supabase/helpers'
 import { isAllBranchRole, type BranchSummary } from '@/lib/branches'
+import { toBusinessType, type BusinessType } from '@/lib/business-type'
 
 const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 const BRANCH_STORAGE_PREFIX = 'stylepro-branch:'
@@ -43,6 +44,8 @@ export interface SessionCompany {
   penaltyDays: number
   totalPenalty: number
   maxGraceDays: number
+  /** Immutable firm type; 'retail' when missing. */
+  businessType: BusinessType
 }
 
 interface SessionState {
@@ -125,7 +128,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         ? Promise.resolve({ data: null })
         : supabase
             .from('companies')
-            .select('name, balance, monthly_fee, payment_due_date, has_contract, daily_penalty, penalty_days, total_penalty, max_grace_days')
+            .select('name, balance, monthly_fee, payment_due_date, has_contract, daily_penalty, penalty_days, total_penalty, max_grace_days, business_type')
             .maybeSingle(),
       // Same reason: the super-admin read policy would return every
       // company's branches.
@@ -139,7 +142,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     ])
 
     const u = userRes.data
-    const c = companyRes.data
+    let c: (typeof companyRes)['data'] = companyRes.data
+    // Safety net while migration 20261110000001 is not yet applied: without
+    // companies.business_type the select above errors, so re-read the
+    // company without it (firm is treated as retail) instead of losing billing
+    // status and the company name for every firm.
+    if (!isSuperAdmin && 'error' in companyRes && companyRes.error) {
+      const fallback = await supabase
+        .from('companies')
+        .select('name, balance, monthly_fee, payment_due_date, has_contract, daily_penalty, penalty_days, total_penalty, max_grace_days')
+        .maybeSingle()
+      c = fallback.data ? ({ ...fallback.data, business_type: 'retail' } as typeof c) : null
+    }
 
     if (u?.company_id) primeCompanyId(user.id, u.company_id)
     setBranchPref(readStoredBranch(user.id))
@@ -163,6 +177,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             penaltyDays: c.penalty_days ?? 0,
             totalPenalty: Number(c.total_penalty ?? 0),
             maxGraceDays: c.max_grace_days ?? 5,
+            businessType: toBusinessType(c.business_type),
           }
         : null,
       branches: mapBranches(branchesRes.data as BranchDbRow[] | null),

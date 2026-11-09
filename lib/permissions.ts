@@ -3,9 +3,11 @@ import {
   ArrowDownCircle, ArrowUpCircle, Trash2, ShoppingBag, Tag,
   BarChart2, Megaphone, MessageSquare, Receipt,
   Briefcase, Settings, UserCog, Archive, TrendingUp, Truck, ArrowLeftRight,
+  Factory, Recycle, Boxes, BookOpen, HandCoins,
   type LucideIcon,
 } from 'lucide-react'
 import type { TranslationKey } from '@/lib/i18n/translations'
+import type { BusinessType } from '@/lib/business-type'
 
 export const PERMISSION_KEYS = [
   'dashboard', 'pos', 'customers', 'inventory', 'kirim', 'chiqim', 'brak',
@@ -17,14 +19,39 @@ export const PERMISSION_KEYS = [
   'reports_yetkazuvchilar', 'reports_kirim', 'reports_spisaniya',
   'reports_xarajatlar', 'reports_inventar', 'reports_peremeshenie',
   'peremeshenie', 'yetkazuvchilar',
+  // Production firms only (business_type = 'production'). Fail-closed: a
+  // missing key means NO access for non-owners, unlike the retail keys.
+  'prod_catalog', 'prod_production', 'prod_processing', 'prod_receipts',
+  'prod_stock', 'prod_supply',
 ] as const
 
 export type PermissionKey = typeof PERMISSION_KEYS[number]
 
 export type Permissions = Record<PermissionKey, boolean>
 
+export const PRODUCTION_PERMISSION_KEYS: readonly PermissionKey[] = [
+  'prod_catalog', 'prod_production', 'prod_processing', 'prod_receipts', 'prod_stock', 'prod_supply',
+]
+
+/** Retail keys that production firms also use (mirrors has_permission()). */
+export const SHARED_PERMISSION_KEYS: readonly PermissionKey[] = [
+  'dashboard', 'xarajatlar', 'hr', 'jamoa', 'sozlamalar',
+]
+
+export function isProductionPermissionKey(key: PermissionKey): boolean {
+  return PRODUCTION_PERMISSION_KEYS.includes(key)
+}
+
+/** Whether a permission key means anything for the given business type. */
+export function isPermissionKeyForType(key: PermissionKey, type: BusinessType): boolean {
+  if (type === 'production') return isProductionPermissionKey(key) || SHARED_PERMISSION_KEYS.includes(key)
+  return !isProductionPermissionKey(key)
+}
+
+// Legacy retail keys default to true (rows written before a key existed keep
+// working); prod_* keys default to false (fail-closed).
 export const DEFAULT_PERMISSIONS: Permissions = PERMISSION_KEYS.reduce((acc, key) => {
-  acc[key] = true
+  acc[key] = !isProductionPermissionKey(key)
   return acc
 }, {} as Permissions)
 
@@ -63,6 +90,12 @@ export const PERMISSION_ITEMS: { key: PermissionKey; labelKey: TranslationKey; i
   { key: 'sozlamalar', labelKey: 'sidebar.settings', icon: Settings },
   { key: 'jamoa', labelKey: 'sidebar.jamoa', icon: UserCog },
   { key: 'arxiv', labelKey: 'sidebar.arxiv', icon: Archive },
+  { key: 'prod_production', labelKey: 'production.perm.production', icon: Factory },
+  { key: 'prod_processing', labelKey: 'production.perm.processing', icon: Recycle },
+  { key: 'prod_receipts', labelKey: 'production.perm.receipts', icon: ArrowDownCircle },
+  { key: 'prod_stock', labelKey: 'production.perm.stock', icon: Boxes },
+  { key: 'prod_catalog', labelKey: 'production.perm.catalog', icon: BookOpen },
+  { key: 'prod_supply', labelKey: 'production.perm.supply', icon: HandCoins },
   // 'nasiya' intentionally NOT added here yet: PERMISSION_ITEMS entries are
   // typed against TranslationKey = DotPaths<Translations> (a strict literal
   // union generated from lib/i18n/translations.ts's actual keys), so adding
@@ -77,3 +110,8 @@ export const PERMISSION_ITEMS: { key: PermissionKey; labelKey: TranslationKey; i
   // PermissionKey (see PERMISSION_KEYS above) and DEFAULT_PERMISSIONS
   // covers it automatically — only the UI-visibility entry is pending.
 ]
+
+/** The access-editor rows relevant to a firm of the given business type. */
+export function permissionItemsFor(type: BusinessType) {
+  return PERMISSION_ITEMS.filter(item => isPermissionKeyForType(item.key, type))
+}

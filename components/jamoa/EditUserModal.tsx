@@ -8,7 +8,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
-import { withDefaultPermissions, PERMISSION_ITEMS, type Permissions } from '@/lib/permissions'
+import { withDefaultPermissions, permissionItemsFor, type Permissions } from '@/lib/permissions'
+import { useSession } from '@/lib/session/SessionContext'
 import { updateTeamUser, type TeamUserRow, type TeamBranchOption } from '@/app/(dashboard)/jamoa/actions'
 import { BranchSelect } from '@/components/filiallar/BranchSelect'
 import { defaultBranchId } from '@/components/jamoa/AddUserModal'
@@ -43,6 +44,8 @@ interface EditUserModalProps {
 
 export function EditUserModal({ user, onOpenChange, onUpdated, branches }: EditUserModalProps) {
   const { t } = useLanguage()
+  // Only show the keys that mean something for this firm's business type.
+  const permissionItems = permissionItemsFor(useSession().company?.businessType ?? 'retail')
   const [tab, setTab] = useState('info')
   const [form, setForm] = useState<EditFormState | null>(null)
   const [initial, setInitial] = useState<EditFormState | null>(null)
@@ -173,7 +176,7 @@ export function EditUserModal({ user, onOpenChange, onUpdated, branches }: EditU
           <TabsContent value="access" className="mt-4">
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{t('jamoa.editModal.accessTitle')}</p>
             <div className="space-y-0.5 max-h-[50vh] overflow-y-auto pr-1">
-              {PERMISSION_ITEMS.map(({ key, labelKey, icon: Icon, parent }) => {
+              {permissionItems.map(({ key, labelKey, icon: Icon, parent }) => {
                 const parentOff = parent ? !form.permissions[parent] : false
                 return (
                 <div

@@ -16,6 +16,7 @@ interface FeatureDefRow {
   description: string | null
   price_usd: number
   is_core: boolean
+  business_types: string[] | null
 }
 
 interface CompanyFeatureRow {
@@ -84,7 +85,7 @@ export function FeatureModal({ company, open, onOpenChange }: FeatureModalProps)
       setPendingLimits({})
       const supabase = createClient()
       const [{ data: defs, error: defsError }, { data: cf, error: cfError }, { data: companyData }] = await Promise.all([
-        supabase.from('feature_definitions').select('key, name, description, price_usd, is_core').order('is_core', { ascending: false }),
+        supabase.from('feature_definitions').select('key, name, description, price_usd, is_core, business_types').order('is_core', { ascending: false }),
         supabase.from('company_features').select('feature_key, is_active').eq('company_id', company.id),
         supabase.from('companies').select('user_limit, warehouse_limit, branch_limit, balance, payment_due_date, has_contract, daily_penalty, penalty_days, total_penalty, max_grace_days').eq('id', company.id).single(),
       ])
@@ -95,7 +96,10 @@ export function FeatureModal({ company, open, onOpenChange }: FeatureModalProps)
       }
 
       const activeMap = new Map((cf as CompanyFeatureRow[] ?? []).map(row => [row.feature_key, row.is_active]))
-      const cards: FeatureCard[] = (defs as FeatureDefRow[]).map(d => ({
+      // Only modules that apply to this firm's business type.
+      const cards: FeatureCard[] = (defs as FeatureDefRow[])
+        .filter(d => (d.business_types ?? ['retail']).includes(company.businessType))
+        .map(d => ({
         key: d.key,
         name: d.name,
         description: d.description ?? '',

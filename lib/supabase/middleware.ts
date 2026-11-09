@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { PermissionKey } from '@/lib/permissions'
+import { isPathAllowed, toBusinessType } from '@/lib/business-type'
 
 const PUBLIC_PATHS = ['/login']
 const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
@@ -58,6 +59,27 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/inventarizatsiya': 'inventory',
   '/valyuta-kurslari': 'sozlamalar',
   '/prays-list': 'mahsulotlar',
+  // Production firms (business_type = 'production'). Retail firms never get
+  // this far for these paths: the business-type check redirects them first.
+  '/ishlab-chiqarish': 'prod_production',
+  '/qayta-ishlash': 'prod_processing',
+  '/xom-ashyo-kirim': 'prod_receipts',
+  '/zavod-qoldiq': 'prod_stock',
+  '/zavod-mahsulotlar': 'prod_catalog',
+  '/zavod-guruhlar': 'prod_catalog',
+  '/zavod-omborlar': 'prod_catalog',
+  '/taminot': 'prod_supply',
+}
+
+// API routes do their own auth and are called by pages of both business
+// types (e.g. /api/exchange-rates/cbu from /valyuta-kurslari), so the
+// business-type route split does not apply to them.
+const API_PREFIX = '/api/'
+
+/** users.companies embed: an object for a many-to-one FK, tolerate arrays. */
+function embeddedBusinessType(companies: unknown): unknown {
+  const row = Array.isArray(companies) ? companies[0] : companies
+  return row && typeof row === 'object' ? (row as { business_type?: unknown }).business_type : undefined
 }
 
 export async function updateSession(request: NextRequest) {
@@ -113,12 +135,41 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && ALL_BRANCH_ROLE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
-    const { data: me } = await supabase.from('users').select('role').eq('id', user.id).maybeSingle()
-    if (!me?.role || !ALL_BRANCH_ROLES.includes(me.role)) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+  if (user && !pathname.startsWith(API_PREFIX)) {
+    // The ONE profile query per request: role (for /filiallar) and the
+    // company's business type (module split) together.
+    // eslint-disable-next-line prefer-const
+    let { data: me, error: meError } = await supabase
+      .from('users')
+      .select('role, companies(business_type)')
+      .eq('id', user.id)
+      .maybeSingle()
+    // Safety net while migration 20261110000001 is not yet applied (column
+    // companies.business_type missing): fall back to the role-only query so
+    // every firm keeps working as retail instead of breaking navigation.
+    if (meError) {
+      const fallback = await supabase.from('users').select('role').eq('id', user.id).maybeSingle()
+      me = fallback.data ? { ...fallback.data, companies: [] } : null
+    }
+
+    // Super admin has no company of their own; route split does not apply.
+    if (user.email?.toLowerCase() !== SUPER_ADMIN_EMAIL) {
+      const businessType = toBusinessType(embeddedBusinessType(me?.companies))
+      // Production firms: only production + shared routes (this also blocks
+      // /pos and /filiallar). Retail firms: production routes are blocked.
+      if (!isPathAllowed(businessType, pathname)) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+    }
+
+    if (ALL_BRANCH_ROLE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      if (!me?.role || !ALL_BRANCH_ROLES.includes(me.role)) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
     }
   }
 

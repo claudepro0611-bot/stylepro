@@ -9,6 +9,7 @@ import {
   MessageSquare, Settings, ArrowDownCircle, Trash2, ChevronDown, ShoppingCart,
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
   Receipt, Warehouse, Store, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered, Truck, ArrowLeftRight, PackagePlus,
+  Factory, Recycle, Boxes, BookOpen, HandCoins, Banknote,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -29,6 +30,8 @@ export interface NavLeaf {
   featureKey?: string
   /** Only owner/admin (all-branch roles) see this item; no PermissionKey. */
   allBranchRolesOnly?: boolean
+  /** Highlight only on this exact path (siblings live under it, e.g. /taminot/*). */
+  exact?: boolean
 }
 
 export interface NavEntry extends NavLeaf {
@@ -122,6 +125,51 @@ export const NAV_ITEMS: NavEntry[] = [
   { href: '/arxiv', labelKey: 'sidebar.arxiv', icon: Archive, permKey: 'arxiv' },
 ]
 
+// Production firms (business_type = 'production'). Only production + shared
+// modules; route access is enforced in proxy.ts and by has_permission().
+export const PRODUCTION_NAV_ITEMS: NavEntry[] = [
+  { href: '/dashboard', labelKey: 'sidebar.dashboard', icon: LayoutDashboard, permKey: 'dashboard' },
+  { href: '/ishlab-chiqarish', labelKey: 'production.nav.production', icon: Factory, permKey: 'prod_production' },
+  { href: '/qayta-ishlash', labelKey: 'production.nav.processing', icon: Recycle, permKey: 'prod_processing' },
+  { href: '/xom-ashyo-kirim', labelKey: 'production.nav.receipts', icon: PackagePlus, permKey: 'prod_receipts' },
+  { href: '/zavod-qoldiq', labelKey: 'production.nav.stock', icon: Boxes, permKey: 'prod_stock' },
+  {
+    href: '/zavod-malumotnomalar', labelKey: 'production.nav.catalog', icon: BookOpen, noLink: true,
+    children: [
+      { href: '/zavod-mahsulotlar', labelKey: 'production.nav.items', icon: ShoppingBag, permKey: 'prod_catalog' },
+      { href: '/zavod-guruhlar', labelKey: 'production.nav.groups', icon: Tag, permKey: 'prod_catalog' },
+      { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_catalog' },
+    ],
+  },
+  {
+    href: '/taminot-bolimi', labelKey: 'production.nav.supply', icon: HandCoins, noLink: true,
+    children: [
+      { href: '/taminot', labelKey: 'production.nav.agents', icon: Contact, permKey: 'prod_supply', exact: true },
+      { href: '/taminot/pul-berish', labelKey: 'production.nav.cashIssue', icon: Banknote, permKey: 'prod_supply' },
+      { href: '/taminot/sarflar', labelKey: 'production.nav.spending', icon: Receipt, permKey: 'prod_supply' },
+    ],
+  },
+  {
+    href: '/moliya', labelKey: 'sidebar.finance', icon: Wallet, noLink: true,
+    children: [
+      { href: '/xarajatlar', labelKey: 'sidebar.expenses', icon: Receipt, permKey: 'xarajatlar', featureKey: 'expenses' },
+      { href: '/valyuta-kurslari', labelKey: 'sidebar.exchangeRates', icon: TrendingUp, permKey: 'sozlamalar' },
+    ],
+  },
+  {
+    href: '/hr', labelKey: 'sidebar.hrModule', icon: Users, noLink: true, permKey: 'hr', featureKey: 'hr',
+    children: [
+      { href: '/hr/bolimlar', labelKey: 'sidebar.bolimlar', icon: Building2 },
+      { href: '/hr/lavozim', labelKey: 'sidebar.lavozim', icon: Briefcase },
+      { href: '/hr/xodim', labelKey: 'sidebar.xodim', icon: User },
+      { href: '/hr/mukofot-jarima-turlari', labelKey: 'sidebar.mukofotJarimaTurlari', icon: Tag },
+      { href: '/hr/mukofot-jarimalar', labelKey: 'sidebar.mukofotJarimalar', icon: Target },
+      { href: '/hr/grafik', labelKey: 'sidebar.grafik', icon: LineChart },
+    ],
+  },
+  { href: '/jamoa', labelKey: 'sidebar.jamoa', icon: UserCog, permKey: 'jamoa' },
+]
+
 export const ADMIN_NAV_ITEM: NavEntry = {
   href: '/super-admin', labelKey: 'sidebar.adminPanel', icon: Crown, noLink: true,
   children: [
@@ -134,12 +182,12 @@ export const SETTINGS_NAV_ITEM: NavEntry = {
   href: '/sozlamalar', labelKey: 'sidebar.settings', icon: Settings, permKey: 'sozlamalar',
 }
 
-function isActive(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(href + '/')
+function isActive(pathname: string, href: string, exact = false) {
+  return pathname === href || (!exact && pathname.startsWith(href + '/'))
 }
 
 function groupActive(pathname: string, item: NavEntry) {
-  return isActive(pathname, item.href) || (item.children?.some(c => isActive(pathname, c.href)) ?? false)
+  return isActive(pathname, item.href) || (item.children?.some(c => isActive(pathname, c.href, c.exact)) ?? false)
 }
 
 function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: boolean, features: Record<string, boolean>, isAllBranchUser: boolean): NavEntry[] {
@@ -167,7 +215,8 @@ function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: bo
 export function Sidebar({ forceExpanded = false }: SidebarProps) {
   const pathname = usePathname()
   const { t } = useLanguage()
-  const { isSuperAdmin: isAdmin, profile } = useSession()
+  const { isSuperAdmin: isAdmin, profile, company } = useSession()
+  const isProduction = company?.businessType === 'production'
   // Until the profile loads, keep the previous defaults (owner + all
   // permissions) so the nav doesn't flash empty.
   const isOwner = profile ? profile.role === 'owner' : true
@@ -182,7 +231,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
 
   const collapsed = forceExpanded ? false : storedCollapsed
 
-  const filteredNavItems = filterNavItems(NAV_ITEMS, permissions, isOwner, features, isAllBranchUser)
+  const filteredNavItems = filterNavItems(isProduction ? PRODUCTION_NAV_ITEMS : NAV_ITEMS, permissions, isOwner, features, isAllBranchUser)
   const filteredSettingsItem = filterNavItems([SETTINGS_NAV_ITEM], permissions, isOwner, features, isAllBranchUser)[0]
   const navItems = isAdmin ? [...filteredNavItems, ADMIN_NAV_ITEM] : filteredNavItems
   const groups = [...navItems, ...(filteredSettingsItem ? [filteredSettingsItem] : [])].filter(i => i.children)
@@ -204,7 +253,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
         setExpandedGroups(prev => ({ ...prev, [g.href]: true }))
       }
     })
-  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname, isProduction]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleGroup(href: string) {
     setExpandedGroups(prev => ({ ...prev, [href]: !prev[href] }))
@@ -310,7 +359,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
           <div className={cn('overflow-hidden transition-all duration-200 ease-in-out', expanded ? 'mt-0.5 max-h-72 opacity-100' : 'max-h-0 opacity-0')}>
             <div className="space-y-0.5">
               {item.children.map(child =>
-                renderExpandedLeaf(child.href, child.href, child.icon, t(child.labelKey), isActive(pathname, child.href), true)
+                renderExpandedLeaf(child.href, child.href, child.icon, t(child.labelKey), isActive(pathname, child.href, child.exact), true)
               )}
             </div>
           </div>

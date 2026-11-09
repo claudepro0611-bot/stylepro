@@ -46,6 +46,7 @@ export function AddCompanyModal({ open, onOpenChange, onCreated }: AddCompanyMod
       status: form.status,
       warehouseLimit: form.warehouseLimit,
       branchLimit: form.branchLimit,
+      businessType: form.businessType,
     })
     setSubmitting(false)
 

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { BUSINESS_TYPES, type BusinessType } from '@/lib/business-type'
 
 export interface CompanyFormValues {
   name: string
@@ -14,6 +15,7 @@ export interface CompanyFormValues {
   userLimit: number
   warehouseLimit: number
   branchLimit: number
+  businessType: BusinessType
 }
 
 export const emptyCompanyForm: CompanyFormValues = {
@@ -26,6 +28,7 @@ export const emptyCompanyForm: CompanyFormValues = {
   userLimit: 1,
   warehouseLimit: 2,
   branchLimit: 1,
+  businessType: 'retail',
 }
 
 const inputCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
@@ -54,6 +57,34 @@ export function CompanyFormFields({ values, onChange, mode }: CompanyFormFieldsP
           className={inputCls}
           placeholder="Masalan: Bahor Fashion"
         />
+      </div>
+
+      {/* Business type is immutable after creation (DB trigger): choosable only here. */}
+      <div>
+        <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('production.superAdmin.businessType')}</label>
+        {mode === 'create' ? (
+          <div className="flex gap-1 rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+            {BUSINESS_TYPES.map(bt => (
+              <button
+                key={bt}
+                type="button"
+                onClick={() => set('businessType', bt)}
+                className={`flex-1 h-8 rounded-md text-[13px] font-medium border transition-colors ${
+                  values.businessType === bt
+                    ? 'bg-white dark:bg-gray-900 shadow-sm border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                }`}
+              >
+                {bt === 'production' ? t('production.superAdmin.production') : t('production.superAdmin.retail')}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-900 dark:text-gray-100">
+            {values.businessType === 'production' ? t('production.superAdmin.production') : t('production.superAdmin.retail')}
+            <span className="ml-2 text-[11px] text-gray-400 dark:text-gray-500">{t('production.superAdmin.immutableHint')}</span>
+          </p>
+        )}
       </div>
 
       {mode === 'create' && (

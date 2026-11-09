@@ -20,6 +20,7 @@ const DEFAULT_FEATURES: Record<string, boolean> = {
   excel_import: false,
   expenses: false,
   shift_system: false,
+  production: false,
 }
 
 // Last successful load, shared across every mount (Sidebar + each page) so

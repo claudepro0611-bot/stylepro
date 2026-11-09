@@ -20,6 +20,7 @@ export function EditFirmPageClient({ company }: { company: CompanyRow }) {
     userLimit: company.userLimit,
     warehouseLimit: company.warehouseLimit,
     branchLimit: company.branchLimit,
+    businessType: company.businessType,
   })
   const [submitting, setSubmitting] = useState(false)
 

@@ -22,7 +22,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { NAV_ITEMS, ADMIN_NAV_ITEM, SETTINGS_NAV_ITEM } from '@/components/layout/Sidebar'
+import { NAV_ITEMS, PRODUCTION_NAV_ITEMS, ADMIN_NAV_ITEM, SETTINGS_NAV_ITEM } from '@/components/layout/Sidebar'
 import type { TranslationKey } from '@/lib/i18n/translations'
 
 interface HeaderProps {
@@ -35,7 +35,9 @@ interface Crumb {
   href?: string
 }
 
-const BREADCRUMB_NAV_ITEMS = [...NAV_ITEMS, ADMIN_NAV_ITEM, SETTINGS_NAV_ITEM]
+// Production entries come after the retail ones, so shared paths (/xarajatlar,
+// /hr, ...) still resolve to the retail labels first - they are identical.
+const BREADCRUMB_NAV_ITEMS = [...NAV_ITEMS, ...PRODUCTION_NAV_ITEMS, ADMIN_NAV_ITEM, SETTINGS_NAV_ITEM]
 
 // Reuses the sidebar nav config (components/layout/Sidebar.tsx) as the single
 // source of truth for route labels, so breadcrumb text never drifts from the
@@ -48,7 +50,7 @@ function buildBreadcrumbTrail(pathname: string, t: (key: TranslationKey) => stri
   for (const item of BREADCRUMB_NAV_ITEMS) {
     if (item.children) {
       for (const child of item.children) {
-        if (pathname === child.href || pathname.startsWith(child.href + '/')) {
+        if (pathname === child.href || (!child.exact && pathname.startsWith(child.href + '/'))) {
           const trail: Crumb[] = [home]
           if (item.href !== child.href) trail.push({ label: t(item.labelKey) })
           trail.push({ label: t(child.labelKey), href: child.href })
@@ -142,8 +144,9 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Right — notifications + profile */}
       <div className="flex items-center gap-2">
-        {/* Branch switcher - renders nothing for single-branch companies */}
-        <BranchSwitcher />
+        {/* Branch switcher - renders nothing for single-branch companies;
+            production firms have no branch UI at all. */}
+        {company?.businessType !== 'production' && <BranchSwitcher />}
 
         {/* Notification bell */}
         <button className="relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">

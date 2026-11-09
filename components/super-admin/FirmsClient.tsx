@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/client'
 import { deleteCompany, impersonateCompany, type CompanyRow, type CompanyStats } from '@/app/(dashboard)/super-admin/actions'
 import { AddCompanyModal } from '@/components/super-admin/AddCompanyModal'
 import { FeatureModal } from '@/components/super-admin/FeatureModal'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 interface FirmsClientProps {
   companies: CompanyRow[]
@@ -21,6 +22,7 @@ interface FirmsClientProps {
 
 export function FirmsClient({ companies, stats }: FirmsClientProps) {
   const router = useRouter()
+  const { t } = useLanguage()
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<CompanyRow | null>(null)
   const [featureTarget, setFeatureTarget] = useState<CompanyRow | null>(null)
@@ -136,6 +138,9 @@ export function FirmsClient({ companies, stats }: FirmsClientProps) {
                     <td className="px-4 py-3 text-[13px] text-gray-400 dark:text-gray-500 tabular-nums">{i + 1}</td>
                     <td className="px-4 py-3">
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{c.name}</p>
+                      <span className="mt-0.5 inline-flex rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-400">
+                        {c.businessType === 'production' ? t('production.superAdmin.production') : t('production.superAdmin.retail')}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{c.login ?? '—'}</td>
                     <td className="px-4 py-3 text-center">

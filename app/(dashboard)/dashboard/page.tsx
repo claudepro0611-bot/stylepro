@@ -30,6 +30,7 @@ import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar'
+import { ProductionDashboard } from '@/components/production/ProductionDashboard'
 import type { TranslationKey } from '@/lib/i18n/translations'
 import type { Transaction } from '@/lib/types'
 
@@ -426,7 +427,25 @@ function mapTx(tx: TxRow): Transaction {
   }
 }
 
+// Production firms get their own dashboard; none of the retail loading below
+// runs for them. Waits for the session so the right one mounts first time.
 export default function DashboardPage() {
+  const { loading, company } = useSession()
+  if (loading) {
+    return (
+      <div className="space-y-5">
+        <Skeleton className="h-7 w-48" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[110px] rounded-xl" />)}
+        </div>
+      </div>
+    )
+  }
+  if (company?.businessType === 'production') return <ProductionDashboard />
+  return <RetailDashboardPage />
+}
+
+function RetailDashboardPage() {
   const { t } = useLanguage()
   const { formatPrice, formatShortPrice } = useCurrency()
   const paymentStatus = usePaymentStatus()
