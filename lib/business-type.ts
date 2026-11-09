@@ -22,6 +22,8 @@ export const PRODUCTION_PREFIXES = [
   '/zavod-guruhlar',
   '/zavod-omborlar',
   '/taminot',
+  '/zavod-yetkazuvchilar',
+  '/zavod-yetkazuvchi-tolovlar',
 ] as const
 
 /** Routes both business types may open. */

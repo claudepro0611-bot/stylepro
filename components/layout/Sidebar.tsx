@@ -134,6 +134,8 @@ export const NAV_ITEMS: NavEntry[] = [
       { href: '/taminot', labelKey: 'production.nav.agents', icon: Contact, permKey: 'prod_supply', exact: true },
       { href: '/taminot/pul-berish', labelKey: 'production.nav.cashIssue', icon: Banknote, permKey: 'prod_supply' },
       { href: '/taminot/sarflar', labelKey: 'production.nav.spending', icon: Receipt, permKey: 'prod_supply' },
+      { href: '/zavod-yetkazuvchilar', labelKey: 'production.nav.suppliers', icon: Truck, permKey: 'prod_suppliers' },
+      { href: '/zavod-yetkazuvchi-tolovlar', labelKey: 'production.nav.supplierPayments', icon: CreditCard, permKey: 'prod_suppliers' },
     ],
   },
   { href: '/marketing', labelKey: 'sidebar.marketing', icon: Megaphone, permKey: 'marketing', featureKey: 'marketing' },
@@ -149,6 +151,13 @@ export const PRODUCTION_NAV_ITEMS: NavEntry[] = [
   { href: '/ishlab-chiqarish', labelKey: 'production.nav.production', icon: Factory, permKey: 'prod_production' },
   { href: '/qayta-ishlash', labelKey: 'production.nav.processing', icon: Recycle, permKey: 'prod_processing' },
   { href: '/xom-ashyo-kirim', labelKey: 'production.nav.receipts', icon: PackagePlus, permKey: 'prod_receipts' },
+  {
+    href: '/zavod-yetkazuvchilar-bolimi', labelKey: 'production.nav.suppliersGroup', icon: Truck, noLink: true,
+    children: [
+      { href: '/zavod-yetkazuvchilar', labelKey: 'production.nav.suppliers', icon: Contact, permKey: 'prod_suppliers' },
+      { href: '/zavod-yetkazuvchi-tolovlar', labelKey: 'production.nav.supplierPayments', icon: CreditCard, permKey: 'prod_suppliers' },
+    ],
+  },
   { href: '/zavod-qoldiq', labelKey: 'production.nav.stock', icon: Boxes, permKey: 'prod_stock' },
   {
     href: '/zavod-malumotnomalar', labelKey: 'production.nav.catalog', icon: BookOpen, noLink: true,

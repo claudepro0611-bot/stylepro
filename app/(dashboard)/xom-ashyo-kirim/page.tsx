@@ -19,6 +19,7 @@ import {
 } from '@/components/production/ProdKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
+import { useProdSuppliers } from '@/components/production/SupplierKit'
 import { rangeToIsoBounds } from '@/lib/production'
 
 const PAGE_SIZE = 25
@@ -28,6 +29,7 @@ interface Row {
   number: number
   doc_date: string
   warehouse_id: string
+  supplier_id: string | null
   supplier_name: string | null
   note: string | null
   total: number
@@ -40,6 +42,10 @@ export default function ReceiptListPage() {
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { warehouses, warehouseById } = useProdRefs()
+  const { suppliers } = useProdSuppliers()
+  const supplierNameById = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers])
+  // Live name via supplier_id (renames are not written back); snapshot otherwise.
+  const supplierLabel = useCallback((r: Row) => (r.supplier_id && supplierNameById.get(r.supplier_id)) || r.supplier_name || '', [supplierNameById])
 
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,7 +61,7 @@ export default function ReceiptListPage() {
     const bounds = range ? rangeToIsoBounds(range) : null
     const { data, error } = await fetchAllRows<Row>((from, to) => {
       let q = supabase.from('prod_receipts')
-        .select('id, number, doc_date, warehouse_id, supplier_name, note, total, status, created_by_name')
+        .select('id, number, doc_date, warehouse_id, supplier_id, supplier_name, note, total, status, created_by_name')
       if (bounds) q = q.gte('doc_date', bounds.fromIso).lt('doc_date', bounds.toIso)
       if (warehouseId) q = q.eq('warehouse_id', warehouseId)
       if (status) q = q.eq('status', status)
@@ -75,8 +81,8 @@ export default function ReceiptListPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return rows
-    return rows.filter(r => String(r.number).includes(q) || (r.supplier_name ?? '').toLowerCase().includes(q))
-  }, [rows, search])
+    return rows.filter(r => String(r.number).includes(q) || supplierLabel(r).toLowerCase().includes(q))
+  }, [rows, search, supplierLabel])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
@@ -145,7 +151,7 @@ export default function ReceiptListPage() {
               <tr key={r.id} onClick={() => router.push(`/xom-ashyo-kirim/${r.id}`)} className={cn(trCls, 'cursor-pointer', r.status === 'cancelled' && 'opacity-60')}>
                 <td className={cn(tdCls, 'font-medium text-gray-900 dark:text-gray-100')}>#{r.number}</td>
                 {isVisible('date') && <td className={cn(tdCls, 'whitespace-nowrap text-gray-500 dark:text-gray-400')}>{formatDateTime(r.doc_date)}</td>}
-                {isVisible('supplier') && <td className={cn(tdCls, 'text-gray-900 dark:text-gray-100')}>{r.supplier_name || '—'}</td>}
+                {isVisible('supplier') && <td className={cn(tdCls, 'text-gray-900 dark:text-gray-100')}>{supplierLabel(r) || '—'}</td>}
                 {isVisible('warehouse') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{warehouseById.get(r.warehouse_id)?.name ?? '—'}</td>}
                 {isVisible('total') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100')}>{formatPrice(Number(r.total))}</td>}
                 {isVisible('status') && <td className={tdCls}><DocStatusBadge status={r.status} /></td>}

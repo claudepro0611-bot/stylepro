@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
+import { useSession } from '@/lib/session/SessionContext'
+import { withDefaultPermissions, type Permissions } from '@/lib/permissions'
 import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
@@ -15,6 +17,7 @@ import {
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { useProdRefs, useWarehouseStock } from '@/components/production/useProdRefs'
+import { SupplierFormDialog, useProdSuppliers } from '@/components/production/SupplierKit'
 import { formatQty, localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round2, round3, unitKey } from '@/lib/production'
 
 interface Line { itemId: string; qty: string; price: string }
@@ -24,11 +27,17 @@ export default function NewReceiptPage() {
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { items, warehouses, itemById } = useProdRefs()
+  const { suppliers, reload: reloadSuppliers } = useProdSuppliers()
+  const { profile } = useSession()
+  // Quick-create needs the prod_suppliers permission (the RPC re-checks).
+  const canCreateSupplier = profile?.role === 'owner'
+    || withDefaultPermissions(profile?.permissions as Partial<Permissions> | null).prod_suppliers
 
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
-  const [supplierName, setSupplierName] = useState('')
+  const [supplierId, setSupplierId] = useState('')
+  const [supplierFormOpen, setSupplierFormOpen] = useState(false)
   const [lines, setLines] = useState<Line[]>([])
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -40,6 +49,13 @@ export default function NewReceiptPage() {
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
 
   const activeWarehouses = warehouses.filter(w => w.isActive)
+
+  const supplierOptions = useMemo(() => [
+    { value: '', label: t('production.suppliers.noSupplier') },
+    ...suppliers
+      .filter(s => s.isActive)
+      .map(s => ({ value: s.id, label: s.name, sublabel: `${t('production.suppliers.debt')}: ${formatPrice(s.debt)}` })),
+  ], [suppliers, t, formatPrice])
 
   const itemOptions = useMemo(() => items
     .filter(i => i.isActive && !lines.some(l => l.itemId === i.id))
@@ -68,7 +84,8 @@ export default function NewReceiptPage() {
       p_data: {
         doc_date: localDateTimeToIso(date, time),
         warehouse_id: warehouseId,
-        supplier_name: supplierName.trim() || null,
+        supplier_id: supplierId || null,
+        supplier_name: null,
         note: note.trim() || null,
         items: computed.map(c => ({ item_id: c.itemId, qty: round3(c.qtyNum), price: round2(c.priceNum) })),
       },
@@ -101,10 +118,24 @@ export default function NewReceiptPage() {
             {activeWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
         </label>
-        <label className="block">
-          <span className={prodLabelCls}>{t('production.receipts.supplier')}</span>
-          <input value={supplierName} onChange={e => setSupplierName(e.target.value)} placeholder={t('production.receipts.supplierPlaceholder')} className={prodFieldCls} />
-        </label>
+        <div>
+          <span className={prodLabelCls}>{t('production.suppliers.supplier')}</span>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <SearchSelect options={supplierOptions} value={supplierId} onChange={setSupplierId} placeholder={t('production.suppliers.selectSupplier')} />
+            </div>
+            {canCreateSupplier && (
+              <button
+                type="button"
+                onClick={() => setSupplierFormOpen(true)}
+                title={t('production.suppliers.new')}
+                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" /> {t('production.suppliers.quickNew')}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className={cn(prodCardCls, 'overflow-hidden')}>
@@ -183,6 +214,17 @@ export default function NewReceiptPage() {
       </div>
 
       <FormFooter onCancel={() => router.push('/xom-ashyo-kirim')} onSave={save} saving={saving} disabled={!valid} />
+
+      <SupplierFormDialog
+        open={supplierFormOpen}
+        onOpenChange={setSupplierFormOpen}
+        supplier={null}
+        onSaved={async newId => {
+          setSupplierFormOpen(false)
+          await reloadSuppliers()
+          if (newId) setSupplierId(newId)
+        }}
+      />
     </div>
   )
 }

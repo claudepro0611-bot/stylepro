@@ -69,6 +69,8 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/zavod-guruhlar': 'prod_catalog',
   '/zavod-omborlar': 'prod_catalog',
   '/taminot': 'prod_supply',
+  '/zavod-yetkazuvchilar': 'prod_suppliers',
+  '/zavod-yetkazuvchi-tolovlar': 'prod_suppliers',
 }
 
 // API routes do their own auth and are called by pages of both business

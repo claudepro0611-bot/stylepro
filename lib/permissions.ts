@@ -22,7 +22,7 @@ export const PERMISSION_KEYS = [
   // Production firms only (business_type = 'production'). Fail-closed: a
   // missing key means NO access for non-owners, unlike the retail keys.
   'prod_catalog', 'prod_production', 'prod_processing', 'prod_receipts',
-  'prod_stock', 'prod_supply',
+  'prod_stock', 'prod_supply', 'prod_suppliers',
 ] as const
 
 export type PermissionKey = typeof PERMISSION_KEYS[number]
@@ -31,6 +31,7 @@ export type Permissions = Record<PermissionKey, boolean>
 
 export const PRODUCTION_PERMISSION_KEYS: readonly PermissionKey[] = [
   'prod_catalog', 'prod_production', 'prod_processing', 'prod_receipts', 'prod_stock', 'prod_supply',
+  'prod_suppliers',
 ]
 
 /** Retail keys that production firms also use (mirrors has_permission()). */
@@ -97,6 +98,7 @@ export const PERMISSION_ITEMS: { key: PermissionKey; labelKey: TranslationKey; i
   { key: 'prod_stock', labelKey: 'production.perm.stock', icon: Boxes },
   { key: 'prod_catalog', labelKey: 'production.perm.catalog', icon: BookOpen },
   { key: 'prod_supply', labelKey: 'production.perm.supply', icon: HandCoins },
+  { key: 'prod_suppliers', labelKey: 'production.perm.suppliers', icon: Truck },
   // 'nasiya' intentionally NOT added here yet: PERMISSION_ITEMS entries are
   // typed against TranslationKey = DotPaths<Translations> (a strict literal
   // union generated from lib/i18n/translations.ts's actual keys), so adding

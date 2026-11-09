@@ -2717,6 +2717,7 @@ export type Database = {
           number: number
           doc_date: string
           warehouse_id: string
+          supplier_id: string | null
           supplier_name: string | null
           note: string | null
           total: number
@@ -2733,6 +2734,7 @@ export type Database = {
           number?: number
           doc_date?: string
           warehouse_id?: string
+          supplier_id?: string | null
           supplier_name?: string | null
           note?: string | null
           total?: number
@@ -2749,6 +2751,7 @@ export type Database = {
           number?: number
           doc_date?: string
           warehouse_id?: string
+          supplier_id?: string | null
           supplier_name?: string | null
           note?: string | null
           total?: number
@@ -2788,6 +2791,93 @@ export type Database = {
           qty?: number
           price?: number
           total?: number
+        }
+        Relationships: []
+      }
+      prod_suppliers: {
+        Row: {
+          id: string
+          company_id: string
+          name: string
+          phone: string | null
+          address: string | null
+          note: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          name?: string
+          phone?: string | null
+          address?: string | null
+          note?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          name?: string
+          phone?: string | null
+          address?: string | null
+          note?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      prod_supplier_payments: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          supplier_id: string
+          amount: number
+          method: string
+          pay_date: string
+          note: string | null
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          supplier_id?: string
+          amount?: number
+          method?: string
+          pay_date?: string
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          supplier_id?: string
+          amount?: number
+          method?: string
+          pay_date?: string
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
         }
         Relationships: []
       }
@@ -3295,6 +3385,18 @@ export type Database = {
         }
         Relationships: []
       }
+      prod_supplier_balances: {
+        Row: {
+          supplier_id: string | null
+          company_id: string | null
+          purchased: number | null
+          paid: number | null
+          debt: number | null
+          last_receipt_at: string | null
+          last_payment_at: string | null
+        }
+        Relationships: []
+      }
       transactions_net: {
         Row: {
           cashier_id: string | null
@@ -3366,6 +3468,9 @@ export type Database = {
         Returns: string
       }
       supply_add_move: { Args: { p_data: Json }; Returns: string }
+      prod_save_supplier: { Args: { p_data: Json; p_id: string | null }; Returns: string }
+      prod_create_supplier_payment: { Args: { p_data: Json }; Returns: Json }
+      prod_cancel_supplier_payment: { Args: { p_id: string }; Returns: undefined }
       branch_overview: {
         Args: never
         Returns: {

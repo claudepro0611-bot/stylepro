@@ -176,3 +176,65 @@ export function rangeToIsoBounds(range: { from: string; to: string }): { fromIso
   to.setDate(to.getDate() + 1)
   return { fromIso: from.toISOString(), toIso: to.toISOString() }
 }
+
+// ---------------------------------------------------------------------------
+// Production suppliers (prod_suppliers + prod_supplier_balances view). Writes
+// go through prod_save_supplier / prod_create_supplier_payment /
+// prod_cancel_supplier_payment only.
+
+export const PROD_PAYMENT_METHODS = ['cash', 'card', 'transfer'] as const
+export type ProdPaymentMethod = typeof PROD_PAYMENT_METHODS[number]
+
+export function paymentMethodKey(method: string): TranslationKey {
+  if (method === 'card') return 'production.suppliers.methodCard'
+  if (method === 'transfer') return 'production.suppliers.methodTransfer'
+  return 'production.suppliers.methodCash'
+}
+
+export interface ProdSupplier {
+  id: string
+  name: string
+  phone: string
+  address: string
+  note: string
+  isActive: boolean
+  createdAt: string
+  /** Posted receipts total. */
+  purchased: number
+  /** Posted payments total. */
+  paid: number
+  /** purchased - paid; negative = advance. */
+  debt: number
+  lastReceiptAt: string | null
+  lastPaymentAt: string | null
+}
+
+/** Suppliers with their balances (suppliers without activity get zeros). */
+export async function fetchProdSuppliers(supabase: Client): Promise<ProdSupplier[]> {
+  const [supRes, balRes] = await Promise.all([
+    fetchAllRows((from, to) =>
+      supabase.from('prod_suppliers').select('id, name, phone, address, note, is_active, created_at').order('name').order('id').range(from, to)),
+    fetchAllRows((from, to) =>
+      supabase.from('prod_supplier_balances').select('supplier_id, purchased, paid, debt, last_receipt_at, last_payment_at').order('supplier_id').range(from, to)),
+  ])
+  const bal = new Map(balRes.data.filter(b => b.supplier_id).map(b => [b.supplier_id as string, b]))
+  return supRes.data.map(s => {
+    const b = bal.get(s.id)
+    const purchased = Number(b?.purchased ?? 0)
+    const paid = Number(b?.paid ?? 0)
+    return {
+      id: s.id,
+      name: s.name,
+      phone: s.phone ?? '',
+      address: s.address ?? '',
+      note: s.note ?? '',
+      isActive: s.is_active,
+      createdAt: s.created_at,
+      purchased,
+      paid,
+      debt: b?.debt === null || b?.debt === undefined ? round2(purchased - paid) : Number(b.debt),
+      lastReceiptAt: b?.last_receipt_at ?? null,
+      lastPaymentAt: b?.last_payment_at ?? null,
+    }
+  })
+}

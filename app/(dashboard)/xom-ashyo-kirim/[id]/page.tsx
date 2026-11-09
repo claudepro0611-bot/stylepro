@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Ban, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -27,6 +28,7 @@ export default function ReceiptViewPage() {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [lines, setLines] = useState<Line[]>([])
   const [loading, setLoading] = useState(true)
+  const [liveSupplierName, setLiveSupplierName] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -35,6 +37,14 @@ export default function ReceiptViewPage() {
       supabase.from('prod_receipt_items').select('*').eq('receipt_id', id).order('id'),
     ])
     setDoc(docRes.data ?? null)
+    // Prefer the live supplier name (renames do not rewrite the snapshot).
+    const sid = docRes.data?.supplier_id
+    if (sid) {
+      const { data: sup } = await supabase.from('prod_suppliers').select('name').eq('id', sid).maybeSingle()
+      setLiveSupplierName(sup?.name ?? null)
+    } else {
+      setLiveSupplierName(null)
+    }
     setLines(linesRes.data ?? [])
     setLoading(false)
   }, [id])
@@ -73,7 +83,13 @@ export default function ReceiptViewPage() {
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-2 lg:grid-cols-4 gap-4')}>
         <InfoField label={t('production.common.date')}>{formatDateTime(doc.doc_date)}</InfoField>
         <InfoField label={t('production.common.warehouse')}>{warehouseById.get(doc.warehouse_id)?.name ?? '—'}</InfoField>
-        <InfoField label={t('production.receipts.supplier')}>{doc.supplier_name || '—'}</InfoField>
+        <InfoField label={t('production.suppliers.supplier')}>
+          {doc.supplier_id ? (
+            <Link href={`/zavod-yetkazuvchilar/${doc.supplier_id}`} className="text-gray-900 dark:text-gray-100 hover:text-gray-600 dark:hover:text-gray-400 transition-colors">
+              {liveSupplierName || doc.supplier_name || '—'}
+            </Link>
+          ) : (doc.supplier_name || '—')}
+        </InfoField>
         <InfoField label={t('production.common.author')}>{doc.created_by_name ?? '—'}</InfoField>
         <InfoField label={t('production.common.createdAt')}>{formatDateTime(doc.created_at)}</InfoField>
         {doc.cancelled_at && <InfoField label={t('production.common.cancelledAt')}>{formatDateTime(doc.cancelled_at)}</InfoField>}
