@@ -1,7 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Pencil, Warehouse } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { Boxes, Pencil, Warehouse } from 'lucide-react'
+import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -11,16 +14,40 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import {
-  ActiveBadge, PageHeader, TableCard, prodFieldCls, prodLabelCls, tdCls, thCls, thRightCls, trCls,
+  ActiveBadge, PageHeader, TableCard, prodFieldCls, prodLabelCls, secondaryBtnCls, tdCls, thCls, thRightCls, trCls,
 } from '@/components/production/ProdKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
-import { PROD_STORAGE_TYPES, prodErrorKey, storageTypeKey, type ProdStorageType, type ProdWarehouse } from '@/lib/production'
+import {
+  PROD_STORAGE_TYPES, fetchProdStock, prodErrorKey, storageTypeKey,
+  type ProdStockRow, type ProdStorageType, type ProdWarehouse,
+} from '@/lib/production'
 
 export default function ProductionWarehousesPage() {
   const { t } = useLanguage()
+  const { formatPrice } = useCurrency()
+  const router = useRouter()
   const { warehouses, loading, reload } = useProdRefs()
   const [editing, setEditing] = useState<ProdWarehouse | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [stock, setStock] = useState<ProdStockRow[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchProdStock(createClient(), {}).then(rows => { if (!cancelled) setStock(rows) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Per-warehouse summary shown in the list: distinct items in stock + value.
+  const summary = useMemo(() => {
+    const m = new Map<string, { items: number; value: number }>()
+    for (const r of stock) {
+      const s = m.get(r.warehouseId) ?? { items: 0, value: 0 }
+      s.items += 1
+      s.value += r.value
+      m.set(r.warehouseId, s)
+    }
+    return m
+  }, [stock])
 
   return (
     <div className="space-y-5">
@@ -31,12 +58,20 @@ export default function ProductionWarehousesPage() {
         onAction={() => { setEditing(null); setFormOpen(true) }}
       />
 
+      <div className="flex justify-end -mt-2">
+        <Link href="/zavod-qoldiq" className={secondaryBtnCls}>
+          <Boxes className="h-3.5 w-3.5" /> {t('production.warehouses.allStock')}
+        </Link>
+      </div>
+
       <TableCard loading={loading} empty={warehouses.length === 0} emptyText={t('production.warehouses.empty')} emptyIcon={Warehouse}>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
               <th className={thCls}>{t('production.common.name')}</th>
               <th className={thCls}>{t('production.warehouses.storageTypes')}</th>
+              <th className={thRightCls}>{t('production.stock.itemsCount')}</th>
+              <th className={thRightCls}>{t('production.stock.value')}</th>
               <th className={thCls}>{t('production.common.status')}</th>
               <th className={thCls}>{t('production.common.createdAt')}</th>
               <th className={thRightCls}>{t('production.common.actions')}</th>
@@ -44,7 +79,11 @@ export default function ProductionWarehousesPage() {
           </thead>
           <tbody>
             {warehouses.map(w => (
-              <tr key={w.id} className={cn(trCls, !w.isActive && 'opacity-60')}>
+              <tr
+                key={w.id}
+                onClick={() => router.push(`/zavod-omborlar/${w.id}`)}
+                className={cn(trCls, 'cursor-pointer', !w.isActive && 'opacity-60')}
+              >
                 <td className={cn(tdCls, 'font-medium text-gray-900 dark:text-gray-100')}>{w.name}</td>
                 <td className={tdCls}>
                   <div className="flex flex-wrap gap-1">
@@ -53,13 +92,15 @@ export default function ProductionWarehousesPage() {
                     ))}
                   </div>
                 </td>
+                <td className={cn(tdCls, 'text-right tabular-nums text-gray-900 dark:text-gray-100')}>{summary.get(w.id)?.items ?? 0}</td>
+                <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100')}>{formatPrice(summary.get(w.id)?.value ?? 0)}</td>
                 <td className={tdCls}><ActiveBadge active={w.isActive} /></td>
                 <td className={cn(tdCls, 'whitespace-nowrap text-gray-500 dark:text-gray-400')}>{formatDate(w.createdAt)}</td>
                 <td className={tdCls}>
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={() => { setEditing(w); setFormOpen(true) }}
+                      onClick={e => { e.stopPropagation(); setEditing(w); setFormOpen(true) }}
                       aria-label={t('production.common.edit')}
                       title={t('production.common.edit')}
                       className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"

@@ -59,7 +59,7 @@ export default function ProcessingViewPage() {
   const profit = Number(doc.profit)
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5">
       <BackLink href="/qayta-ishlash" label={t('production.processings.title')} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -76,6 +76,7 @@ export default function ProcessingViewPage() {
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-2 lg:grid-cols-4 gap-4')}>
         <InfoField label={t('production.common.date')}>{formatDateTime(doc.doc_date)}</InfoField>
         <InfoField label={t('production.common.warehouse')}>{warehouseById.get(doc.warehouse_id)?.name ?? '—'}</InfoField>
+        <InfoField label={t('production.processings.outputWarehouse')}>{warehouseById.get(doc.output_warehouse_id ?? doc.warehouse_id)?.name ?? '—'}</InfoField>
         <InfoField label={t('production.processings.sourceItem')}>{source?.name ?? '—'}</InfoField>
         <InfoField label={t('production.common.qty')}>{formatQty(Number(doc.source_qty))} {source ? t(unitKey(source.unit)) : ''}</InfoField>
         <InfoField label={t('production.processings.unitPrice')}>{formatPrice(Number(doc.source_unit_cost))}</InfoField>

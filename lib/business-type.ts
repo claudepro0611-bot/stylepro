@@ -21,6 +21,8 @@ export const PRODUCTION_PREFIXES = [
   '/zavod-mahsulotlar',
   '/zavod-guruhlar',
   '/zavod-omborlar',
+  '/zavod-kochirish',
+  '/zavod-retseptlar',
   '/taminot',
   '/zavod-yetkazuvchilar',
   '/zavod-yetkazuvchi-tolovlar',

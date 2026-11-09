@@ -19,7 +19,7 @@ import {
 } from '@/components/production/ProdKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
-import { formatQty, rangeToIsoBounds, unitKey } from '@/lib/production'
+import { formatQty, rangeToIsoBounds, unitKey, warehousePairLabel } from '@/lib/production'
 
 const PAGE_SIZE = 25
 
@@ -28,12 +28,14 @@ interface Row {
   number: number
   doc_date: string
   warehouse_id: string
+  output_warehouse_id: string | null
   output_item_id: string
   output_qty: number
   total_cost: number
   unit_cost: number
   status: string
   created_by_name: string | null
+  recipe_version: number | null
 }
 
 export default function ProductionListPage() {
@@ -56,9 +58,9 @@ export default function ProductionListPage() {
     const bounds = range ? rangeToIsoBounds(range) : null
     const { data, error } = await fetchAllRows<Row>((from, to) => {
       let q = supabase.from('prod_productions')
-        .select('id, number, doc_date, warehouse_id, output_item_id, output_qty, total_cost, unit_cost, status, created_by_name')
+        .select('id, number, doc_date, warehouse_id, output_warehouse_id, output_item_id, output_qty, total_cost, unit_cost, status, created_by_name, recipe_version')
       if (bounds) q = q.gte('doc_date', bounds.fromIso).lt('doc_date', bounds.toIso)
-      if (warehouseId) q = q.eq('warehouse_id', warehouseId)
+      if (warehouseId) q = q.or(`warehouse_id.eq.${warehouseId},output_warehouse_id.eq.${warehouseId}`)
       if (status) q = q.eq('status', status)
       return q.order('number', { ascending: false }).range(from, to)
     })
@@ -87,6 +89,7 @@ export default function ProductionListPage() {
     { key: 'date', label: t('production.common.date') },
     { key: 'item', label: t('production.productions.outputItem') },
     { key: 'qty', label: t('production.common.qty') },
+    { key: 'recipe', label: t('production.productions.recipe') },
     { key: 'totalCost', label: t('production.productions.totalCost') },
     { key: 'unitCost', label: t('production.productions.unitCost') },
     { key: 'warehouse', label: t('production.common.warehouse') },
@@ -135,6 +138,7 @@ export default function ProductionListPage() {
               {isVisible('date') && <th className={thCls}>{t('production.common.date')}</th>}
               {isVisible('item') && <th className={thCls}>{t('production.productions.outputItem')}</th>}
               {isVisible('qty') && <th className={thRightCls}>{t('production.common.qty')}</th>}
+              {isVisible('recipe') && <th className={thCls}>{t('production.productions.recipe')}</th>}
               {isVisible('totalCost') && <th className={thRightCls}>{t('production.productions.totalCost')}</th>}
               {isVisible('unitCost') && <th className={thRightCls}>{t('production.productions.unitCost')}</th>}
               {isVisible('warehouse') && <th className={thCls}>{t('production.common.warehouse')}</th>}
@@ -152,9 +156,10 @@ export default function ProductionListPage() {
                   {isVisible('date') && <td className={cn(tdCls, 'whitespace-nowrap text-gray-500 dark:text-gray-400')}>{formatDateTime(r.doc_date)}</td>}
                   {isVisible('item') && <td className={cn(tdCls, 'text-gray-900 dark:text-gray-100')}>{item?.name ?? '—'}</td>}
                   {isVisible('qty') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{formatQty(Number(r.output_qty))} {item ? t(unitKey(item.unit)) : ''}</td>}
+                  {isVisible('recipe') && <td className={cn(tdCls, 'tabular-nums text-gray-500 dark:text-gray-400')}>{r.recipe_version === null ? '—' : `v${r.recipe_version}`}</td>}
                   {isVisible('totalCost') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100')}>{formatPrice(Number(r.total_cost))}</td>}
                   {isVisible('unitCost') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400')}>{formatPrice(Number(r.unit_cost))}</td>}
-                  {isVisible('warehouse') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{warehouseById.get(r.warehouse_id)?.name ?? '—'}</td>}
+                  {isVisible('warehouse') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{warehousePairLabel(warehouseById.get(r.warehouse_id)?.name ?? '—', r.output_warehouse_id ? warehouseById.get(r.output_warehouse_id)?.name : null)}</td>}
                   {isVisible('status') && <td className={tdCls}><DocStatusBadge status={r.status} /></td>}
                   {isVisible('author') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{r.created_by_name ?? '—'}</td>}
                   <td className={tdCls}>

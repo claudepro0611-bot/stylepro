@@ -98,7 +98,7 @@ export default function NewReceiptPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5">
       <BackLink href="/xom-ashyo-kirim" label={t('production.receipts.title')} />
       <PageHeader title={t('production.receipts.newTitle')} />
 

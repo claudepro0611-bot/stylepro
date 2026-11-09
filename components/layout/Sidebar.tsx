@@ -9,7 +9,7 @@ import {
   MessageSquare, Settings, ArrowDownCircle, Trash2, ChevronDown, ShoppingCart,
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
   Receipt, Warehouse, Store, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered, Truck, ArrowLeftRight, PackagePlus,
-  Factory, Recycle, Boxes, BookOpen, HandCoins, Banknote,
+  Factory, Recycle, BookOpen, HandCoins, Banknote,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -127,10 +127,11 @@ export const NAV_ITEMS: NavEntry[] = [
       { href: '/ishlab-chiqarish', labelKey: 'production.nav.production', icon: Factory, permKey: 'prod_production' },
       { href: '/qayta-ishlash', labelKey: 'production.nav.processing', icon: Recycle, permKey: 'prod_processing' },
       { href: '/xom-ashyo-kirim', labelKey: 'production.nav.receipts', icon: PackagePlus, permKey: 'prod_receipts' },
-      { href: '/zavod-qoldiq', labelKey: 'production.nav.stock', icon: Boxes, permKey: 'prod_stock' },
+      { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_stock' },
+      { href: '/zavod-kochirish', labelKey: 'production.nav.transfers', icon: ArrowLeftRight, permKey: 'prod_stock' },
       { href: '/zavod-mahsulotlar', labelKey: 'production.nav.items', icon: ShoppingBag, permKey: 'prod_catalog' },
       { href: '/zavod-guruhlar', labelKey: 'production.nav.groups', icon: Tag, permKey: 'prod_catalog' },
-      { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_catalog' },
+      { href: '/zavod-retseptlar', labelKey: 'production.nav.recipes', icon: ClipboardList, permKey: 'prod_catalog' },
       { href: '/taminot', labelKey: 'production.nav.agents', icon: Contact, permKey: 'prod_supply', exact: true },
       { href: '/taminot/pul-berish', labelKey: 'production.nav.cashIssue', icon: Banknote, permKey: 'prod_supply' },
       { href: '/taminot/sarflar', labelKey: 'production.nav.spending', icon: Receipt, permKey: 'prod_supply' },
@@ -158,13 +159,14 @@ export const PRODUCTION_NAV_ITEMS: NavEntry[] = [
       { href: '/zavod-yetkazuvchi-tolovlar', labelKey: 'production.nav.supplierPayments', icon: CreditCard, permKey: 'prod_suppliers' },
     ],
   },
-  { href: '/zavod-qoldiq', labelKey: 'production.nav.stock', icon: Boxes, permKey: 'prod_stock' },
+  { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_stock' },
+  { href: '/zavod-kochirish', labelKey: 'production.nav.transfers', icon: ArrowLeftRight, permKey: 'prod_stock' },
   {
     href: '/zavod-malumotnomalar', labelKey: 'production.nav.catalog', icon: BookOpen, noLink: true,
     children: [
       { href: '/zavod-mahsulotlar', labelKey: 'production.nav.items', icon: ShoppingBag, permKey: 'prod_catalog' },
       { href: '/zavod-guruhlar', labelKey: 'production.nav.groups', icon: Tag, permKey: 'prod_catalog' },
-      { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_catalog' },
+      { href: '/zavod-retseptlar', labelKey: 'production.nav.recipes', icon: ClipboardList, permKey: 'prod_catalog' },
     ],
   },
   {

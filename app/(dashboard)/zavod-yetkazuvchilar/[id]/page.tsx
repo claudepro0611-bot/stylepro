@@ -157,6 +157,12 @@ export default function ProdSupplierViewPage() {
           <ActiveBadge active={supplier.isActive} />
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/zavod-yetkazuvchilar/${supplier.id}/akt-sverka`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 px-3 h-9 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            <FileText className="h-3.5 w-3.5" /> {t('aktSverka.title')}
+          </Link>
           <Button variant="outline" onClick={() => setFormOpen(true)}>
             <Pencil className="h-3.5 w-3.5" /> {t('production.common.edit')}
           </Button>

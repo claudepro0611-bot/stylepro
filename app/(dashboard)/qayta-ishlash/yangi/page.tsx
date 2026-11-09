@@ -28,6 +28,8 @@ export default function NewProcessingPage() {
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
+  // null: not picked yet, outputs go to the source warehouse.
+  const [outputWarehouseChoice, setOutputWarehouseChoice] = useState<string | null>(null)
   const [sourceItemId, setSourceItemId] = useState('')
   const [sourceQty, setSourceQty] = useState('')
   const [lines, setLines] = useState<OutputLine[]>([])
@@ -40,6 +42,7 @@ export default function NewProcessingPage() {
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
 
   const activeWarehouses = warehouses.filter(w => w.isActive)
+  const outputWarehouseId = outputWarehouseChoice ?? warehouseId
   const source = itemById.get(sourceItemId)
   const sourceStock = stock.get(sourceItemId)
   const sourceUnit = source ? t(unitKey(source.unit)) : ''
@@ -70,7 +73,7 @@ export default function NewProcessingPage() {
   const recoveryCost = round2(computed.reduce((s, c) => s + c.total, 0))
   const profit = round2(recoveryCost - processingCost)
 
-  const valid = !!warehouseId && !!sourceItemId && qty > 0 && !over && computed.length > 0
+  const valid = !!warehouseId && !!outputWarehouseId && !!sourceItemId && qty > 0 && !over && computed.length > 0
     && computed.every(c => c.qtyNum > 0)
 
   function changeWarehouse(id: string) {
@@ -95,6 +98,7 @@ export default function NewProcessingPage() {
       p_data: {
         doc_date: localDateTimeToIso(date, time),
         warehouse_id: warehouseId,
+        output_warehouse_id: outputWarehouseId,
         source_item_id: sourceItemId,
         source_qty: round3(qty),
         note: note.trim() || null,
@@ -109,12 +113,12 @@ export default function NewProcessingPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5">
       <BackLink href="/qayta-ishlash" label={t('production.processings.title')} />
       <PageHeader title={t('production.processings.newTitle')} />
 
       <div className={cn(prodCardCls, 'p-6 space-y-5')}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <label className="block">
             <span className={prodLabelCls}>{t('production.common.date')}</span>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
@@ -130,10 +134,17 @@ export default function NewProcessingPage() {
               {activeWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </label>
+          <label className="block">
+            <span className={prodLabelCls}>{t('production.processings.outputWarehouse')}</span>
+            <select value={outputWarehouseId} onChange={e => setOutputWarehouseChoice(e.target.value || null)} className={prodFieldCls}>
+              <option value="">{t('production.common.selectWarehouse')}</option>
+              {activeWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </label>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-4">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-3">
             <span className={prodLabelCls}>{t('production.processings.sourceItem')}</span>
             {!warehouseId ? (
               <DisabledSelect placeholder={t('production.common.chooseWarehouseFirst')} />

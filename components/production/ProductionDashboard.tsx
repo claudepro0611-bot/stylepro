@@ -105,7 +105,7 @@ export function ProductionDashboard() {
         <div className={cn(prodCardCls, 'overflow-hidden')}>
           <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('production.dashboard.lowStock')}</h2>
-            <Link href="/zavod-qoldiq" className="text-[13px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">{t('production.dashboard.viewAll')}</Link>
+            <Link href="/zavod-omborlar" className="text-[13px] text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">{t('production.dashboard.viewAll')}</Link>
           </div>
           {busy ? (
             <div className="p-4 space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-8" />)}</div>

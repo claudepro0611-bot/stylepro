@@ -19,7 +19,7 @@ export type ProdItemType = typeof PROD_ITEM_TYPES[number]
 export const PROD_STORAGE_TYPES = ['raw', 'finished', 'production', 'processing', 'return'] as const
 export type ProdStorageType = typeof PROD_STORAGE_TYPES[number]
 
-export type ProdDocType = 'receipt' | 'production' | 'processing'
+export type ProdDocType = 'receipt' | 'production' | 'processing' | 'transfer'
 export type ProdDocStatus = 'posted' | 'cancelled'
 
 export const NOTE_MAX = 500
@@ -43,6 +43,21 @@ export interface ProdItem {
 }
 
 export interface ProdWarehouse { id: string; name: string; storageTypes: ProdStorageType[]; isActive: boolean; createdAt: string }
+
+/**
+ * Active warehouses whose storage types include any of `types`; all active
+ * warehouses when none match (firms that never tagged their warehouses).
+ */
+export function warehousesFor(warehouses: ProdWarehouse[], types: ProdStorageType[]): ProdWarehouse[] {
+  const active = warehouses.filter(w => w.isActive)
+  const matching = active.filter(w => w.storageTypes.some(s => types.includes(s)))
+  return matching.length ? matching : active
+}
+
+/** "A" or "A → B" when a document puts its output into another warehouse. */
+export function warehousePairLabel(fromName: string, toName: string | null | undefined): string {
+  return toName && toName !== fromName ? `${fromName} → ${toName}` : fromName
+}
 
 /** One prod_stock row (warehouse x item). */
 export interface ProdStockRow { warehouseId: string; itemId: string; qty: number; value: number; avgCost: number }
@@ -69,6 +84,8 @@ export function formatQty(qty: number): string {
 /** Round to the DB column scale so client totals match what the RPC stores. */
 export const round3 = (n: number) => Math.round(n * 1000) / 1000
 export const round2 = (n: number) => Math.round(n * 100) / 100
+/** Recipe quantities and planned amounts are numeric(14,4). */
+export const round4 = (n: number) => Math.round(n * 10000) / 10000
 
 /** Parses a user-typed decimal ("1,5" or "1.5"); NaN-safe, never negative. */
 export function parseDecimal(value: string): number {
@@ -237,4 +254,203 @@ export async function fetchProdSuppliers(supabase: Client): Promise<ProdSupplier
       lastPaymentAt: b?.last_payment_at ?? null,
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Units: stock and every DB quantity stay in the item's base unit. The UI lets
+// kg items be entered in kg or g and l items in l or ml, converting to the
+// base unit before anything is sent.
+
+export type EntryUnit = ProdUnit | 'ml'
+
+/** The smaller entry unit of a base unit (kg -> g, l -> ml), or null. */
+export function subUnitOf(base: ProdUnit): EntryUnit | null {
+  if (base === 'kg') return 'g'
+  if (base === 'l') return 'ml'
+  return null
+}
+
+/** Units a quantity of this base unit may be typed in. */
+export function entryUnitsOf(base: ProdUnit): EntryUnit[] {
+  const sub = subUnitOf(base)
+  return sub ? [base, sub] : [base]
+}
+
+const isSubUnit = (base: ProdUnit, u: EntryUnit) => u !== base && subUnitOf(base) === u
+
+/** Entered value -> base unit. */
+export function toBaseQty(value: number, base: ProdUnit, u: EntryUnit): number {
+  return isSubUnit(base, u) ? value / 1000 : value
+}
+
+/** Base unit -> entry unit. */
+export function fromBaseQty(qty: number, base: ProdUnit, u: EntryUnit): number {
+  return isSubUnit(base, u) ? qty * 1000 : qty
+}
+
+/** Smaller unit for amounts below 1 kg / 1 l (0.25 kg -> g). */
+export function smartUnit(qty: number, base: ProdUnit): EntryUnit {
+  const sub = subUnitOf(base)
+  return sub && qty !== 0 && Math.abs(qty) < 1 ? sub : base
+}
+
+export function entryUnitKey(u: EntryUnit): TranslationKey {
+  return u === 'ml' ? 'production.units.ml' : unitKey(u)
+}
+
+/** Number for an <input> value: up to 4 decimals, no thousands separators. */
+export function toInputString(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return ''
+  return String(Number(n.toFixed(4)))
+}
+
+const qty4Formatter = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 4 })
+
+/** Recipe / planned quantities: numeric(14,4). */
+export function formatQty4(qty: number): string {
+  return qty4Formatter.format(qty)
+}
+
+/** 0.25 kg -> { 250, 'g' }; amounts of 1 and more stay in the base unit. */
+export function smartQty(qty: number, base: ProdUnit): { value: number; unit: EntryUnit } {
+  const unit = smartUnit(qty, base)
+  return { value: fromBaseQty(qty, base, unit), unit }
+}
+
+/** Unit groups for totals and yield: mass (kg, g), volume (l), pieces, length. */
+export type UnitGroup = 'mass' | 'volume' | 'pcs' | 'm'
+
+export function unitGroupOf(base: ProdUnit): UnitGroup {
+  if (base === 'kg' || base === 'g') return 'mass'
+  if (base === 'l') return 'volume'
+  return base
+}
+
+/** Base quantity -> the group's canonical unit (g counted in kg). */
+export function toGroupQty(qty: number, base: ProdUnit): number {
+  return base === 'g' ? qty / 1000 : qty
+}
+
+export const GROUP_UNIT: Record<UnitGroup, ProdUnit> = { mass: 'kg', volume: 'l', pcs: 'pcs', m: 'm' }
+
+/** Sums base quantities per unit group (in kg / l / pcs / m), keeping a stable order. */
+export function sumByUnitGroup(lines: { qty: number; unit: ProdUnit }[]): { group: UnitGroup; qty: number }[] {
+  const order: UnitGroup[] = ['mass', 'volume', 'pcs', 'm']
+  const sums = new Map<UnitGroup, number>()
+  for (const l of lines) {
+    if (!(l.qty > 0)) continue
+    const g = unitGroupOf(l.unit)
+    sums.set(g, (sums.get(g) ?? 0) + toGroupQty(l.qty, l.unit))
+  }
+  return order.filter(g => sums.has(g)).map(g => ({ group: g, qty: sums.get(g)! }))
+}
+
+/**
+ * Yield % (output / input * 100) when output and inputs are comparable: the
+ * output is mass or volume and every mass/volume input is in the same group.
+ * Piece and length inputs (packaging) are ignored. Null when not comparable.
+ */
+export function yieldPercent(output: { qty: number; unit: ProdUnit } | null, inputs: { qty: number; unit: ProdUnit }[]): number | null {
+  if (!output || !(output.qty > 0)) return null
+  const outGroup = unitGroupOf(output.unit)
+  if (outGroup !== 'mass' && outGroup !== 'volume') return null
+  let input = 0
+  for (const l of inputs) {
+    if (!(l.qty > 0)) continue
+    const g = unitGroupOf(l.unit)
+    if (g === 'pcs' || g === 'm') continue
+    if (g !== outGroup) return null
+    input += toGroupQty(l.qty, l.unit)
+  }
+  if (!(input > 0)) return null
+  return (toGroupQty(output.qty, output.unit) / input) * 100
+}
+
+// ---------------------------------------------------------------------------
+// Recipes (prod_recipes + prod_recipe_lines). Writes go through
+// prod_save_recipe only. One active recipe per finished/semi item.
+
+export const RECIPE_MAX_LINES = 200
+
+export interface ProdRecipeLine { id: string; itemId: string; qty: number; sortOrder: number; note: string }
+
+export interface ProdRecipe {
+  id: string
+  itemId: string
+  /** Batch size in the output item's base unit. */
+  outputQty: number
+  version: number
+  isActive: boolean
+  note: string
+  createdByName: string
+  createdAt: string
+  updatedAt: string
+  lines: ProdRecipeLine[]
+}
+
+type RecipeRow = Database['public']['Tables']['prod_recipes']['Row']
+type RecipeLineRow = Database['public']['Tables']['prod_recipe_lines']['Row']
+
+function mapRecipe(r: RecipeRow, lines: RecipeLineRow[]): ProdRecipe {
+  return {
+    id: r.id,
+    itemId: r.item_id,
+    outputQty: Number(r.output_qty),
+    version: r.version,
+    isActive: r.is_active,
+    note: r.note ?? '',
+    createdByName: r.created_by_name ?? '',
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    lines: lines
+      .map(l => ({ id: l.id, itemId: l.item_id, qty: Number(l.qty), sortOrder: l.sort_order, note: l.note ?? '' }))
+      .sort((a, b) => a.sortOrder - b.sortOrder),
+  }
+}
+
+/** All recipes of the company (optionally active only) with their lines. */
+export async function fetchProdRecipes(supabase: Client, opts: { activeOnly?: boolean } = {}): Promise<ProdRecipe[]> {
+  const [recRes, lineRes] = await Promise.all([
+    fetchAllRows((from, to) => {
+      let q = supabase.from('prod_recipes').select('*')
+      if (opts.activeOnly) q = q.eq('is_active', true)
+      return q.order('created_at').order('id').range(from, to)
+    }),
+    fetchAllRows((from, to) =>
+      supabase.from('prod_recipe_lines').select('*').order('recipe_id').order('sort_order').order('id').range(from, to)),
+  ])
+  const byRecipe = new Map<string, RecipeLineRow[]>()
+  for (const l of lineRes.data) {
+    const arr = byRecipe.get(l.recipe_id)
+    if (arr) arr.push(l)
+    else byRecipe.set(l.recipe_id, [l])
+  }
+  return recRes.data.map(r => mapRecipe(r, byRecipe.get(r.id) ?? []))
+}
+
+export async function fetchProdRecipe(supabase: Client, id: string): Promise<ProdRecipe | null> {
+  const [recRes, lineRes] = await Promise.all([
+    supabase.from('prod_recipes').select('*').eq('id', id).maybeSingle(),
+    supabase.from('prod_recipe_lines').select('*').eq('recipe_id', id).order('sort_order').order('id'),
+  ])
+  return recRes.data ? mapRecipe(recRes.data, lineRes.data ?? []) : null
+}
+
+/** The active recipe of one output item, or null. */
+export async function fetchActiveRecipe(supabase: Client, itemId: string): Promise<ProdRecipe | null> {
+  const { data } = await supabase.from('prod_recipes').select('id').eq('item_id', itemId).eq('is_active', true).maybeSingle()
+  return data ? fetchProdRecipe(supabase, data.id) : null
+}
+
+/** Weighted average cost per item over all warehouses (value / qty of positive stock). */
+export async function fetchAvgCosts(supabase: Client): Promise<Map<string, number>> {
+  const rows = await fetchProdStock(supabase, { positiveOnly: true })
+  const acc = new Map<string, { qty: number; value: number }>()
+  for (const r of rows) {
+    const a = acc.get(r.itemId) ?? { qty: 0, value: 0 }
+    a.qty += r.qty
+    a.value += r.value
+    acc.set(r.itemId, a)
+  }
+  return new Map([...acc].map(([id, a]) => [id, a.qty > 0 ? a.value / a.qty : 0]))
 }

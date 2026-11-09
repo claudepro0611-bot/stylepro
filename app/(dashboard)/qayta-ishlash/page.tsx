@@ -19,7 +19,7 @@ import {
 } from '@/components/production/ProdKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
-import { formatQty, rangeToIsoBounds, unitKey } from '@/lib/production'
+import { formatQty, rangeToIsoBounds, unitKey, warehousePairLabel } from '@/lib/production'
 
 const PAGE_SIZE = 25
 
@@ -28,6 +28,7 @@ interface Row {
   number: number
   doc_date: string
   warehouse_id: string
+  output_warehouse_id: string | null
   source_item_id: string
   source_qty: number
   processing_cost: number
@@ -57,9 +58,9 @@ export default function ProcessingListPage() {
     const bounds = range ? rangeToIsoBounds(range) : null
     const { data, error } = await fetchAllRows<Row>((from, to) => {
       let q = supabase.from('prod_processings')
-        .select('id, number, doc_date, warehouse_id, source_item_id, source_qty, processing_cost, recovery_cost, profit, status, created_by_name')
+        .select('id, number, doc_date, warehouse_id, output_warehouse_id, source_item_id, source_qty, processing_cost, recovery_cost, profit, status, created_by_name')
       if (bounds) q = q.gte('doc_date', bounds.fromIso).lt('doc_date', bounds.toIso)
-      if (warehouseId) q = q.eq('warehouse_id', warehouseId)
+      if (warehouseId) q = q.or(`warehouse_id.eq.${warehouseId},output_warehouse_id.eq.${warehouseId}`)
       if (status) q = q.eq('status', status)
       return q.order('number', { ascending: false }).range(from, to)
     })
@@ -161,7 +162,7 @@ export default function ProcessingListPage() {
                       {formatPrice(profit)}
                     </td>
                   )}
-                  {isVisible('warehouse') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{warehouseById.get(r.warehouse_id)?.name ?? '—'}</td>}
+                  {isVisible('warehouse') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{warehousePairLabel(warehouseById.get(r.warehouse_id)?.name ?? '—', r.output_warehouse_id ? warehouseById.get(r.output_warehouse_id)?.name : null)}</td>}
                   {isVisible('status') && <td className={tdCls}><DocStatusBadge status={r.status} /></td>}
                   <td className={tdCls}>
                     <DocActions

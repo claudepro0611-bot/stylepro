@@ -2881,6 +2881,87 @@ export type Database = {
         }
         Relationships: []
       }
+      prod_transfers: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          from_warehouse_id: string
+          to_warehouse_id: string
+          note: string | null
+          total: number
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          from_warehouse_id?: string
+          to_warehouse_id?: string
+          note?: string | null
+          total?: number
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          from_warehouse_id?: string
+          to_warehouse_id?: string
+          note?: string | null
+          total?: number
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_transfer_items: {
+        Row: {
+          id: string
+          company_id: string
+          transfer_id: string
+          item_id: string
+          qty: number
+          unit_cost: number
+          total: number
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          transfer_id?: string
+          item_id?: string
+          qty?: number
+          unit_cost?: number
+          total?: number
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          transfer_id?: string
+          item_id?: string
+          qty?: number
+          unit_cost?: number
+          total?: number
+        }
+        Relationships: []
+      }
       prod_productions: {
         Row: {
           id: string
@@ -2899,6 +2980,9 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          recipe_id: string | null
+          recipe_version: number | null
+          output_warehouse_id: string | null
         }
         Insert: {
           id?: string
@@ -2917,6 +3001,9 @@ export type Database = {
           created_at?: string
           cancelled_at?: string | null
           cancelled_by?: string | null
+          recipe_id?: string | null
+          recipe_version?: number | null
+          output_warehouse_id?: string | null
         }
         Update: {
           id?: string
@@ -2935,6 +3022,9 @@ export type Database = {
           created_at?: string
           cancelled_at?: string | null
           cancelled_by?: string | null
+          recipe_id?: string | null
+          recipe_version?: number | null
+          output_warehouse_id?: string | null
         }
         Relationships: []
       }
@@ -2947,6 +3037,7 @@ export type Database = {
           qty: number
           unit_cost: number
           total: number
+          planned_qty: number | null
         }
         Insert: {
           id?: string
@@ -2956,6 +3047,7 @@ export type Database = {
           qty?: number
           unit_cost?: number
           total?: number
+          planned_qty?: number | null
         }
         Update: {
           id?: string
@@ -2965,6 +3057,79 @@ export type Database = {
           qty?: number
           unit_cost?: number
           total?: number
+          planned_qty?: number | null
+        }
+        Relationships: []
+      }
+      prod_recipes: {
+        Row: {
+          id: string
+          company_id: string
+          item_id: string
+          output_qty: number
+          version: number
+          is_active: boolean
+          note: string | null
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          item_id?: string
+          output_qty?: number
+          version?: number
+          is_active?: boolean
+          note?: string | null
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          item_id?: string
+          output_qty?: number
+          version?: number
+          is_active?: boolean
+          note?: string | null
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      prod_recipe_lines: {
+        Row: {
+          id: string
+          company_id: string
+          recipe_id: string
+          item_id: string
+          qty: number
+          sort_order: number
+          note: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          recipe_id?: string
+          item_id?: string
+          qty?: number
+          sort_order?: number
+          note?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          recipe_id?: string
+          item_id?: string
+          qty?: number
+          sort_order?: number
+          note?: string | null
         }
         Relationships: []
       }
@@ -2988,6 +3153,7 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          output_warehouse_id: string | null
         }
         Insert: {
           id?: string
@@ -3008,6 +3174,7 @@ export type Database = {
           created_at?: string
           cancelled_at?: string | null
           cancelled_by?: string | null
+          output_warehouse_id?: string | null
         }
         Update: {
           id?: string
@@ -3028,6 +3195,7 @@ export type Database = {
           created_at?: string
           cancelled_at?: string | null
           cancelled_by?: string | null
+          output_warehouse_id?: string | null
         }
         Relationships: []
       }
@@ -3462,6 +3630,7 @@ export type Database = {
       prod_create_receipt: { Args: { p_data: Json }; Returns: Json }
       prod_create_production: { Args: { p_data: Json }; Returns: Json }
       prod_create_processing: { Args: { p_data: Json }; Returns: Json }
+      prod_create_transfer: { Args: { p_data: Json }; Returns: Json }
       prod_cancel_document: { Args: { p_doc_type: string; p_id: string }; Returns: undefined }
       supply_save_agent: {
         Args: { p_id: string | null; p_is_active: boolean; p_name: string; p_phone: string | null; p_telegram_id: string | null }
@@ -3471,6 +3640,7 @@ export type Database = {
       prod_save_supplier: { Args: { p_data: Json; p_id: string | null }; Returns: string }
       prod_create_supplier_payment: { Args: { p_data: Json }; Returns: Json }
       prod_cancel_supplier_payment: { Args: { p_id: string }; Returns: undefined }
+      prod_save_recipe: { Args: { p_data: Json; p_id: string | null }; Returns: string }
       branch_overview: {
         Args: never
         Returns: {

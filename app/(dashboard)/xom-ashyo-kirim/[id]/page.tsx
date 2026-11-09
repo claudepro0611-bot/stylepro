@@ -66,7 +66,7 @@ export default function ReceiptViewPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5">
       <BackLink href="/xom-ashyo-kirim" label={t('production.receipts.title')} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
