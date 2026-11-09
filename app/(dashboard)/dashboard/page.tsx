@@ -16,18 +16,22 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { fetchAllRows } from '@/lib/supabase/helpers'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useDashboardFilter, buildChartBuckets } from '@/hooks/useDashboardFilter'
 import { useDashboardConfig } from '@/hooks/useDashboardConfig'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { usePaymentStatus } from '@/lib/usePaymentStatus'
+import { useSession } from '@/lib/session/SessionContext'
+import { useBranchFilter, useIsMultiBranch } from '@/lib/session/useBranch'
+import { BranchScopeLabel } from '@/components/reports/BranchScopeLabel'
 import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar'
 import type { TranslationKey } from '@/lib/i18n/translations'
-import type { Product, Transaction } from '@/lib/types'
+import type { Transaction } from '@/lib/types'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -383,6 +387,45 @@ function NetProfitCard({ amount, isPending }: { amount: number; isPending?: bool
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const TX_SELECT = '*, transaction_items(product_id, product_name, quantity, price, purchase_price)'
+
+interface TxRow {
+  id: string | null
+  customer_id: string | null
+  customer_name: string | null
+  net_amount: number | null
+  date: string | null
+  created_at: string | null
+  payment_method: string | null
+  invoice_id: string | null
+  status: string | null
+  branch_id?: string | null
+  transaction_items: { product_id: string | null; product_name: string | null; quantity: number; price: number; purchase_price: number | null }[] | null
+}
+
+function mapTx(tx: TxRow): Transaction {
+  return {
+    id: tx.id ?? '',
+    customerId: tx.customer_id ?? '',
+    customerName: tx.customer_name ?? '',
+    products: (tx.transaction_items ?? []).map(i => ({
+      productId: i.product_id ?? '',
+      productName: i.product_name ?? '',
+      quantity: i.quantity,
+      price: Number(i.price),
+      purchasePrice: Number(i.purchase_price ?? 0),
+    })),
+    // Net of returns (transactions_net.net_amount = total_amount - returned_amount),
+    // not the gross sale total — see supabase/migrations/20260717000001_returns_flow.sql.
+    totalAmount: Number(tx.net_amount),
+    date: tx.date ?? '',
+    createdAt: tx.created_at ?? '',
+    paymentMethod: tx.payment_method ?? '',
+    invoiceId: tx.invoice_id ?? '',
+    status: tx.status as Transaction['status'],
+  }
+}
+
 export default function DashboardPage() {
   const { t } = useLanguage()
   const { formatPrice, formatShortPrice } = useCurrency()
@@ -395,83 +438,60 @@ export default function DashboardPage() {
   const [config, setConfig] = useDashboardConfig()
   const [topChartView, setTopChartView] = useState<'product' | 'category'>('product')
   const [monthlyGoal] = useLocalStorage<number>('stylepro-monthly-goal', 10000000)
-  const [products, setProducts] = useState<Product[]>([])
+  const [categoryById, setCategoryById] = useState<Map<string, string>>(new Map())
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([])
+  const [recentSales, setRecentSales] = useState<Transaction[]>([])
   const [lowStockCount2, setLowStockCount2] = useState(0)
-  const [dataLoading, setDataLoading] = useState(true)
+  const [staticLoading, setStaticLoading] = useState(true)
+  const [txLoading, setTxLoading] = useState(true)
+  const dataLoading = staticLoading || txLoading
   const [companyBalance, setCompanyBalance] = useState<number | null>(null)
+  // Sale id -> branch id, for the "By branch" card (Transaction has no branch field).
+  const [branchByTx, setBranchByTx] = useState<Map<string, string | null>>(new Map())
+  const { branches, canSeeAllBranches, activeBranchId } = useSession()
+  const isMultiBranch = useIsMultiBranch()
+  const applyBranch = useBranchFilter()
 
+  // Period-independent data: category map, low-stock count, balance, the 10
+  // most recent sales. Paged so big catalogs aren't cut at PostgREST's
+  // 1000-row cap; only the columns actually used are fetched.
   useEffect(() => {
     let active = true
     const supabase = createClient()
 
     async function load() {
-      const [{ data: productRows }, { data: transactionRows }, { data: productSizeRows }, { data: companyRow }] = await Promise.all([
-        supabase.from('products').select('*'),
-        supabase
+      const [productRes, sizeRes, recentRes, { data: companyRow }] = await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase.from('products').select('id, category, min_stock').order('id').range(from, to)),
+        fetchAllRows((from, to) =>
+          applyBranch(supabase.from('product_sizes').select('product_id, stock').gt('stock', 0)).order('id').range(from, to)),
+        applyBranch(supabase
           .from('transactions_net')
-          .select('*, transaction_items(product_id, product_name, quantity, price, purchase_price)')
-          .order('created_at', { ascending: false }),
-        supabase.from('product_sizes').select('product_id, stock'),
+          .select(TX_SELECT)
+          .eq('status', 'completed'))
+          .order('created_at', { ascending: false })
+          .limit(10),
         supabase.from('companies').select('balance').maybeSingle(),
       ])
 
       if (!active) return
       setCompanyBalance(companyRow ? Number(companyRow.balance ?? 0) : null)
 
-      const mapped = (productRows ?? []).map(p => ({
-        id: p.id,
-        name: p.name,
-        sku: p.sku ?? '',
-        category: p.category ?? '',
-        price: Number(p.price),
-        description: p.description ?? '',
-        colors: p.colors ?? [],
-        minStock: p.min_stock,
-        imageUrl: p.image_url ?? '',
-        status: p.status as Product['status'],
-        warehouseId: p.warehouse_id ?? '',
-      }))
-      setProducts(mapped)
-      const minStockMap = new Map(mapped.map(p => [p.id, p.minStock]))
-      const lowCount = (productSizeRows ?? []).filter((sz: { product_id: string; stock: number }) =>
+      const productRows = productRes.data as { id: string; category: string | null; min_stock: number }[]
+      setCategoryById(new Map(productRows.map(p => [p.id, p.category ?? ''])))
+      const minStockMap = new Map(productRows.map(p => [p.id, p.min_stock]))
+      const lowCount = (sizeRes.data as { product_id: string; stock: number }[]).filter(sz =>
         sz.stock > 0 && sz.stock <= (minStockMap.get(sz.product_id) ?? 5)
       ).length
       setLowStockCount2(lowCount)
 
-      setAllTransactions((transactionRows ?? []).map(tx => ({
-        id: tx.id ?? '',
-        customerId: tx.customer_id ?? '',
-        customerName: tx.customer_name ?? '',
-        products: (tx.transaction_items ?? []).map((i: { product_id: string | null; product_name: string | null; quantity: number; price: number; purchase_price: number | null }) => ({
-          productId: i.product_id ?? '',
-          productName: i.product_name ?? '',
-          quantity: i.quantity,
-          price: Number(i.price),
-          purchasePrice: Number(i.purchase_price ?? 0),
-        })),
-        // Net of returns (transactions_net.net_amount = total_amount - returned_amount),
-        // not the gross sale total — see supabase/migrations/20260717000001_returns_flow.sql.
-        totalAmount: Number(tx.net_amount),
-        date: tx.date ?? '',
-        createdAt: tx.created_at ?? '',
-        paymentMethod: tx.payment_method ?? '',
-        invoiceId: tx.invoice_id ?? '',
-        status: tx.status as Transaction['status'],
-      })))
-
-      setDataLoading(false)
+      setRecentSales(((recentRes.data ?? []) as unknown as TxRow[]).map(mapTx))
+      setStaticLoading(false)
     }
 
     load()
     return () => { active = false }
-  }, [])
-
-  const categoryById = useMemo(() => {
-    const map = new Map<string, string>()
-    products.forEach(p => map.set(p.id, p.category))
-    return map
-  }, [products])
+  }, [applyBranch]) // applyBranch changes with activeBranchId -> refetch on branch switch
 
   const {
     period, setPeriod,
@@ -483,6 +503,34 @@ export default function DashboardPage() {
     filteredTransactions, prevFilteredTransactions,
     hasActiveFilters, isPending: filterPending, reset,
   } = useDashboardFilter(allTransactions, categoryById)
+
+  // Only the transactions the selected period (and its comparison period)
+  // need — previously the whole sales history was downloaded on every visit,
+  // which grows without bound and was silently truncated at 1000 rows.
+  useEffect(() => {
+    let active = true
+    const supabase = createClient()
+    setTxLoading(true)
+
+    fetchAllRows((from, to) =>
+      applyBranch(supabase
+        .from('transactions_net')
+        .select(TX_SELECT)
+        .eq('status', 'completed')
+        .gte('date', prevRange.start)
+        .lte('date', range.end))
+        .order('id')
+        .range(from, to),
+    ).then(({ data }) => {
+      if (!active) return
+      const rows = data as unknown as TxRow[]
+      setAllTransactions(rows.map(mapTx))
+      setBranchByTx(new Map(rows.map(r => [r.id ?? '', r.branch_id ?? null])))
+      setTxLoading(false)
+    })
+
+    return () => { active = false }
+  }, [prevRange.start, range.end, applyBranch])
 
   const isPending = dataLoading || filterPending
 
@@ -513,15 +561,33 @@ export default function DashboardPage() {
   )
   const netProfit = curGrossSales - curCOGS
 
+  // "By branch" breakdown — owner/admin on "All branches" in a multi-branch
+  // company only. Same bases as the KPI cards above (revenue = net_amount,
+  // receipts = sale count, profit = line-item sales − COGS) over the same
+  // filtered transactions, so the rows sum to the KPI totals.
+  const showByBranch = isMultiBranch && canSeeAllBranches && activeBranchId === null
+  const byBranchRows = useMemo(() => {
+    if (!showByBranch) return []
+    const rows = new Map<string, { id: string; name: string; revenue: number; receipts: number; profit: number }>()
+    for (const b of branches) {
+      if (b.isActive) rows.set(b.id, { id: b.id, name: b.name, revenue: 0, receipts: 0, profit: 0 })
+    }
+    for (const tx of filteredTransactions) {
+      const bid = branchByTx.get(tx.id) ?? ''
+      let r = rows.get(bid)
+      if (!r) {
+        const b = branches.find(x => x.id === bid)
+        r = { id: bid, name: b?.name ?? t('branchReports.unknownBranch'), revenue: 0, receipts: 0, profit: 0 }
+        rows.set(bid, r)
+      }
+      r.revenue += tx.totalAmount
+      r.receipts += 1
+      r.profit += tx.products.reduce((s, p) => s + (p.price - (p.purchasePrice ?? 0)) * p.quantity, 0)
+    }
+    return Array.from(rows.values()).sort((a, b) => b.revenue - a.revenue)
+  }, [showByBranch, branches, filteredTransactions, branchByTx, t])
 
-  // Recent sales — most recent completed transactions
-  const recentSales = useMemo(
-    () => [...allTransactions]
-      .filter(tx => tx.status === 'completed')
-      .sort((a, b) => (b.createdAt ?? b.date).localeCompare(a.createdAt ?? a.date))
-      .slice(0, 10),
-    [allTransactions],
-  )
+
 
   // Top categories — donut chart, reacts to the active filters
   const topCategoriesChart = useMemo<TopProductSlice[]>(() => {
@@ -618,7 +684,10 @@ export default function DashboardPage() {
 
       {/* Header + toolbar row */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('dashboard.title')}</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('dashboard.title')}</h1>
+          <BranchScopeLabel className="mt-1" />
+        </div>
       </div>
 
       {/* ── Filter bar ── */}
@@ -669,6 +738,41 @@ export default function DashboardPage() {
               changeLabel={t('dashboard.vsPrevPeriod')}
               isPending={isPending}
             />
+          )}
+        </div>
+      )}
+
+      {/* ── By branch (multi-branch, owner/admin on "All branches") ── */}
+      {showByBranch && (
+        <div className={cn(CARD_CLS, 'p-6')}>
+          <p className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-100">{t('branchReports.byBranchTitle')}</p>
+          {isPending ? (
+            <div className="space-y-2.5">
+              {[0, 1, 2].map(i => <Skeleton key={i} className="h-[18px] w-full" />)}
+            </div>
+          ) : (
+            <div className="overflow-x-auto -mx-6">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-gray-800 text-left text-gray-400 dark:text-gray-500">
+                    <th className="px-6 py-2 font-medium">{t('branchReports.branch')}</th>
+                    <th className="px-6 py-2 font-medium text-right">{t('branchReports.revenue')}</th>
+                    <th className="px-6 py-2 font-medium text-right">{t('branchReports.receipts')}</th>
+                    <th className="px-6 py-2 font-medium text-right">{t('branchReports.profit')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byBranchRows.map(r => (
+                    <tr key={r.id || 'none'} className="border-b border-gray-50 dark:border-gray-800/60 last:border-0">
+                      <td className="px-6 py-2.5 text-gray-900 dark:text-gray-100 font-medium whitespace-nowrap">{r.name}</td>
+                      <td className="px-6 py-2.5 text-right text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{formatPrice(r.revenue)}</td>
+                      <td className="px-6 py-2.5 text-right text-gray-500 dark:text-gray-400 tabular-nums">{r.receipts}</td>
+                      <td className={cn('px-6 py-2.5 text-right tabular-nums whitespace-nowrap', r.profit < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100')}>{formatPrice(r.profit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}

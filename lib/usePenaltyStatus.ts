@@ -1,9 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-
-const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
+import { useSession } from '@/lib/session/SessionContext'
 
 export type PenaltyStatusValue = 'active' | 'warning' | 'grace' | 'blocked'
 
@@ -47,55 +44,21 @@ function daysUntil(dueDateStr: string): number {
   return Math.round((due.getTime() - today.getTime()) / 86400000)
 }
 
-export function usePenaltyStatus() {
-  const [status, setStatus] = useState<PenaltyStatus>(INITIAL_STATUS)
+export function usePenaltyStatus(): PenaltyStatus {
+  const { isSuperAdmin, company } = useSession()
 
-  useEffect(() => {
-    let cancelled = false
-    const supabase = createClient()
+  // Super admin has no company of their own — never blocked.
+  if (isSuperAdmin || !company?.paymentDueDate) return INITIAL_STATUS
 
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-
-      // Super admin has no company of their own — never blocked, and
-      // querying companies for them would match every row, not one.
-      if (!user || user.email?.toLowerCase() === SUPER_ADMIN_EMAIL) {
-        if (!cancelled) setStatus(INITIAL_STATUS)
-        return
-      }
-
-      const { data } = await supabase
-        .from('companies')
-        .select('payment_due_date, monthly_fee, has_contract, daily_penalty, penalty_days, total_penalty, grace_period_start, max_grace_days')
-        .maybeSingle()
-
-      if (cancelled) return
-
-      if (!data?.payment_due_date) {
-        setStatus(INITIAL_STATUS)
-        return
-      }
-
-      const daysLeft = daysUntil(data.payment_due_date)
-      const hasContract = data.has_contract ?? false
-      const penaltyDays = data.penalty_days ?? 0
-      const maxGraceDays = data.max_grace_days ?? 5
-
-      setStatus({
-        status: computeStatus(daysLeft, hasContract, penaltyDays, maxGraceDays),
-        daysLeft,
-        penaltyDays,
-        totalPenalty: Number(data.total_penalty ?? 0),
-        dailyPenalty: Number(data.daily_penalty ?? 0),
-        monthlyFee: Number(data.monthly_fee ?? 0),
-        hasContract,
-        maxGraceDays,
-      })
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [])
-
-  return status
+  const daysLeft = daysUntil(company.paymentDueDate)
+  return {
+    status: computeStatus(daysLeft, company.hasContract, company.penaltyDays, company.maxGraceDays),
+    daysLeft,
+    penaltyDays: company.penaltyDays,
+    totalPenalty: company.totalPenalty,
+    dailyPenalty: company.dailyPenalty,
+    monthlyFee: company.monthlyFee,
+    hasContract: company.hasContract,
+    maxGraceDays: company.maxGraceDays,
+  }
 }

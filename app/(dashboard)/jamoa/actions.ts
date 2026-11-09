@@ -13,12 +13,22 @@ export interface TeamUserRow {
   status: 'active' | 'inactive'
   role: string
   permissions: Permissions
+  branchId: string | null
+}
+
+export interface TeamBranchOption {
+  id: string
+  name: string
+  isDefault: boolean
+  isActive: boolean
 }
 
 export interface TeamData {
   users: TeamUserRow[]
   userLimit: number
   isOwner: boolean
+  /** All company branches (inactive too, for name lookup), default first. */
+  branches: TeamBranchOption[]
 }
 
 function loginFromEmail(email: string) {
@@ -52,17 +62,42 @@ async function requireCompanyOwner() {
   return { userId: user.id, companyId: me.company_id as string }
 }
 
+// Returns an error CODE (translated client-side via branchErrorKey) when the
+// branch is missing, not in the caller's company, or inactive.
+async function validateBranch(companyId: string, branchId: string | undefined | null): Promise<string | null> {
+  if (!branchId) return 'branch_required'
+  const { data: branch, error } = await supabaseServer
+    .from('branches')
+    .select('id, company_id, is_active')
+    .eq('id', branchId)
+    .maybeSingle()
+  if (error) return error.message
+  if (!branch || branch.company_id !== companyId) return 'branch_not_found'
+  if (!branch.is_active) return 'branch_inactive'
+  return null
+}
+
 export async function getTeamData(): Promise<TeamData | { error: string }> {
   try {
     const { companyId } = await requireCompanyOwner()
 
-    const [{ data: company, error: companyError }, { data: users, error: usersError }] = await Promise.all([
+    const [
+      { data: company, error: companyError },
+      { data: users, error: usersError },
+      { data: branches, error: branchesError },
+    ] = await Promise.all([
       supabaseServer.from('companies').select('user_limit').eq('id', companyId).single(),
-      supabaseServer.from('users').select('id, full_name, email, role, status, permissions').eq('company_id', companyId).order('created_at'),
+      supabaseServer.from('users').select('id, full_name, email, role, status, permissions, branch_id').eq('company_id', companyId).order('created_at'),
+      supabaseServer
+        .from('branches')
+        .select('id, name, is_default, is_active')
+        .eq('company_id', companyId)
+        .order('is_default', { ascending: false })
+        .order('created_at'),
     ])
 
-    if (companyError || usersError) {
-      console.error('[jamoa/getTeamData] failed to load team', companyError, usersError)
+    if (companyError || usersError || branchesError) {
+      console.error('[jamoa/getTeamData] failed to load team', companyError, usersError, branchesError)
       return { error: 'Failed to load team' }
     }
 
@@ -73,12 +108,14 @@ export async function getTeamData(): Promise<TeamData | { error: string }> {
       status: u.status,
       role: u.role,
       permissions: withDefaultPermissions(u.permissions as Partial<Permissions> | null),
+      branchId: u.branch_id ?? null,
     }))
 
     return {
       users: rows,
       userLimit: company?.user_limit ?? 1,
       isOwner: true,
+      branches: (branches ?? []).map(b => ({ id: b.id, name: b.name, isDefault: b.is_default, isActive: b.is_active })),
     }
   } catch (e) {
     console.error('[jamoa/getTeamData] unexpected error', e)
@@ -91,6 +128,7 @@ export interface CreateTeamUserInput {
   login: string
   password: string
   status: 'active' | 'inactive'
+  branchId: string
 }
 
 export async function createTeamUser(data: CreateTeamUserInput) {
@@ -114,6 +152,9 @@ async function createTeamUserInternal(data: CreateTeamUserInput) {
   if (!data.fullName.trim()) {
     return { error: "Ism familiya kiritilishi shart" }
   }
+
+  const branchError = await validateBranch(companyId, data.branchId)
+  if (branchError) return { error: branchError }
 
   const { data: company, error: companyError } = await supabaseServer
     .from('companies')
@@ -167,6 +208,7 @@ async function createTeamUserInternal(data: CreateTeamUserInput) {
       role: 'staff',
       status: data.status,
       permissions: DEFAULT_PERMISSIONS,
+      branch_id: data.branchId,
     })
     .eq('id', authUser.user.id)
 
@@ -183,6 +225,7 @@ export interface UpdateTeamUserInput {
   password?: string
   status: 'active' | 'inactive'
   permissions: Permissions
+  branchId: string
 }
 
 export async function updateTeamUser(id: string, data: UpdateTeamUserInput) {
@@ -198,7 +241,7 @@ async function updateTeamUserInternal(id: string, data: UpdateTeamUserInput) {
 
   const { data: target, error: targetError } = await supabaseServer
     .from('users')
-    .select('id, company_id, role')
+    .select('id, company_id, role, branch_id')
     .eq('id', id)
     .single()
 
@@ -212,6 +255,13 @@ async function updateTeamUserInternal(id: string, data: UpdateTeamUserInput) {
 
   if (!data.fullName.trim()) {
     return { error: "Ism familiya kiritilishi shart" }
+  }
+
+  // Keeping the current branch is always allowed (it may have been
+  // deactivated since); a change must target an active company branch.
+  if (data.branchId !== target.branch_id) {
+    const branchError = await validateBranch(companyId, data.branchId)
+    if (branchError) return { error: branchError }
   }
 
   if (data.password) {
@@ -228,6 +278,7 @@ async function updateTeamUserInternal(id: string, data: UpdateTeamUserInput) {
       full_name: data.fullName.trim(),
       status: data.status,
       permissions: data.permissions,
+      branch_id: data.branchId,
     })
     .eq('id', id)
 

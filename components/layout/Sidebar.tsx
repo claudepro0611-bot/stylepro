@@ -6,20 +6,20 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, Package,
   ShoppingBag, BarChart2, Megaphone,
-  MessageSquare, Settings, ArrowDownCircle, ArrowUpCircle, Trash2, ChevronDown, ShoppingCart,
+  MessageSquare, Settings, ArrowDownCircle, Trash2, ChevronDown, ShoppingCart,
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
-  Receipt, Warehouse, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered,
+  Receipt, Warehouse, Store, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered, Truck, ArrowLeftRight, PackagePlus,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
-import { createClient } from '@/lib/supabase/client'
+import { useSession } from '@/lib/session/SessionContext'
 import { DEFAULT_PERMISSIONS, withDefaultPermissions, type Permissions, type PermissionKey } from '@/lib/permissions'
 import { useFeatures } from '@/lib/features'
+import { isAllBranchRole } from '@/lib/branches'
 import type { TranslationKey } from '@/lib/i18n/translations'
 
-const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 
 export interface NavLeaf {
   href: string
@@ -27,6 +27,8 @@ export interface NavLeaf {
   icon: LucideIcon
   permKey?: PermissionKey
   featureKey?: string
+  /** Only owner/admin (all-branch roles) see this item; no PermissionKey. */
+  allBranchRolesOnly?: boolean
 }
 
 export interface NavEntry extends NavLeaf {
@@ -51,17 +53,25 @@ export const NAV_ITEMS: NavEntry[] = [
     ],
   },
   {
-    href: '/tovarlar', labelKey: 'sidebar.tovarlar', icon: Package, noLink: true,
-    children: [
-      { href: '/kirim', labelKey: 'sidebar.kirim', icon: ArrowDownCircle, permKey: 'kirim' },
-      { href: '/chiqim', labelKey: 'sidebar.chiqim', icon: ArrowUpCircle, permKey: 'chiqim' },
-    ],
-  },
-  {
     href: '/operatsiyalar', labelKey: 'sidebar.operations', icon: ClipboardList, noLink: true,
     children: [
       { href: '/inventarizatsiya', labelKey: 'sidebar.inventarizatsiya', icon: ClipboardCheck, permKey: 'inventory' },
       { href: '/brak', labelKey: 'sidebar.brak', icon: Trash2, permKey: 'brak' },
+      { href: '/peremeshenie', labelKey: 'sidebar.peremeshenie', icon: ArrowLeftRight, permKey: 'peremeshenie' },
+    ],
+  },
+  {
+    // Own group; children use distinct top-level paths so prefix-based
+    // active highlighting doesn't light up the list on its sibling pages.
+    // Permissions are per child (not on the group) so a kirim-only user
+    // still sees Kirim here; the group hides itself when no child is left.
+    href: '/yetkazuvchilar-bolimi', labelKey: 'sidebar.suppliers', icon: Truck, noLink: true,
+    children: [
+      { href: '/kirim', labelKey: 'sidebar.kirim', icon: PackagePlus, permKey: 'kirim' },
+      { href: '/yetkazuvchilar', labelKey: 'sidebar.suppliersList', icon: Contact, permKey: 'yetkazuvchilar' },
+      { href: '/xaridlar', labelKey: 'sidebar.supplierPurchases', icon: ArrowDownCircle, permKey: 'yetkazuvchilar' },
+      { href: '/yetkazuvchi-qaytarish', labelKey: 'sidebar.supplierReturns', icon: RotateCcw, permKey: 'yetkazuvchilar' },
+      { href: '/yetkazuvchi-tolovlar', labelKey: 'sidebar.supplierPayments', icon: CreditCard, permKey: 'yetkazuvchilar' },
     ],
   },
   {
@@ -70,6 +80,7 @@ export const NAV_ITEMS: NavEntry[] = [
       { href: '/mahsulotlar', labelKey: 'sidebar.products', icon: ShoppingBag, permKey: 'mahsulotlar' },
       { href: '/mahsulot-guruhi', labelKey: 'sidebar.productGroups', icon: Tag, permKey: 'mahsulot_guruhi' },
       { href: '/omborlar', labelKey: 'sidebar.warehouses', icon: Warehouse, permKey: 'inventory' },
+      { href: '/filiallar', labelKey: 'branches.nav', icon: Store, allBranchRolesOnly: true },
       { href: '/prays-list', labelKey: 'sidebar.priceLists', icon: ListOrdered, permKey: 'mahsulotlar' },
     ],
   },
@@ -87,8 +98,15 @@ export const NAV_ITEMS: NavEntry[] = [
   {
     href: '/reports', labelKey: 'sidebar.reports', icon: BarChart2, noLink: true, permKey: 'reports', featureKey: 'reports',
     children: [
-      { href: '/reports/moliya', labelKey: 'sidebar.reportsMoliya', icon: BarChart2 },
-      { href: '/reports/inventar', labelKey: 'sidebar.reportsInventar', icon: Package },
+      { href: '/reports/moliya', labelKey: 'sidebar.reportsMoliya', icon: BarChart2, permKey: 'reports_moliya' },
+      { href: '/reports/foyda', labelKey: 'sidebar.reportsFoyda', icon: TrendingUp, permKey: 'reports_foyda' },
+      { href: '/reports/sotuvlar', labelKey: 'sidebar.reportsSales', icon: ShoppingCart, permKey: 'reports_sotuvlar' },
+      { href: '/reports/yetkazuvchilar', labelKey: 'sidebar.reportsSuppliers', icon: Truck, permKey: 'reports_yetkazuvchilar' },
+      { href: '/reports/kirim', labelKey: 'sidebar.reportsKirim', icon: ArrowDownCircle, permKey: 'reports_kirim' },
+      { href: '/reports/peremeshenie', labelKey: 'sidebar.reportsPeremeshenie', icon: ArrowLeftRight, permKey: 'reports_peremeshenie' },
+      { href: '/reports/spisaniya', labelKey: 'sidebar.reportsWriteoff', icon: Trash2, permKey: 'reports_spisaniya' },
+      { href: '/reports/xarajatlar', labelKey: 'sidebar.reportsExpenses', icon: Receipt, permKey: 'reports_xarajatlar' },
+      { href: '/reports/inventar', labelKey: 'sidebar.reportsInventar', icon: Package, permKey: 'reports_inventar' },
     ],
   },
   {
@@ -124,15 +142,17 @@ function groupActive(pathname: string, item: NavEntry) {
   return isActive(pathname, item.href) || (item.children?.some(c => isActive(pathname, c.href)) ?? false)
 }
 
-function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: boolean, features: Record<string, boolean>): NavEntry[] {
+function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: boolean, features: Record<string, boolean>, isAllBranchUser: boolean): NavEntry[] {
   return items.reduce<NavEntry[]>((acc, item) => {
     if (item.featureKey && !features[item.featureKey]) return acc
+    if (item.allBranchRolesOnly && !isAllBranchUser) return acc
     if (!isOwner && item.permKey && !permissions[item.permKey]) return acc
     if (item.children) {
       // Child-level featureKey applies to owners too (module disabled for the
       // company); child-level permKey only to non-owners, same as top level.
       const children = item.children.filter(c =>
         (!c.featureKey || features[c.featureKey]) &&
+        (!c.allBranchRolesOnly || isAllBranchUser) &&
         (isOwner || !c.permKey || permissions[c.permKey]),
       )
       if (item.noLink && children.length === 0) return acc
@@ -147,33 +167,23 @@ function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: bo
 export function Sidebar({ forceExpanded = false }: SidebarProps) {
   const pathname = usePathname()
   const { t } = useLanguage()
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [permissions, setPermissions] = useState<Permissions>(DEFAULT_PERMISSIONS)
-  const [isOwner, setIsOwner] = useState(true)
+  const { isSuperAdmin: isAdmin, profile } = useSession()
+  // Until the profile loads, keep the previous defaults (owner + all
+  // permissions) so the nav doesn't flash empty.
+  const isOwner = profile ? profile.role === 'owner' : true
+  const permissions: Permissions = profile
+    ? withDefaultPermissions(profile.permissions as Partial<Permissions> | null)
+    : DEFAULT_PERMISSIONS
+  // Unlike isOwner, default to hidden while loading so staff never see a
+  // flash of the owner/admin-only Filiallar item.
+  const isAllBranchUser = profile ? isAllBranchRole(profile.role) : false
   const [storedCollapsed, setStoredCollapsed] = useLocalStorage<boolean>('sidebar-collapsed', false)
   const { features } = useFeatures()
 
   const collapsed = forceExpanded ? false : storedCollapsed
 
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      setIsAdmin(user.email?.toLowerCase() === SUPER_ADMIN_EMAIL)
-      const { data } = await supabase
-        .from('users')
-        .select('role, permissions, company_id')
-        .eq('id', user.id)
-        .single()
-      if (data) {
-        setIsOwner(data.role === 'owner')
-        setPermissions(withDefaultPermissions(data.permissions as Partial<Permissions> | null))
-      }
-    })
-  }, [])
-
-  const filteredNavItems = filterNavItems(NAV_ITEMS, permissions, isOwner, features)
-  const filteredSettingsItem = filterNavItems([SETTINGS_NAV_ITEM], permissions, isOwner, features)[0]
+  const filteredNavItems = filterNavItems(NAV_ITEMS, permissions, isOwner, features, isAllBranchUser)
+  const filteredSettingsItem = filterNavItems([SETTINGS_NAV_ITEM], permissions, isOwner, features, isAllBranchUser)[0]
   const navItems = isAdmin ? [...filteredNavItems, ADMIN_NAV_ITEM] : filteredNavItems
   const groups = [...navItems, ...(filteredSettingsItem ? [filteredSettingsItem] : [])].filter(i => i.children)
 

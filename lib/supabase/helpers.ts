@@ -18,6 +18,12 @@ async function fetchCompanyId(supabase: SupabaseClient): Promise<string | null> 
 let cachedCompany: { userId: string; companyId: string } | null = null
 let inflightCompany: { userId: string; promise: Promise<string | null> } | null = null
 
+/** Seeds the cache from data already loaded elsewhere (SessionProvider). */
+export function primeCompanyId(userId: string, companyId: string) {
+  if (typeof window === 'undefined') return
+  cachedCompany = { userId, companyId }
+}
+
 export async function getCompanyId(supabase: SupabaseClient): Promise<string | null> {
   if (typeof window === 'undefined') return fetchCompanyId(supabase)
   const { data: { session } } = await supabase.auth.getSession()

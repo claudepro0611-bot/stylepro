@@ -12,6 +12,8 @@ import { formatDateTime } from '@/lib/utils/formatters'
 import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import type { TranslationKey } from '@/lib/i18n/translations'
+import { NasiyaDetailDialog, SaleDetailDialog, type NasiyaMove } from '@/components/sales/SaleDetailDialog'
+import { eqBranch, useWarehouseScope } from '@/lib/branchStock'
 
 const ITEMS_PER_PAGE = 20
 const PAYMENT_METHODS = ['Naqd', 'Karta', 'Click', 'Payme']
@@ -39,11 +41,14 @@ interface PaymentRow {
   method: string
   amount: number   // signed: refunds are negative
   cashier: string
+  branch: string
+  txId: string | null        // sale / refund → receipt dialog
+  nasiya: NasiyaMove | null  // debt repayment → nasiya dialog
 }
 
-interface TxnRow { id: string; customer_name: string | null; total_amount: number; created_at: string; payment_method: string | null; cashier_name: string | null; status: string }
-interface ReturnRow { id: string; created_at: string; transactions: { id: string; customer_name: string | null; payment_method: string | null } | null; return_items: { refund_amount: number }[] }
-interface NasiyaRow { id: string; amount: number; created_at: string; note: string | null; customers: { full_name: string | null } | null }
+interface TxnRow { id: string; customer_name: string | null; total_amount: number; created_at: string; payment_method: string | null; cashier_name: string | null; status: string; branch_id?: string | null }
+interface ReturnRow { id: string; created_at: string; branch_id?: string | null; transactions: { id: string; customer_name: string | null; payment_method: string | null } | null; return_items: { refund_amount: number }[] }
+interface NasiyaRow { id: string; amount: number; created_at: string; note: string | null; related_transaction_id: string | null; branch_id?: string | null; customers: { full_name: string | null } | null }
 
 function csvCell(value: string): string {
   return `"${value.replace(/"/g, '""')}"`
@@ -64,25 +69,30 @@ export default function TolovlarPage() {
   const [kindFilter, setKindFilter] = useState<'all' | PaymentKind>('all')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [openTx, setOpenTx] = useState<string | null>(null)
+  const [openNasiya, setOpenNasiya] = useState<NasiyaMove | null>(null)
+  // Header branch filter; multi-branch owner/admin on "All" get a Branch column.
+  const { showBranch: showBranchCol, branchName, activeBranchId } = useWarehouseScope()
 
   useEffect(() => {
     let active = true
     ;(async () => {
+      setLoading(true)
       const supabase = createClient()
       const [txns, returns, nasiya] = await Promise.all([
         fetchAllRows<TxnRow>((from, to) =>
-          supabase.from('transactions')
-            .select('id, customer_name, total_amount, created_at, payment_method, cashier_name, status')
-            .eq('status', 'completed')
+          eqBranch(supabase.from('transactions')
+            .select('id, customer_name, total_amount, created_at, payment_method, cashier_name, status, branch_id')
+            .eq('status', 'completed'), activeBranchId)
             .order('id').range(from, to) as unknown as PromiseLike<{ data: TxnRow[] | null; error: unknown }>),
         fetchAllRows<ReturnRow>((from, to) =>
-          supabase.from('returns')
-            .select('id, created_at, transactions(id, customer_name, payment_method), return_items(refund_amount)')
+          eqBranch(supabase.from('returns')
+            .select('id, created_at, branch_id, transactions(id, customer_name, payment_method), return_items(refund_amount)'), activeBranchId)
             .order('id').range(from, to) as unknown as PromiseLike<{ data: ReturnRow[] | null; error: unknown }>),
         fetchAllRows<NasiyaRow>((from, to) =>
-          supabase.from('nasiya_transactions')
-            .select('id, amount, created_at, note, customers(full_name)')
-            .eq('type', 'repaid')
+          eqBranch(supabase.from('nasiya_transactions')
+            .select('id, amount, created_at, note, related_transaction_id, branch_id, customers(full_name)')
+            .eq('type', 'repaid'), activeBranchId)
             .order('id').range(from, to) as unknown as PromiseLike<{ data: NasiyaRow[] | null; error: unknown }>),
       ])
       if (!active) return
@@ -93,6 +103,8 @@ export default function TolovlarPage() {
           id: `s-${tx.id}`, kind: 'sale', createdAt: tx.created_at,
           receipt: `#${tx.id.slice(0, 8).toUpperCase()}`, customer: tx.customer_name ?? '—',
           method: tx.payment_method ?? '—', amount: Number(tx.total_amount), cashier: tx.cashier_name ?? '—',
+          branch: branchName(tx.branch_id) || '—',
+          txId: tx.id, nasiya: null,
         })
       }
       for (const r of returns.data) {
@@ -103,12 +115,17 @@ export default function TolovlarPage() {
           receipt: r.transactions ? `#${r.transactions.id.slice(0, 8).toUpperCase()}` : '—',
           customer: r.transactions?.customer_name ?? '—', method: r.transactions?.payment_method ?? '—',
           amount: -refund, cashier: '—',
+          branch: branchName(r.branch_id) || '—',
+          txId: r.transactions?.id ?? null, nasiya: null,
         })
       }
       for (const n of nasiya.data) {
         list.push({
           id: `n-${n.id}`, kind: 'debt', createdAt: n.created_at, receipt: '—',
           customer: n.customers?.full_name ?? '—', method: '—', amount: Number(n.amount), cashier: '—',
+          branch: branchName(n.branch_id) || '—',
+          txId: null,
+          nasiya: { id: n.id, type: 'repaid', amount: Number(n.amount), at: n.created_at, customer: n.customers?.full_name ?? '—', note: n.note, relatedTransactionId: n.related_transaction_id },
         })
       }
       list.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -116,7 +133,7 @@ export default function TolovlarPage() {
       setLoading(false)
     })()
     return () => { active = false }
-  }, [])
+  }, [activeBranchId, branchName])
 
   const filtered = useMemo(() => {
     let list = rows
@@ -152,8 +169,8 @@ export default function TolovlarPage() {
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
   function exportCSV() {
-    const headers = [t('paymentsPage.date'), t('paymentsPage.type'), t('paymentsPage.receipt'), t('paymentsPage.customer'), t('paymentsPage.method'), t('paymentsPage.amount'), t('paymentsPage.cashier')]
-    const data = filtered.map(r => [formatDateTime(r.createdAt), t(KIND_LABEL[r.kind]), r.receipt, r.customer, r.method, String(r.amount), r.cashier])
+    const headers = [t('paymentsPage.date'), t('paymentsPage.type'), t('paymentsPage.receipt'), t('paymentsPage.customer'), t('paymentsPage.method'), t('paymentsPage.amount'), t('paymentsPage.cashier'), ...(showBranchCol ? [t('branches.branchLabel')] : [])]
+    const data = filtered.map(r => [formatDateTime(r.createdAt), t(KIND_LABEL[r.kind]), r.receipt, r.customer, r.method, String(r.amount), r.cashier, ...(showBranchCol ? [r.branch] : [])])
     const csv = [headers, ...data].map(r => r.map(csvCell).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -212,6 +229,7 @@ export default function TolovlarPage() {
         </div>
       </div>
 
+      <p className="-mb-3 text-xs text-gray-400 dark:text-gray-500">{t('saleDetail.clickHint')}</p>
       <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex h-48 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
@@ -231,11 +249,16 @@ export default function TolovlarPage() {
                   <th className="px-4 py-3 font-medium">{t('paymentsPage.method')}</th>
                   <th className="px-4 py-3 font-medium text-right">{t('paymentsPage.amount')}</th>
                   <th className="px-4 py-3 font-medium">{t('paymentsPage.cashier')}</th>
+                  {showBranchCol && <th className="px-4 py-3 font-medium">{t('branches.branchLabel')}</th>}
                 </tr>
               </thead>
               <tbody>
                 {paginated.map(r => (
-                  <tr key={r.id} className="border-b border-gray-50 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                  <tr
+                    key={r.id}
+                    onClick={() => { if (r.txId) setOpenTx(r.txId); else if (r.nasiya) setOpenNasiya(r.nasiya) }}
+                    className={cn('border-b border-gray-50 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors', (r.txId || r.nasiya) && 'cursor-pointer')}
+                  >
                     <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 tabular-nums">{formatDateTime(r.createdAt)}</td>
                     <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-xs', KIND_BADGE[r.kind])}>{t(KIND_LABEL[r.kind])}</span></td>
                     <td className="px-4 py-3 font-mono text-[12.5px] text-gray-700 dark:text-gray-300">{r.receipt}</td>
@@ -245,6 +268,7 @@ export default function TolovlarPage() {
                       {r.amount < 0 ? `−${formatPrice(-r.amount)}` : formatPrice(r.amount)}
                     </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{r.cashier}</td>
+                    {showBranchCol && <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{r.branch}</td>}
                   </tr>
                 ))}
               </tbody>
@@ -254,6 +278,9 @@ export default function TolovlarPage() {
       </div>
 
       <Pagination currentPage={page} totalPages={totalPages} totalItems={filtered.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setPage} />
+
+      <SaleDetailDialog transactionId={openTx} onClose={() => setOpenTx(null)} />
+      <NasiyaDetailDialog move={openNasiya} onClose={() => setOpenNasiya(null)} onOpenSale={id => { setOpenNasiya(null); setOpenTx(id) }} />
     </div>
   )
 }

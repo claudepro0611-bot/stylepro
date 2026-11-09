@@ -19,6 +19,7 @@ export interface CompanyRow {
   userLimit: number
   warehousesCount: number
   warehouseLimit: number
+  branchLimit: number
 }
 
 export interface CompanyStats {
@@ -35,6 +36,7 @@ export interface CreateCompanyInput {
   address?: string
   status?: 'active' | 'inactive'
   warehouseLimit?: number
+  branchLimit?: number
 }
 
 export interface UpdateCompanyInput {
@@ -101,6 +103,7 @@ export async function getCompanies(): Promise<{ companies: CompanyRow[]; stats: 
       userLimit: c.user_limit ?? 1,
       warehousesCount: (warehouses ?? []).filter(w => w.company_id === c.id).length,
       warehouseLimit: c.warehouse_limit ?? 2,
+      branchLimit: c.branch_limit ?? 1,
     }
   })
 
@@ -153,6 +156,7 @@ export async function createCompany(data: CreateCompanyInput) {
       address: data.address || null,
       status: data.status ?? 'active',
       warehouse_limit: Math.min(100, Math.max(1, data.warehouseLimit ?? 2)),
+      branch_limit: Math.max(1, Math.floor(data.branchLimit ?? 1)),
     })
     .select()
     .single()
@@ -208,6 +212,7 @@ export async function updateCompany(id: string, data: UpdateCompanyInput) {
 export interface UpdateCompanyBillingInput {
   user_limit?: number
   warehouse_limit?: number
+  branch_limit?: number
   balance?: number
   payment_due_date?: string | null
   monthly_fee?: number
@@ -221,6 +226,12 @@ export interface UpdateCompanyBillingInput {
 
 export async function updateCompanyBilling(id: string, data: UpdateCompanyBillingInput) {
   await requireSuperAdmin()
+
+  if (data.branch_limit !== undefined) {
+    const n = Math.floor(Number(data.branch_limit))
+    if (!Number.isFinite(n) || n < 1) return { error: 'branch_limit >= 1' }
+    data = { ...data, branch_limit: n }
+  }
 
   const { error } = await supabaseServer
     .from('companies')

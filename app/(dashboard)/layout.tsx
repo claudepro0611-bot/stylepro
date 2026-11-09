@@ -1,27 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Header } from '@/components/layout/Header'
 import { PaymentBlockScreen } from '@/components/PaymentBlockScreen'
 import { usePenaltyStatus } from '@/lib/usePenaltyStatus'
-import { createClient } from '@/lib/supabase/client'
-
-const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
+import { SessionProvider, useSession } from '@/lib/session/SessionContext'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SessionProvider>
+      <DashboardShell>{children}</DashboardShell>
+    </SessionProvider>
+  )
+}
+
+function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { status, monthlyFee, penaltyDays, totalPenalty } = usePenaltyStatus()
-  const [userEmail, setUserEmail] = useState<string | null>(null)
-
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => {
-      setUserEmail(data.user?.email ?? null)
-    })
-  }, [])
-
-  const isSuperAdmin = userEmail?.toLowerCase() === SUPER_ADMIN_EMAIL
+  const { isSuperAdmin } = useSession()
 
   if (status === 'blocked' && !isSuperAdmin) {
     return <PaymentBlockScreen status="blocked" monthlyFee={monthlyFee} penaltyDays={penaltyDays} totalPenalty={totalPenalty} />

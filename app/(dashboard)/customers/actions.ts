@@ -83,6 +83,21 @@ async function sendMurojatReplyInternal(requestId: string, customerId: string, m
   // Telegram in the same action requires supabaseServer to read
   // customers.telegram_id server-side.
   const supabase = await createClient()
+
+  // Branches: the customer row above is read with the service role, so bind
+  // it to the request through the session (RLS, branch-scoped) client - a
+  // manager/staff can only reply to a thread of their own branch, and the
+  // Telegram delivery can only reach that thread's customer.
+  const { data: visibleRequest } = await supabase
+    .from('requests')
+    .select('id')
+    .eq('id', requestId)
+    .eq('customer_id', customerId)
+    .maybeSingle()
+  if (!visibleRequest) {
+    return { error: 'customer_not_found' }
+  }
+
   const { data: inserted, error: rpcError } = await supabase.rpc('send_murojat_reply', {
     p_request_id: requestId,
     p_message: trimmed,

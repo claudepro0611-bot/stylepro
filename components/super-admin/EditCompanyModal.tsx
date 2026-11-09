@@ -28,6 +28,7 @@ export function EditCompanyModal({ company, onOpenChange, onUpdated }: EditCompa
         status: company.status,
         userLimit: company.userLimit,
         warehouseLimit: company.warehouseLimit,
+        branchLimit: company.branchLimit,
       })
     }
   }, [company])

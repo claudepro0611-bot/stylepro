@@ -5,6 +5,7 @@ import { localYmd } from '@/lib/utils/date'
 import { useRouter } from 'next/navigation'
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { branchAwareErrorKey } from '@/lib/branchStock'
 import { MiniBadge } from '@/components/ui/MiniBadge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ import { useFeatures } from '@/lib/features'
 import { formatDate } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import type { Promotion } from '@/lib/types'
+import { useSession } from '@/lib/session/SessionContext'
 
 interface PromotionRow {
   id: string
@@ -71,6 +73,8 @@ export default function MarketingPage() {
   const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Promotion | null>(null)
   const [deletingPromotion, setDeletingPromotion] = useState(false)
+  // Promotions are catalog data: owner/admin only ('catalog_forbidden').
+  const { canSeeAllBranches: canEditCatalog } = useSession()
 
   const fetchPromotions = useCallback(async () => {
     setPromotionsLoading(true)
@@ -139,7 +143,7 @@ export default function MarketingPage() {
     const { error } = await supabase.rpc('delete_promotion', { p_id: deleteTarget.id })
     setDeletingPromotion(false)
     if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      toast.error(t(branchAwareErrorKey(error.message)))
       return
     }
     toast.success(t('marketing.aksiya.toasts.deleteSuccess'))
@@ -182,12 +186,14 @@ export default function MarketingPage() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{t('marketing.aksiya.sectionTitle')}</p>
-            <button
-              onClick={openCreatePromotion}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 py-2 text-[13px] font-medium text-white transition-colors"
-            >
-              {t('marketing.aksiya.addNew')}
-            </button>
+            {canEditCatalog && (
+              <button
+                onClick={openCreatePromotion}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 py-2 text-[13px] font-medium text-white transition-colors"
+              >
+                {t('marketing.aksiya.addNew')}
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -219,8 +225,8 @@ export default function MarketingPage() {
                   return (
                     <tr
                       key={p.id}
-                      onClick={() => openEditPromotion(p)}
-                      className={`group border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${active ? '' : 'opacity-60'}`}
+                      onClick={canEditCatalog ? () => openEditPromotion(p) : undefined}
+                      className={`group border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${canEditCatalog ? 'cursor-pointer' : ''} ${active ? '' : 'opacity-60'}`}
                     >
                       <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{p.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{scopeSummary(p)}</td>
@@ -229,13 +235,13 @@ export default function MarketingPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-between gap-2">
                           <MiniBadge status={active ? 'active' : 'ended'} />
-                          <button
+                          {canEditCatalog && <button
                             type="button"
                             onClick={e => { e.stopPropagation(); setDeleteTarget(p) }}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 dark:hover:text-red-400 transition-opacity"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          </button>}
                         </div>
                       </td>
                     </tr>

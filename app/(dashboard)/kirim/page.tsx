@@ -7,6 +7,8 @@ import {
   PackageSearch, ArrowUpDown, Printer, Trash2, Loader2,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { branchAwareErrorKey, useWarehouseScope } from '@/lib/branchStock'
+import { useBranchFilter } from '@/lib/session/useBranch'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { StatsPanel } from '@/components/ui/StatsPanel'
 import { Pagination } from '@/components/ui/Pagination'
@@ -25,6 +27,9 @@ import type { TranslationKey } from '@/lib/i18n/translations'
 import type { StockInEntry, Product } from '@/lib/types'
 import { type SizeType, getSizesForType, PER_ML_SIZE } from '@/lib/sizes'
 import { WAREHOUSE_TYPE_LABEL_KEYS, type WarehouseType } from '@/lib/warehouses'
+import { SearchSelect } from '@/components/ui/SearchSelect'
+import { SupplierFormDialog } from '@/components/suppliers/SupplierDialogs'
+import { fetchSuppliers, type Supplier } from '@/lib/suppliers'
 
 const ITEMS_PER_PAGE = 20
 const TODAY = toYmd(new Date())
@@ -120,7 +125,7 @@ interface StockInRow {
   product_size_id: string | null
 }
 
-interface WarehouseRow { id: string; name: string; type: WarehouseType }
+interface WarehouseRow { id: string; name: string; type: WarehouseType; branch_id: string | null }
 
 function mapStockIn(row: StockInRow): StockInEntry {
   return {
@@ -134,7 +139,7 @@ function mapStockIn(row: StockInRow): StockInEntry {
   }
 }
 
-interface ProductSizeLookupRow { id: string; product_id: string; size: string; color: string | null; barcode: string | null }
+interface ProductSizeLookupRow { id: string; product_id: string; size: string; color: string | null; barcode: string | null; warehouse_id: string | null }
 
 // ─── Product name multi-select filter ──────────────────────────────────────
 
@@ -163,7 +168,7 @@ function ProductMultiSelect({
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen(o => !o)}
-        className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors ${selected.length ? 'bg-slate-900 dark:bg-white shadow-sm border-slate-900 dark:border-white text-white dark:text-gray-900' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+        className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors ${selected.length ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border-indigo-600 dark:border-indigo-500 text-white' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
         {t('kirim.productFilter')}
         {selected.length > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 px-1 text-[11px] font-semibold text-gray-900 dark:text-gray-100">{selected.length}</span>}
       </button>
@@ -217,6 +222,7 @@ const emptyForm = {
   productId: '',
   datetime: '',
   supplier: '',
+  supplierId: '',
   note: '',
   purchasePrice: '',
   markup: '',
@@ -242,15 +248,17 @@ export default function KirimPage() {
   const [categoryToSizeType, setCategoryToSizeType] = useState<Map<string, SizeType>>(new Map())
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
   const [sizeLookup, setSizeLookup] = useState<ProductSizeLookupRow[]>([])
+  const applyBranch = useBranchFilter()
+  const { scope: scopeWarehouses, groupByBranch, label: warehouseLabel, multiBranch } = useWarehouseScope()
 
   const fetchEntries = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const { data, error } = await supabase.from('stock_in_entries').select('*').order('date', { ascending: false })
+    const { data, error } = await applyBranch(supabase.from('stock_in_entries').select('*')).order('date', { ascending: false })
     if (error) toast.error(t('common.error'))
     else setEntries((data as StockInRow[]).map(mapStockIn))
     setLoading(false)
-  }, [t])
+  }, [t, applyBranch])
 
   // Backs the per-row "print labels" action: resolves a stock_in_entries
   // row to its product_sizes row (for the barcode) via product_size_id
@@ -258,16 +266,16 @@ export default function KirimPage() {
   // entries saved before that column existed.
   const fetchSizeLookup = useCallback(async () => {
     const supabase = createClient()
-    const { data } = await supabase.from('product_sizes').select('id, product_id, size, color, barcode')
+    const { data } = await applyBranch(supabase.from('product_sizes').select('id, product_id, size, color, barcode, warehouse_id'))
     setSizeLookup((data ?? []) as ProductSizeLookupRow[])
-  }, [])
+  }, [applyBranch])
 
   const fetchProducts = useCallback(async () => {
     const supabase = createClient()
     const [{ data: prodData, error: prodErr }, { data: groupData, error: groupErr }, { data: whData, error: whErr }] = await Promise.all([
       supabase.from('products').select('*').order('name'),
       supabase.from('product_groups').select('name, size_type'),
-      supabase.from('warehouses').select('id, name, type'),
+      supabase.from('warehouses').select('id, name, type, branch_id'),
     ])
     if (prodErr || whErr) { toast.error(t('common.error')); return }
     if (groupErr) console.error('[Sizes] product_groups fetch error (size_type column missing? Run migration):', groupErr.message)
@@ -281,6 +289,12 @@ export default function KirimPage() {
   }, [t])
 
   useEffect(() => { fetchEntries(); fetchProducts(); fetchSizeLookup() }, [fetchEntries, fetchProducts, fetchSizeLookup])
+
+  // Supplier directory for the kirim form's picker.
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [supplierFormOpen, setSupplierFormOpen] = useState(false)
+  const loadSuppliers = useCallback(async () => { setSuppliers(await fetchSuppliers(createClient())) }, [])
+  useEffect(() => { loadSuppliers() }, [loadSuppliers])
 
   // Filters
   const [datePreset, setDatePreset] = useState<DatePreset | null>(null)
@@ -348,7 +362,10 @@ export default function KirimPage() {
     setCellQty(prev => ({ ...prev, [cellKey(color, colId)]: value }))
   }
 
-  const activeWarehouse = useMemo(() => warehouses.find(w => w.id === form.warehouseId), [warehouses, form.warehouseId])
+  // Only the active branch's warehouses (owner on "All branches": every
+  // warehouse, grouped and labelled by branch when multi-branch).
+  const branchWarehouses = useMemo(() => groupByBranch(scopeWarehouses(warehouses)), [warehouses, scopeWarehouses, groupByBranch])
+  const activeWarehouse = useMemo(() => branchWarehouses.find(w => w.id === form.warehouseId), [branchWarehouses, form.warehouseId])
   // products.warehouse_id (set on the product itself, mahsulotlar/page.tsx)
   // is the source of truth for which warehouse a product belongs to —
   // matching product category to warehouse type was the old, broken
@@ -356,10 +373,22 @@ export default function KirimPage() {
   // Legacy products with no warehouse assigned show up under every
   // warehouse (flagged with a muted badge in ProductPicker) rather
   // than being hidden, so they can still be stocked in and then fixed.
+  //
+  // Multi-branch: the catalog is shared, products.warehouse_id is only a
+  // "home warehouse" hint, so a product is also pickable in any warehouse
+  // of the same type (another branch's clothing warehouse etc.) and in a
+  // warehouse it is already stocked in. Single-branch keeps the strict rule.
   const warehouseProducts = useMemo(() => {
     if (!activeWarehouse) return []
-    return products.filter(p => !p.warehouseId || p.warehouseId === activeWarehouse.id)
-  }, [products, activeWarehouse])
+    if (!multiBranch) return products.filter(p => !p.warehouseId || p.warehouseId === activeWarehouse.id)
+    const typeById = new Map(warehouses.map(w => [w.id, w.type]))
+    const stockedHere = new Set(sizeLookup.filter(r => r.warehouse_id === activeWarehouse.id).map(r => r.product_id))
+    return products.filter(p =>
+      !p.warehouseId
+      || p.warehouseId === activeWarehouse.id
+      || typeById.get(p.warehouseId) === activeWarehouse.type
+      || stockedHere.has(p.id))
+  }, [products, activeWarehouse, multiBranch, warehouses, sizeLookup])
   const uniqueNames = useMemo(() => Array.from(new Set(products.map(p => p.name))).sort(), [products])
   const categoryOptions = useMemo(() => Array.from(new Set(products.map(p => p.category))).sort(), [products])
   const supplierOptions = useMemo(() => Array.from(new Set(entries.map(e => e.supplier).filter(Boolean))).sort(), [entries])
@@ -434,7 +463,7 @@ export default function KirimPage() {
   const matrixColumns: MatrixColumn[] = isVolume ? [{ id: 'ml', size: PER_ML_SIZE, price: '' }] : columns
 
   function openAdd() {
-    setForm({ ...emptyForm, datetime: nowLocal(), warehouseId: warehouses[0]?.id ?? '' })
+    setForm({ ...emptyForm, datetime: nowLocal(), warehouseId: branchWarehouses[0]?.id ?? '' })
     resetMatrix()
     setAddStep('form')
     setSavedLabels([])
@@ -475,7 +504,8 @@ export default function KirimPage() {
           purchase_price: purchasePrice,
           selling_price: entryPrice,
           warehouse_id: activeWarehouse.id,
-          supplier: form.supplier.trim(),
+          supplier: (suppliers.find(s => s.id === form.supplierId)?.name ?? form.supplier).trim(),
+          supplier_id: form.supplierId || null,
           date: form.datetime ? `${form.datetime}:00` : localYmd(),
           note: form.note.trim(),
         })
@@ -492,7 +522,7 @@ export default function KirimPage() {
     const { error } = await supabase.rpc('stock_in', { p_entries: entries })
 
     setSaving(false)
-    if (error) { toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error')); return }
+    if (error) { toast.error(t(branchAwareErrorKey(error.message))); return }
     toast.success(`${t('kirim.toasts.addSuccess')} (${entries.length})`)
 
     // stock_in returns void — the barcode it auto-generated isn't known
@@ -502,6 +532,7 @@ export default function KirimPage() {
       .from('product_sizes')
       .select('size, color, barcode, selling_price')
       .eq('product_id', product.id)
+      .eq('warehouse_id', activeWarehouse.id)
     const labels: LabelRow[] = entries.map(e => {
       const row = (sizeRows ?? []).find(r => r.size === e.size && r.color === e.color)
       return {
@@ -527,7 +558,7 @@ export default function KirimPage() {
   async function deleteEntry(id: string) {
     const supabase = createClient()
     const { error } = await supabase.rpc('delete_stock_in_entry', { p_id: id })
-    if (error) { toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error')); return }
+    if (error) { toast.error(t(branchAwareErrorKey(error.message))); return }
     toast.success(t('kirim.toasts.deleteSuccess'))
     fetchEntries()
   }
@@ -775,8 +806,8 @@ export default function KirimPage() {
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Ombor tanlash <span className="text-red-500">*</span>
               </label>
-              <div className="flex gap-2">
-                {warehouses.map(w => (
+              <div className="flex gap-2 flex-wrap">
+                {branchWarehouses.map(w => (
                   <button
                     key={w.id}
                     type="button"
@@ -784,11 +815,11 @@ export default function KirimPage() {
                     className={cn(
                       'rounded-lg px-4 py-2 text-sm transition-colors',
                       form.warehouseId === w.id
-                        ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900 font-medium'
+                        ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white font-medium'
                         : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                     )}
                   >
-                    {w.name}
+                    {warehouseLabel(w)}
                     <span className="ml-1.5 text-[11px] opacity-60">({t(WAREHOUSE_TYPE_LABEL_KEYS[w.type])})</span>
                   </button>
                 ))}
@@ -841,7 +872,7 @@ export default function KirimPage() {
                             className={cn(
                               'rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors',
                               markupType === type
-                                ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                                ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
                                 : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100',
                             )}
                           >
@@ -973,8 +1004,24 @@ export default function KirimPage() {
                 </div>
                 <div>
                   <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kirim.modal.supplier')}</label>
-                  <input type="text" placeholder={t('kirim.modal.supplierPlaceholder')} value={form.supplier}
-                    onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))} className={fieldCls} />
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <SearchSelect
+                        options={suppliers.filter(s => s.isActive || s.id === form.supplierId).map(s => ({ value: s.id, label: s.name, sublabel: s.phone || s.companyName || undefined }))}
+                        value={form.supplierId}
+                        onChange={v => setForm(p => ({ ...p, supplierId: v }))}
+                        placeholder={t('suppliersPage.select')}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSupplierFormOpen(true)}
+                      title={t('suppliersPage.quickAdd')}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kirim.modal.note')}</label>
@@ -1007,6 +1054,17 @@ export default function KirimPage() {
       </Dialog>
 
       <PrintLabelsModal labels={savedLabels} open={printLabelsOpen} onOpenChange={setPrintLabelsOpen} />
+
+      <SupplierFormDialog
+        open={supplierFormOpen}
+        onOpenChange={setSupplierFormOpen}
+        supplier={null}
+        onSaved={async id => {
+          setSupplierFormOpen(false)
+          await loadSuppliers()
+          setForm(p => ({ ...p, supplierId: id }))
+        }}
+      />
     </div>
   )
 }

@@ -10,12 +10,13 @@ import { MiniBadge } from '@/components/ui/MiniBadge'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { AddUserModal } from '@/components/jamoa/AddUserModal'
 import { EditUserModal } from '@/components/jamoa/EditUserModal'
-import { getTeamData, deleteTeamUser, type TeamUserRow } from '@/app/(dashboard)/jamoa/actions'
+import { getTeamData, deleteTeamUser, type TeamUserRow, type TeamBranchOption } from '@/app/(dashboard)/jamoa/actions'
 
 export default function JamoaPage() {
   const { t } = useLanguage()
   const [users, setUsers] = useState<TeamUserRow[]>([])
   const [userLimit, setUserLimit] = useState(1)
+  const [branches, setBranches] = useState<TeamBranchOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isAddOpen, setIsAddOpen] = useState(false)
@@ -39,6 +40,7 @@ export default function JamoaPage() {
         errorToastShown.current = false
         setUsers(data.users)
         setUserLimit(data.userLimit)
+        setBranches(data.branches)
       }
     } catch {
       setError(t('common.error'))
@@ -115,6 +117,7 @@ export default function JamoaPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400 w-12">{t('jamoa.table.number')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('jamoa.table.name')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('jamoa.table.login')}</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('branches.branchLabel')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('jamoa.table.status')}</th>
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{t('jamoa.table.actions')}</th>
               </tr>
@@ -122,14 +125,14 @@ export default function JamoaPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center">
+                  <td colSpan={6} className="px-4 py-12 text-center">
                     <Loader2 className="inline h-4 w-4 animate-spin mr-2 text-gray-400 dark:text-gray-500" />
                     <span className="text-sm text-gray-400 dark:text-gray-500">{t('common.loading')}</span>
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center">
+                  <td colSpan={6} className="px-4 py-12 text-center">
                     <Users className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
                     <p className="text-sm text-gray-400 dark:text-gray-500">{t('jamoa.notFound')}</p>
                   </td>
@@ -145,6 +148,7 @@ export default function JamoaPage() {
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{u.fullName}</p>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{u.login}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{branches.find(b => b.id === u.branchId)?.name ?? '—'}</td>
                     <td className="px-4 py-3">
                       <MiniBadge status={u.status} />
                     </td>
@@ -175,9 +179,9 @@ export default function JamoaPage() {
       </>
       )}
 
-      <AddUserModal open={isAddOpen} onOpenChange={setIsAddOpen} onCreated={fetchData} limitReached={limitReached} />
+      <AddUserModal open={isAddOpen} onOpenChange={setIsAddOpen} onCreated={fetchData} limitReached={limitReached} branches={branches} />
 
-      <EditUserModal user={editTarget} onOpenChange={open => { if (!open) setEditTarget(null) }} onUpdated={fetchData} />
+      <EditUserModal user={editTarget} onOpenChange={open => { if (!open) setEditTarget(null) }} onUpdated={fetchData} branches={branches} />
 
       <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null) }}>
         <DialogContent className="sm:max-w-sm">

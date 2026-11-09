@@ -1,9 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-
-const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
+import { useSession } from '@/lib/session/SessionContext'
 
 interface PaymentStatus {
   daysLeft: number | null
@@ -21,48 +18,23 @@ const INITIAL_STATUS: PaymentStatus = {
   loading: true,
 }
 
-export function usePaymentStatus() {
-  const [status, setStatus] = useState<PaymentStatus>(INITIAL_STATUS)
+function daysUntilCeil(dueDateStr: string): number {
+  return Math.ceil((new Date(dueDateStr).getTime() - Date.now()) / 86400000)
+}
 
-  useEffect(() => {
-    let cancelled = false
-    const supabase = createClient()
+export function usePaymentStatus(): PaymentStatus {
+  const { loading, isSuperAdmin, company } = useSession()
 
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
+  if (loading) return INITIAL_STATUS
+  // Super admin has no company of their own — never blocked.
+  if (isSuperAdmin || !company?.paymentDueDate) return { ...INITIAL_STATUS, loading: false }
 
-      // Super admin has no company of their own — never blocked, and
-      // querying companies for them would match every row, not one.
-      if (!user || user.email?.toLowerCase() === SUPER_ADMIN_EMAIL) {
-        if (!cancelled) setStatus(prev => ({ ...prev, loading: false }))
-        return
-      }
-
-      const { data } = await supabase
-        .from('companies')
-        .select('payment_due_date, monthly_fee')
-        .maybeSingle()
-
-      if (cancelled) return
-
-      if (!data?.payment_due_date) {
-        setStatus(prev => ({ ...prev, loading: false }))
-        return
-      }
-
-      const daysLeft = Math.ceil((new Date(data.payment_due_date).getTime() - Date.now()) / 86400000)
-      setStatus({
-        daysLeft,
-        isBlocked: daysLeft < 0,
-        monthlyFee: data.monthly_fee ?? 0,
-        dueDate: data.payment_due_date,
-        loading: false,
-      })
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [])
-
-  return status
+  const daysLeft = daysUntilCeil(company.paymentDueDate)
+  return {
+    daysLeft,
+    isBlocked: daysLeft < 0,
+    monthlyFee: company.monthlyFee,
+    dueDate: company.paymentDueDate,
+    loading: false,
+  }
 }

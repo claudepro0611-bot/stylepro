@@ -14,6 +14,8 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import type { TranslationKey } from '@/lib/i18n/translations'
 import type { Shift } from '@/lib/types'
+import { useBranchFilter } from '@/lib/session/useBranch'
+import { useWarehouseScope } from '@/lib/branchStock'
 
 // Requests with mode = 'shikoyat' AND status = 'resolved' also surface here
 // (Task 5.3) as a third "Hal etilgan shikoyatlar" tab, following the same
@@ -84,6 +86,7 @@ interface TransactionRow {
   created_at: string
   payment_method: string
   cashier_name: string | null
+  branch_id?: string | null
 }
 
 interface TransactionItemRow {
@@ -126,29 +129,35 @@ export function ArxivView({ tabs, title, subtitle }: { tabs: ArxivTab[]; title: 
   const [items, setItems] = useState<TransactionItemRow[]>([])
   const [products, setProducts] = useState<{ id: string; name: string }[]>([])
   const [resolvedComplaints, setResolvedComplaints] = useState<ResolvedComplaintRow[]>([])
+  // Branch: reads follow the header branch; multi-branch owner/admin on
+  // "All branches" get a Branch column.
+  const applyBranch = useBranchFilter()
+  const { showBranch: showBranchCol, branchName } = useWarehouseScope()
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
     const [shiftsRes, txnsRes, itemsRes, productsRes, complaintsRes] = await Promise.all([
-      supabase.from('shifts').select('*').eq('status', 'closed').order('started_at', { ascending: false }),
-      supabase.from('transactions_net').select('id, customer_name, total_amount, net_amount, returned_amount, status, date, created_at, payment_method, cashier_name').order('created_at', { ascending: false }),
-      supabase.from('transaction_items').select('id, transaction_id, product_id, product_name, quantity, price, returned_quantity, product_size_id'),
+      applyBranch(supabase.from('shifts').select('*').eq('status', 'closed')).order('started_at', { ascending: false }),
+      applyBranch(supabase.from('transactions_net').select('id, customer_name, total_amount, net_amount, returned_amount, status, date, created_at, payment_method, cashier_name, branch_id')).order('created_at', { ascending: false }),
+      applyBranch(supabase.from('transaction_items').select('id, transaction_id, product_id, product_name, quantity, price, returned_quantity, product_size_id')),
       supabase.from('products').select('id, name').order('name'),
-      supabase.from('requests').select('id, ticket_number, customer_name, type, priority, created_at').eq('mode', 'shikoyat').eq('status', 'resolved').order('created_at', { ascending: false }),
+      applyBranch(supabase.from('requests').select('id, ticket_number, customer_name, type, priority, created_at').eq('mode', 'shikoyat').eq('status', 'resolved')).order('created_at', { ascending: false }),
     ])
 
     setShifts((shiftsRes.data ?? []) as Shift[])
-    setTransactions((txnsRes.data ?? []) as TransactionRow[])
+    setTransactions((txnsRes.data ?? []) as unknown as TransactionRow[])
     setItems((itemsRes.data ?? []) as TransactionItemRow[])
     setProducts((productsRes.data ?? []) as { id: string; name: string }[])
     setResolvedComplaints((complaintsRes.data ?? []) as ResolvedComplaintRow[])
     setLoading(false)
-  }, [])
+  }, [applyBranch])
 
   useEffect(() => {
     fetchAll()
   }, [fetchAll])
+
+  const shiftBranch = (s: Shift) => branchName((s as Shift & { branch_id?: string | null }).branch_id) || '—'
 
   const itemsByTxn = useMemo(() => {
     const map = new Map<string, TransactionItemRow[]>()
@@ -286,10 +295,12 @@ export function ArxivView({ tabs, title, subtitle }: { tabs: ArxivTab[]; title: 
     const headers = [
       t('arxiv.salesTable.time'), t('arxiv.salesTable.receipt'), t('arxiv.salesTable.cashier'),
       t('arxiv.salesTable.customer'), t('arxiv.salesTable.amount'), t('arxiv.salesTable.payment'),
+      ...(showBranchCol ? [t('branches.branchLabel')] : []),
     ]
     const rows = filteredSales.map(tr => [
       formatDateTime(tr.created_at), receiptNumber(tr.id), tr.cashier_name ?? '',
       tr.customer_name ?? '', String(tr.net_amount), tr.payment_method,
+      ...(showBranchCol ? [branchName(tr.branch_id)] : []),
     ])
     const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -370,6 +381,7 @@ export function ArxivView({ tabs, title, subtitle }: { tabs: ArxivTab[]; title: 
                       <tr className="border-b border-gray-100 dark:border-gray-800">
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.shiftsTable.date')}</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.shiftsTable.cashier')}</th>
+                        {showBranchCol && <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('branches.branchLabel')}</th>}
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.shiftsTable.duration')}</th>
                         <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.shiftsTable.sales')}</th>
                         <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.shiftsTable.amount')}</th>
@@ -387,6 +399,7 @@ export function ArxivView({ tabs, title, subtitle }: { tabs: ArxivTab[]; title: 
                         >
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(s.started_at)}</td>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{s.cashier_name}</td>
+                          {showBranchCol && <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{shiftBranch(s)}</td>}
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 tabular-nums">{formatDuration(s.started_at, s.ended_at)}</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-500 dark:text-gray-400 tabular-nums">{s.total_sales}</td>
                           <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{formatPrice(s.total_amount)}</td>
@@ -468,6 +481,7 @@ export function ArxivView({ tabs, title, subtitle }: { tabs: ArxivTab[]; title: 
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.salesTable.time')}</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.salesTable.receipt')}</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.salesTable.cashier')}</th>
+                        {showBranchCol && <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('branches.branchLabel')}</th>}
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.salesTable.customer')}</th>
                         <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.salesTable.amount')}</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('arxiv.salesTable.payment')}</th>
@@ -487,6 +501,7 @@ export function ArxivView({ tabs, title, subtitle }: { tabs: ArxivTab[]; title: 
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(tr.created_at)}</td>
                           <td className="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{receiptNumber(tr.id)}</td>
                           <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{tr.cashier_name ?? '—'}</td>
+                          {showBranchCol && <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{branchName(tr.branch_id) || '—'}</td>}
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{tr.customer_name ?? '—'}</td>
                           <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">{formatPrice(tr.net_amount)}</td>
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{tr.payment_method}</td>

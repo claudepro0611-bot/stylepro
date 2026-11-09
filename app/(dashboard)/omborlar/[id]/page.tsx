@@ -13,10 +13,12 @@ import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { sortSizes } from '@/lib/sizes'
 import { WAREHOUSE_TYPE_LABEL_KEYS, type WarehouseType } from '@/lib/warehouses'
 import { EditWarehouseDialog, type EditableWarehouse } from '@/components/omborlar/EditWarehouseDialog'
+import { useSession } from '@/lib/session/SessionContext'
+import { useIsMultiBranch } from '@/lib/session/useBranch'
 
 const thCls = 'px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap'
 
-interface WarehouseRow { id: string; name: string; type: WarehouseType; created_at: string }
+interface WarehouseRow { id: string; name: string; type: WarehouseType; created_at: string; branch_id: string | null }
 interface SizeRow {
   id: string; product_id: string; size: string; color: string; stock: number
   purchase_price: number | null
@@ -48,6 +50,8 @@ export default function WarehouseDetailPage() {
   const [lines, setLines] = useState<Line[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<EditableWarehouse | null>(null)
+  const { branches } = useSession()
+  const multiBranch = useIsMultiBranch()
 
   useEffect(() => {
     let cancelled = false
@@ -55,7 +59,7 @@ export default function WarehouseDetailPage() {
       setLoading(true)
       const supabase = createClient()
       const { data: whData } = await supabase
-        .from('warehouses').select('id, name, type, created_at').eq('id', id).maybeSingle()
+        .from('warehouses').select('id, name, type, created_at, branch_id').eq('id', id).maybeSingle()
       if (cancelled) return
       if (!whData) {
         // Missing, not in this company (RLS), or a malformed id — all render as "not found".
@@ -162,7 +166,7 @@ export default function WarehouseDetailPage() {
       {/* Details */}
       <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-6">
         <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('warehouses.detail.details')}</p>
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className={cn('mt-4 grid grid-cols-1 gap-4', multiBranch ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400">{t('warehouses.table.name')}</p>
             <p className="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">{warehouse?.name ?? '—'}</p>
@@ -179,6 +183,14 @@ export default function WarehouseDetailPage() {
               {warehouse ? formatDmy(warehouse.created_at) : '—'}
             </p>
           </div>
+          {multiBranch && (
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('branches.branchLabel')}</p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">
+                {branches.find(b => b.id === warehouse?.branch_id)?.name ?? '—'}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -259,7 +271,8 @@ export default function WarehouseDetailPage() {
       <EditWarehouseDialog
         warehouse={editing}
         onOpenChange={open => { if (!open) setEditing(null) }}
-        onSaved={u => setWarehouse(prev => (prev ? { ...prev, name: u.name, type: u.type } : prev))}
+        branches={multiBranch ? branches : []}
+        onSaved={u => setWarehouse(prev => (prev ? { ...prev, name: u.name, type: u.type, branch_id: u.branch_id ?? prev.branch_id } : prev))}
       />
     </div>
   )

@@ -1,29 +1,45 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
-import { createTeamUser } from '@/app/(dashboard)/jamoa/actions'
+import { createTeamUser, type TeamBranchOption } from '@/app/(dashboard)/jamoa/actions'
+import { BranchSelect } from '@/components/filiallar/BranchSelect'
+import { branchErrorKey } from '@/lib/branches'
 
 const inputCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 
-const emptyForm = { fullName: '', login: '', password: '', status: 'active' as 'active' | 'inactive' }
+const emptyForm = { fullName: '', login: '', password: '', status: 'active' as 'active' | 'inactive', branchId: '' }
+
+/** Company default branch if active, else the first active branch. */
+export function defaultBranchId(branches: TeamBranchOption[]): string {
+  const active = branches.filter(b => b.isActive)
+  return (active.find(b => b.isDefault) ?? active[0])?.id ?? ''
+}
 
 interface AddUserModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
   limitReached: boolean
+  branches: TeamBranchOption[]
 }
 
-export function AddUserModal({ open, onOpenChange, onCreated, limitReached }: AddUserModalProps) {
+export function AddUserModal({ open, onOpenChange, onCreated, limitReached, branches }: AddUserModalProps) {
   const { t } = useLanguage()
   const [form, setForm] = useState(emptyForm)
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const activeBranches = branches.filter(b => b.isActive)
+
+  // Preselect the default branch whenever the dialog opens (or the branch
+  // list arrives after it opened).
+  useEffect(() => {
+    if (open) setForm(f => (f.branchId ? f : { ...f, branchId: defaultBranchId(branches) }))
+  }, [open, branches])
 
   function handleOpenChange(next: boolean) {
     if (!next) setForm(emptyForm)
@@ -36,7 +52,8 @@ export function AddUserModal({ open, onOpenChange, onCreated, limitReached }: Ad
     setSubmitting(false)
 
     if ('error' in result && result.error) {
-      toast.error(result.error)
+      const key = branchErrorKey(result.error)
+      toast.error(key ? t(key) : result.error)
       return
     }
 
@@ -100,6 +117,12 @@ export function AddUserModal({ open, onOpenChange, onCreated, limitReached }: Ad
             </div>
           </div>
 
+          <BranchSelect
+            value={form.branchId}
+            onChange={id => setForm(f => ({ ...f, branchId: id }))}
+            options={activeBranches}
+          />
+
           <div>
             <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('jamoa.addModal.status')}</label>
             <div className="flex gap-2">
@@ -123,7 +146,7 @@ export function AddUserModal({ open, onOpenChange, onCreated, limitReached }: Ad
 
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={() => handleOpenChange(false)}>{t('common.cancel')}</Button>
-          <Button onClick={handleSubmit} disabled={submitting || limitReached} loading={submitting}>
+          <Button onClick={handleSubmit} disabled={submitting || limitReached || !form.branchId} loading={submitting}>
             {t('common.add')}
           </Button>
         </DialogFooter>

@@ -17,6 +17,8 @@ import {
   STOCK_COUNT_STATUS_LABEL_KEYS, STOCK_COUNT_STATUS_PILL, formatCountNumber, stockCountErrorKey,
   type StockCountItemRow, type StockCountRow, type StockCountStatus,
 } from '@/lib/stock-counts'
+import { branchStockErrorKey, eqBranch, useWarehouseScope } from '@/lib/branchStock'
+import { useActiveBranchId } from '@/lib/session/useBranch'
 
 const inputCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 const thCls = 'px-4 py-3 text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap'
@@ -24,14 +26,19 @@ const pillGroup = 'flex items-center gap-0.5 rounded-lg bg-gray-100 dark:bg-gray
 const segCls = (active: boolean) => cn(
   'flex h-8 items-center justify-center rounded-md px-3 text-[12.5px] font-medium transition-colors',
   active
-    ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+    ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
     : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
 )
 
 type StatusFilter = 'all' | StockCountStatus
 const STATUS_FILTERS: StatusFilter[] = ['all', 'draft', 'completed', 'cancelled']
 
-interface WarehouseRow { id: string; name: string }
+interface WarehouseRow { id: string; name: string; branch_id: string | null }
+
+// Branch errors (branch_forbidden...) first, then the stock-count codes.
+function countErrorKey(message: string | undefined | null) {
+  return branchStockErrorKey(message) ?? stockCountErrorKey(message)
+}
 type ItemAgg = Pick<StockCountItemRow, 'count_id' | 'counted_qty' | 'expected_qty' | 'purchase_price'>
 
 interface Summary {
@@ -55,8 +62,12 @@ export default function InventarizatsiyaPage() {
 
   const [counts, setCounts] = useState<StockCountRow[]>([])
   const [items, setItems] = useState<ItemAgg[]>([])
-  const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
+  const [allWarehouses, setWarehouses] = useState<WarehouseRow[]>([])
   const [loading, setLoading] = useState(true)
+  const activeBranchId = useActiveBranchId()
+  const { scope: scopeWarehouses, groupByBranch, label: warehouseLabel } = useWarehouseScope()
+  // Pickers: only the active branch's warehouses (owner on "All": all).
+  const warehouses = useMemo(() => groupByBranch(scopeWarehouses(allWarehouses)), [allWarehouses, scopeWarehouses, groupByBranch])
   const [filter, setFilter] = useState<StatusFilter>('all')
 
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -72,14 +83,14 @@ export default function InventarizatsiyaPage() {
     const supabase = db()
     const [countsRes, itemsRes, whRes] = await Promise.all([
       fetchAllRows<StockCountRow>((from, to) =>
-        supabase.from('stock_counts')
-          .select('id, number, warehouse_id, status, note, created_at, completed_at, zero_uncounted')
+        eqBranch(supabase.from('stock_counts')
+          .select('id, number, warehouse_id, status, note, created_at, completed_at, zero_uncounted'), activeBranchId)
           .order('id').range(from, to)),
       fetchAllRows<ItemAgg>((from, to) =>
         supabase.from('stock_count_items')
           .select('count_id, counted_qty, expected_qty, purchase_price')
           .order('id').range(from, to)),
-      supabase.from('warehouses').select('id, name').order('created_at'),
+      supabase.from('warehouses').select('id, name, branch_id').order('created_at'),
     ])
     if (countsRes.error || itemsRes.error || whRes.error) toast.error(t('common.error'))
     else {
@@ -88,11 +99,11 @@ export default function InventarizatsiyaPage() {
       setWarehouses((whRes.data ?? []) as WarehouseRow[])
     }
     setLoading(false)
-  }, [t])
+  }, [t, activeBranchId])
 
   useEffect(() => { load() }, [load])
 
-  const warehouseName = useMemo(() => new Map(warehouses.map(w => [w.id, w.name])), [warehouses])
+  const warehouseName = useMemo(() => new Map(allWarehouses.map(w => [w.id, warehouseLabel(w)])), [allWarehouses, warehouseLabel])
 
   const summaries = useMemo(() => {
     const map = new Map<string, Summary>()
@@ -134,7 +145,7 @@ export default function InventarizatsiyaPage() {
     })
     setCreating(false)
     if (error || !data) {
-      toast.error(t(stockCountErrorKey(error?.message)))
+      toast.error(t(countErrorKey(error?.message)))
       // Another user may have opened a draft meanwhile — refresh so the
       // dialog can offer to jump to it.
       if (error?.message.includes('Open count exists')) await load()
@@ -151,7 +162,7 @@ export default function InventarizatsiyaPage() {
     const { error } = await db().rpc('delete_stock_count', { p_count_id: deleteTarget.id })
     setDeleting(false)
     if (error) {
-      toast.error(t(stockCountErrorKey(error.message)))
+      toast.error(t(countErrorKey(error.message)))
       return
     }
     const id = deleteTarget.id
@@ -320,11 +331,11 @@ export default function InventarizatsiyaPage() {
                     className={cn(
                       'h-9 min-w-[7rem] flex-1 rounded-lg border px-3 text-[13px] font-medium transition-colors',
                       newWarehouseId === w.id
-                        ? 'bg-slate-900 dark:bg-white shadow-sm border-slate-900 dark:border-white text-white dark:text-gray-900'
+                        ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border-indigo-600 dark:border-indigo-500 text-white'
                         : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                     )}
                   >
-                    {w.name}
+                    {warehouseLabel(w)}
                   </button>
                 ))}
               </div>

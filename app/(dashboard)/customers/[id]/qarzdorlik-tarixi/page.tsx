@@ -14,6 +14,9 @@ import { formatDate } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { cn } from '@/lib/utils'
+import { NasiyaDetailDialog, SaleDetailDialog, type NasiyaMove } from '@/components/sales/SaleDetailDialog'
+import { useBranchFilter } from '@/lib/session/useBranch'
+import { branchRpcErrorKey } from '@/components/customers/branchUi'
 
 const KARTA_KPI_CARD_CLS = 'rounded-xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm p-4'
 
@@ -28,17 +31,21 @@ interface NasiyaTxnRow {
   type: 'given' | 'repaid'
   amount: number
   note: string | null
+  related_transaction_id?: string | null
 }
 
 export default function QarzdorlikTarixiPage() {
   const { id: customerId } = useParams<{ id: string }>()
   const { t } = useLanguage()
   const { formatPrice } = useCurrency()
+  const applyBranch = useBranchFilter()
 
   const [loading, setLoading] = useState(true)
   const [customer, setCustomer] = useState<CustomerHeader | null>(null)
   const [nasiyaBalance, setNasiyaBalance] = useState(0)
   const [nasiyaHistory, setNasiyaHistory] = useState<NasiyaTxnRow[]>([])
+  const [openMove, setOpenMove] = useState<NasiyaMove | null>(null)
+  const [openTx, setOpenTx] = useState<string | null>(null)
 
   const [giveNasiyaOpen, setGiveNasiyaOpen] = useState(false)
   const [giveAmount, setGiveAmount] = useState('')
@@ -54,11 +61,11 @@ export default function QarzdorlikTarixiPage() {
     const supabase = createClient()
     const [{ data: balanceData }, { data: rows }] = await Promise.all([
       supabase.rpc('get_customer_nasiya_balance', { p_customer_id: id }),
-      supabase.from('nasiya_transactions').select('*').eq('customer_id', id).order('created_at', { ascending: false }),
+      applyBranch(supabase.from('nasiya_transactions').select('*').eq('customer_id', id)).order('created_at', { ascending: false }),
     ])
     setNasiyaBalance(Number(balanceData ?? 0))
     setNasiyaHistory((rows ?? []) as NasiyaTxnRow[])
-  }, [])
+  }, [applyBranch])
 
   useEffect(() => {
     let cancelled = false
@@ -107,7 +114,7 @@ export default function QarzdorlikTarixiPage() {
     setGiving(false)
 
     if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      toast.error(t(branchRpcErrorKey(error.message) ?? 'common.error'))
       return
     }
 
@@ -140,8 +147,8 @@ export default function QarzdorlikTarixiPage() {
       // generic error, same pattern as pos/page.tsx's handleSell branches.
       if (error.message.includes('exceeds outstanding nasiya balance')) {
         toast.error(t('customers.karta.repayExceedsError'))
-      } else if (error.message.includes('forbidden')) {
-        toast.error(t('common.forbidden'))
+      } else if (branchRpcErrorKey(error.message)) {
+        toast.error(t(branchRpcErrorKey(error.message) ?? 'common.error'))
       } else {
         toast.error(t('common.error'))
       }
@@ -230,7 +237,11 @@ export default function QarzdorlikTarixiPage() {
                       </td>
                     </tr>
                   ) : nasiyaHistory.map(r => (
-                    <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
+                    <tr
+                      key={r.id}
+                      onClick={() => setOpenMove({ id: r.id, type: r.type, amount: Number(r.amount), at: r.created_at, customer: customer?.fullName ?? '—', note: r.note, relatedTransactionId: r.related_transaction_id ?? null })}
+                      className="cursor-pointer border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+                    >
                       <td className="px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">{formatDate(r.created_at)}</td>
                       <td className="px-3 py-2.5">
                         <span className={cn(
@@ -333,6 +344,8 @@ export default function QarzdorlikTarixiPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <NasiyaDetailDialog move={openMove} onClose={() => setOpenMove(null)} onOpenSale={id => { setOpenMove(null); setOpenTx(id) }} />
+      <SaleDetailDialog transactionId={openTx} onClose={() => setOpenTx(null)} />
     </div>
   )
 }

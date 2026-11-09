@@ -10,8 +10,11 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { createClient } from '@/lib/supabase/client'
+import { fetchAllRows } from '@/lib/supabase/helpers'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
+import { useBranchFilter } from '@/lib/session/useBranch'
+import { BranchScopeLabel } from '@/components/reports/BranchScopeLabel'
 import { ReportPeriodFilterBar } from '@/components/reports/ReportPeriodFilterBar'
 import { DonutChart, type DonutSlice } from '@/components/reports/DonutChart'
 import { periodRange, bucketGranularity, buildBuckets, bucketKey, bucketLabel, type Period } from '@/lib/reports/period'
@@ -116,7 +119,7 @@ const FILTER_TABS: { value: FilterTab; labelKey: 'reports.inventar.filters.all' 
 const PILL_CLS = (active: boolean) =>
   `px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
     active
-      ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+      ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
       : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
   }`
 
@@ -155,35 +158,51 @@ export default function InventarReportPage() {
   const [stockOutEntries, setStockOutEntries] = useState<StockOutRow[]>([])
   const [transactions, setTransactions] = useState<TxnRow[]>([])
   const [txnItems, setTxnItems] = useState<TxnItemRow[]>([])
+  const applyBranch = useBranchFilter()
 
+  const [from, to] = useMemo(() => periodRange(period, customFrom, customTo), [period, customFrom, customTo])
+
+  // Catalog + current stock: all rows, paged (no 1000-row cap). Movement and
+  // sales rows: only the selected period, filtered in the DB — previously the
+  // entire history of every table was downloaded on each visit and silently
+  // truncated at 1000 rows. The in-memory math below is unchanged.
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
+    type Page<T> = PromiseLike<{ data: T[] | null; error: unknown }>
     const [productsRes, sizesRes, stockInRes, stockOutRes, txnRes, txnItemRes] = await Promise.all([
-      supabase.from('products').select('id, name, category'),
-      supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price'),
-      supabase.from('stock_in_entries').select('quantity, total_amount, date, entry_type, product_size_id'),
-      supabase.from('stock_out_entries').select('quantity, total_amount, date, entry_type, product_size_id'),
-      supabase.from('transactions').select('id, date, status').eq('status', 'completed'),
-      supabase.from('transaction_items').select('transaction_id, product_id, price, purchase_price, quantity'),
+      fetchAllRows<ProductRow>((a, b) => supabase.from('products').select('id, name, category')
+        .order('id').range(a, b) as unknown as Page<ProductRow>),
+      // Current stock and movements are narrowed to the Header branch (no-op
+      // on "All branches"); the products catalog stays company-wide.
+      fetchAllRows<ProductSizeRow>((a, b) => applyBranch(supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price'))
+        .order('id').range(a, b) as unknown as Page<ProductSizeRow>),
+      fetchAllRows<StockInRow>((a, b) => applyBranch(supabase.from('stock_in_entries').select('quantity, total_amount, date, entry_type, product_size_id')
+        .gte('date', from).lte('date', to)).order('id').range(a, b) as unknown as Page<StockInRow>),
+      fetchAllRows<StockOutRow>((a, b) => applyBranch(supabase.from('stock_out_entries').select('quantity, total_amount, date, entry_type, product_size_id')
+        .gte('date', from).lte('date', to)).order('id').range(a, b) as unknown as Page<StockOutRow>),
+      fetchAllRows<TxnRow>((a, b) => applyBranch(supabase.from('transactions').select('id, date, status')
+        .eq('status', 'completed').gte('date', from).lte('date', to)).order('id').range(a, b) as unknown as Page<TxnRow>),
+      fetchAllRows<TxnItemRow>((a, b) => applyBranch(supabase.from('transaction_items')
+        .select('transaction_id, product_id, price, purchase_price, quantity, transactions!inner(date, status)')
+        .eq('transactions.status', 'completed').gte('transactions.date', from).lte('transactions.date', to))
+        .order('id').range(a, b) as unknown as Page<TxnItemRow>),
     ])
 
     if (productsRes.error || sizesRes.error || stockInRes.error || stockOutRes.error || txnRes.error || txnItemRes.error) {
       toast.error(t('common.error'))
     } else {
-      setProducts((productsRes.data ?? []) as ProductRow[])
-      setProductSizes((sizesRes.data ?? []) as ProductSizeRow[])
-      setStockInEntries((stockInRes.data ?? []) as StockInRow[])
-      setStockOutEntries((stockOutRes.data ?? []) as StockOutRow[])
-      setTransactions((txnRes.data ?? []) as TxnRow[])
-      setTxnItems((txnItemRes.data ?? []) as TxnItemRow[])
+      setProducts(productsRes.data)
+      setProductSizes(sizesRes.data)
+      setStockInEntries(stockInRes.data)
+      setStockOutEntries(stockOutRes.data)
+      setTransactions(txnRes.data)
+      setTxnItems(txnItemRes.data)
     }
     setLoading(false)
-  }, [t])
+  }, [t, from, to, applyBranch])
 
   useEffect(() => { fetchAll() }, [fetchAll])
-
-  const [from, to] = useMemo(() => periodRange(period, customFrom, customTo), [period, customFrom, customTo])
   const inRange = useCallback((d: string) => { const day = d.slice(0, 10); return day >= from && day <= to }, [from, to])
 
   const filteredStockIn = useMemo(() => stockInEntries.filter(e => inRange(e.date)), [stockInEntries, inRange])
@@ -420,6 +439,7 @@ export default function InventarReportPage() {
       <div>
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('reports.inventar.title')}</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('reports.inventar.subtitle')}</p>
+        <BranchScopeLabel className="mt-1" />
       </div>
 
       <ReportPeriodFilterBar

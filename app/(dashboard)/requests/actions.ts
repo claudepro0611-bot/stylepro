@@ -58,7 +58,10 @@ async function notifyCustomerRequestUpdateInternal(requestId: string, notes: str
     return { success: true }
   }
 
-  const { data: request, error } = await supabaseServer
+  // Session (RLS) client, not the service role: requests are branch-scoped,
+  // so a manager/staff cannot trigger a notification for another branch.
+  const supabase = await createClient()
+  const { data: request, error } = await supabase
     .from('requests')
     .select('id, company_id, customer_id')
     .eq('id', requestId)

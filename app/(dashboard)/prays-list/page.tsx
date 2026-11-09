@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, ListOrdered, Loader2, Plus, Printer, Search, Trash2, Users, X } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { branchAwareErrorKey } from '@/lib/branchStock'
+import { useSession } from '@/lib/session/SessionContext'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase/helpers'
@@ -23,7 +25,7 @@ const labelCls = 'block text-[13px] font-medium text-gray-700 dark:text-gray-300
 const segCls = (active: boolean) => cn(
   'rounded-md px-3 py-1 text-xs font-medium transition-colors',
   active
-    ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+    ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
     : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100',
 )
 
@@ -54,6 +56,8 @@ function escapeHtml(s: string): string {
 export default function PriceListPage() {
   const { t } = useLanguage()
   const { formatPrice } = useCurrency()
+  // Price list mutations are owner/admin only ('catalog_forbidden' server-side).
+  const { canSeeAllBranches: canEditCatalog } = useSession()
 
   const [loading, setLoading] = useState(true)
   const [lists, setLists] = useState<PriceList[]>([])
@@ -99,9 +103,15 @@ export default function PriceListPage() {
       const productMap = new Map(productsRes.data.map(p => [p.id, p]))
       const rank = new Map(sortSizes(Array.from(new Set(sizesRes.data.map(s => s.size)))).map((s, i) => [s, i]))
       const rows: VariantRow[] = []
+      // One row per variant: its warehouse rows share prices, and
+      // set_price_list_item writes to all of them.
+      const seen = new Set<string>()
       for (const sz of sizesRes.data) {
         const p = productMap.get(sz.product_id)
         if (!p || p.status !== 'active') continue
+        const variantKey = `${sz.product_id}|${sz.size}|${sz.color}`
+        if (seen.has(variantKey)) continue
+        seen.add(variantKey)
         rows.push({
           id: sz.id,
           name: p.name,
@@ -170,7 +180,7 @@ export default function PriceListPage() {
       p_id: draft.id, p_name: draft.name.trim(), p_base: draft.base, p_adjust_percent: adjust, p_rounding: draft.rounding, p_is_active: draft.isActive,
     })
     setSaving(false)
-    if (error) { toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error')); return }
+    if (error) { toast.error(t(branchAwareErrorKey(error.message))); return }
     await loadLists()
     if (data) setActiveId(data as string)
     setDialogOpen(false)
@@ -182,7 +192,7 @@ export default function PriceListPage() {
     const supabase = createClient()
     const { error } = await supabase.rpc('delete_price_list', { p_id: active.id })
     setDeleteOpen(false)
-    if (error) { toast.error(t('common.error')); return }
+    if (error) { toast.error(t(branchAwareErrorKey(error.message))); return }
     const next = await loadLists()
     setCustomers(prev => prev.map(c => (c.priceListId === active.id ? { ...c, priceListId: null } : c)))
     setActiveId(next[0]?.id ?? null)
@@ -198,7 +208,7 @@ export default function PriceListPage() {
     const price = digits === '' ? null : Number(digits)
     const supabase = createClient()
     const { error } = await supabase.rpc('set_price_list_item', { p_price_list_id: active.id, p_product_size_id: v.id, p_price: price })
-    if (error) { toast.error(t('common.error')); return }
+    if (error) { toast.error(t(branchAwareErrorKey(error.message))); return }
     setOverrides(prev => {
       const next = new Map(prev)
       if (price === null) next.delete(v.id)
@@ -212,7 +222,7 @@ export default function PriceListPage() {
   async function setCustomerList(customerId: string, listId: string | null) {
     const supabase = createClient()
     const { error } = await supabase.rpc('set_customer_price_list', { p_customer_id: customerId, p_price_list_id: listId })
-    if (error) { toast.error(t('common.error')); return }
+    if (error) { toast.error(t(branchAwareErrorKey(error.message))); return }
     setCustomers(prev => prev.map(c => (c.id === customerId ? { ...c, priceListId: listId } : c)))
   }
 
@@ -257,9 +267,11 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ddd;pad
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('priceLists.title')}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('priceLists.subtitle')}</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors">
-          <Plus className="h-4 w-4" /> {t('priceLists.create')}
-        </button>
+        {canEditCatalog && (
+          <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors">
+            <Plus className="h-4 w-4" /> {t('priceLists.create')}
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -269,9 +281,11 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ddd;pad
           <ListOrdered className="h-6 w-6 text-gray-300 dark:text-gray-600" />
           <p className="font-medium text-gray-900 dark:text-gray-100">{t('priceLists.emptyTitle')}</p>
           <p className="max-w-md text-center">{t('priceLists.emptyHint')}</p>
-          <button onClick={openCreate} className="mt-2 flex items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors">
-            <Plus className="h-4 w-4" /> {t('priceLists.create')}
-          </button>
+          {canEditCatalog && (
+            <button onClick={openCreate} className="mt-2 flex items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors">
+              <Plus className="h-4 w-4" /> {t('priceLists.create')}
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -284,7 +298,7 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ddd;pad
                 className={cn(
                   'rounded-lg px-4 py-2 text-sm font-medium transition-colors',
                   l.id === activeId
-                    ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                    ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
                     : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                   !l.isActive && 'opacity-60',
                 )}
@@ -308,14 +322,14 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ddd;pad
                   </span>
                 </div>
                 <p className="text-[12.5px] text-gray-400 dark:text-gray-500">{t('priceLists.overrideHint')}</p>
-                <div className="flex gap-2">
+                {canEditCatalog && <div className="flex gap-2">
                   <button onClick={openEdit} className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                     {t('priceLists.edit')}
                   </button>
                   <button onClick={() => setDeleteOpen(true)} aria-label={t('priceLists.delete')} className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
-                </div>
+                </div>}
               </div>
 
               {/* Customers card */}
@@ -403,7 +417,9 @@ table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ddd;pad
                               onChange={e => setOverrideDraft(prev => ({ ...prev, [v.id]: e.target.value }))}
                               onBlur={() => commitOverride(v)}
                               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                              className={cn('h-8 w-28 rounded-lg border bg-white dark:bg-gray-900 px-2 text-right text-sm tabular-nums text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500', hasOverride ? 'border-gray-400 dark:border-gray-500' : 'border-gray-200 dark:border-gray-700')}
+                              disabled={!canEditCatalog}
+                              title={canEditCatalog ? undefined : t('branchStock.catalogReadOnly')}
+                              className={cn('disabled:opacity-60 disabled:cursor-not-allowed h-8 w-28 rounded-lg border bg-white dark:bg-gray-900 px-2 text-right text-sm tabular-nums text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500', hasOverride ? 'border-gray-400 dark:border-gray-500' : 'border-gray-200 dark:border-gray-700')}
                             />
                           </td>
                         </tr>

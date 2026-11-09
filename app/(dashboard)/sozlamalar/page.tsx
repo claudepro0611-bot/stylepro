@@ -21,7 +21,7 @@ const segCls = (active: boolean) =>
   cn(
     'flex h-8 items-center justify-center rounded-md px-3 text-[12.5px] font-medium transition-colors',
     active
-      ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+      ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
       : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
   )
 
@@ -385,7 +385,7 @@ export default function SettingsPage() {
                         onClick={() => toggleUnit(unit)}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           unitTypes.includes(unit)
-                            ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                            ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
                             : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                         }`}
                       >

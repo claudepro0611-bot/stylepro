@@ -11,6 +11,12 @@ const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 // otherwise get redirected to /login on every request.
 const BYPASS_PATHS = ['/api/telegram/webhook', '/api/cron']
 
+// Role-gated (not permission-gated) prefixes: only all-branch roles
+// (owner/admin) may enter. Deliberately no PermissionKey - branch
+// management is tied to the role, same as get_branch_id() in SQL.
+const ALL_BRANCH_ROLE_PATHS = ['/filiallar']
+const ALL_BRANCH_ROLES = ['owner', 'admin']
+
 // Route-prefix -> PERMISSION_KEY. /dashboard, /sozlamalar, /pos stay
 // role-based-only (every authenticated company user can reach them).
 // All other permission-gated pages are now covered here as well, closing
@@ -21,12 +27,26 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/kirim': 'kirim',
   '/chiqim': 'chiqim',
   '/brak': 'brak',
+  '/peremeshenie': 'peremeshenie',
+  '/yetkazuvchilar': 'yetkazuvchilar',
+  '/xaridlar': 'yetkazuvchilar',
+  '/yetkazuvchi-qaytarish': 'yetkazuvchilar',
+  '/yetkazuvchi-tolovlar': 'yetkazuvchilar',
   '/arxiv': 'pos',
   '/sotuvlar': 'arxiv',
   '/qaytarishlar': 'arxiv',
   '/tolovlar': 'arxiv',
   '/customers': 'customers',
   '/reports': 'reports',
+  '/reports/moliya': 'reports_moliya',
+  '/reports/foyda': 'reports_foyda',
+  '/reports/sotuvlar': 'reports_sotuvlar',
+  '/reports/yetkazuvchilar': 'reports_yetkazuvchilar',
+  '/reports/kirim': 'reports_kirim',
+  '/reports/peremeshenie': 'reports_peremeshenie',
+  '/reports/spisaniya': 'reports_spisaniya',
+  '/reports/xarajatlar': 'reports_xarajatlar',
+  '/reports/inventar': 'reports_inventar',
   '/marketing': 'marketing',
   '/mahsulot-guruhi': 'mahsulot_guruhi',
   '/xarajatlar': 'xarajatlar',
@@ -93,15 +113,26 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  if (user && ALL_BRANCH_ROLE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    const { data: me } = await supabase.from('users').select('role').eq('id', user.id).maybeSingle()
+    if (!me?.role || !ALL_BRANCH_ROLES.includes(me.role)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+  }
+
   if (user) {
-    const guardedPrefix = Object.keys(ROUTE_PERMISSIONS).find(
+    // Every matching prefix must pass, so a nested route (/reports/kirim)
+    // needs both its parent key ('reports') and its own ('reports_kirim').
+    const guardedPrefixes = Object.keys(ROUTE_PERMISSIONS).filter(
       (p) => pathname === p || pathname.startsWith(`${p}/`),
     )
-    if (guardedPrefix) {
-      const { data: allowed } = await supabase.rpc('has_permission', {
-        p_key: ROUTE_PERMISSIONS[guardedPrefix],
-      })
-      if (!allowed) {
+    if (guardedPrefixes.length > 0) {
+      const results = await Promise.all(
+        guardedPrefixes.map((p) => supabase.rpc('has_permission', { p_key: ROUTE_PERMISSIONS[p] })),
+      )
+      if (results.some(({ data: allowed }) => !allowed)) {
         const url = request.nextUrl.clone()
         url.pathname = '/dashboard'
         return NextResponse.redirect(url)

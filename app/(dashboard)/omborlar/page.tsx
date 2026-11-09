@@ -12,11 +12,14 @@ import { fetchAllRows } from '@/lib/supabase/helpers'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { WAREHOUSE_TYPE_LABEL_KEYS, CREATABLE_WAREHOUSE_TYPES, type WarehouseType } from '@/lib/warehouses'
 import { EditWarehouseDialog, type EditableWarehouse } from '@/components/omborlar/EditWarehouseDialog'
+import { BranchSelect } from '@/components/filiallar/BranchSelect'
+import { useSession } from '@/lib/session/SessionContext'
+import { branchErrorKey } from '@/lib/branches'
 
 const inputCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 const thCls = 'px-4 py-3 text-sm font-medium text-gray-500 dark:text-gray-400'
 
-interface WarehouseRow { id: string; name: string; type: WarehouseType; created_at: string }
+interface WarehouseRow { id: string; name: string; type: WarehouseType; created_at: string; branch_id: string | null }
 interface SizeRow { warehouse_id: string }
 
 function formatDmy(iso: string): string {
@@ -27,6 +30,10 @@ function formatDmy(iso: string): string {
 export default function OmborlarPage() {
   const { t } = useLanguage()
   const router = useRouter()
+  const { branches, activeBranchId } = useSession()
+  // Single-branch companies (prod today) see no branch UI at all.
+  const multiBranch = branches.length > 1
+  const activeBranches = branches.filter(b => b.isActive)
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
   const [sizeRows, setSizeRows] = useState<SizeRow[]>([])
   const [warehouseLimit, setWarehouseLimit] = useState(2)
@@ -35,6 +42,7 @@ export default function OmborlarPage() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<WarehouseType>('clothing')
+  const [newBranchId, setNewBranchId] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WarehouseRow | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -48,7 +56,7 @@ export default function OmborlarPage() {
       { data: sizeData, error: sizeErr },
       { data: companyData },
     ] = await Promise.all([
-      supabase.from('warehouses').select('id, name, type, created_at').order('created_at'),
+      supabase.from('warehouses').select('id, name, type, created_at, branch_id').order('created_at'),
       fetchAllRows<SizeRow>((from, to) =>
         supabase.from('product_sizes').select('warehouse_id').order('id').range(from, to)),
       supabase.from('companies').select('warehouse_limit').single(),
@@ -79,20 +87,27 @@ export default function OmborlarPage() {
   function openAdd() {
     setNewName('')
     setNewType('clothing')
+    // Default = header-selected branch, else the company default branch.
+    const preferred = activeBranches.find(b => b.id === activeBranchId) ?? activeBranches.find(b => b.isDefault) ?? activeBranches[0]
+    setNewBranchId(preferred?.id ?? '')
     setIsAddOpen(true)
   }
 
   async function createWarehouse() {
-    if (!newName.trim() || limitReached) return
+    if (!newName.trim() || limitReached || (multiBranch && !newBranchId)) return
     setSaving(true)
     const supabase = createClient()
+    // p_branch_id is only sent when there is a real choice, so single-branch
+    // companies keep calling the exact same RPC signature as before.
     const { data, error } = await supabase.rpc('create_warehouse', {
       p_name: newName.trim(),
       p_type: newType,
+      ...(multiBranch ? { p_branch_id: newBranchId } : {}),
     })
     setSaving(false)
     if (error || !data) {
-      toast.error(error?.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      const branchKey = branchErrorKey(error?.message, error?.code)
+      toast.error(branchKey ? t(branchKey) : t('common.error'))
       return
     }
     setIsAddOpen(false)
@@ -166,6 +181,7 @@ export default function OmborlarPage() {
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-gray-800">
                     <th className={cn(thCls, 'text-left')}>{t('warehouses.table.name')}</th>
+                    {multiBranch && <th className={cn(thCls, 'text-left')}>{t('branches.branchLabel')}</th>}
                     <th className={cn(thCls, 'text-left')}>{t('warehouses.table.status')}</th>
                     <th className={cn(thCls, 'text-left')}>{t('warehouses.table.createdAt')}</th>
                     <th className={cn(thCls, 'text-center')}>{t('warehouses.table.actions')}</th>
@@ -191,6 +207,11 @@ export default function OmborlarPage() {
                             </div>
                           </div>
                         </td>
+                        {multiBranch && (
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                            {branches.find(b => b.id === w.branch_id)?.name ?? '—'}
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <span className="rounded-full bg-green-100 dark:bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
                             {t('warehouses.status.active')}
@@ -250,7 +271,8 @@ export default function OmborlarPage() {
       <EditWarehouseDialog
         warehouse={editing}
         onOpenChange={open => { if (!open) setEditing(null) }}
-        onSaved={u => setWarehouses(prev => prev.map(w => (w.id === u.id ? { ...w, name: u.name, type: u.type } : w)))}
+        branches={multiBranch ? branches : []}
+        onSaved={u => setWarehouses(prev => prev.map(w => (w.id === u.id ? { ...w, name: u.name, type: u.type, branch_id: u.branch_id ?? w.branch_id } : w)))}
       />
 
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
@@ -268,6 +290,9 @@ export default function OmborlarPage() {
                 placeholder={t('inventory.warehouses.namePlaceholder')}
               />
             </div>
+            {multiBranch && (
+              <BranchSelect value={newBranchId} onChange={setNewBranchId} options={activeBranches} />
+            )}
             <div>
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('inventory.warehouses.typeLabel')}</label>
               <div className="flex gap-2 flex-wrap">
@@ -279,7 +304,7 @@ export default function OmborlarPage() {
                     className={cn(
                       'flex-1 h-9 rounded-lg text-[13px] font-medium border transition-colors',
                       newType === type
-                        ? 'bg-slate-900 dark:bg-white shadow-sm border-slate-900 dark:border-white text-white dark:text-gray-900'
+                        ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border-indigo-600 dark:border-indigo-500 text-white'
                         : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                     )}
                   >
@@ -291,7 +316,7 @@ export default function OmborlarPage() {
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={createWarehouse} disabled={saving || !newName.trim()} loading={saving}>
+            <Button onClick={createWarehouse} disabled={saving || !newName.trim() || (multiBranch && !newBranchId)} loading={saving}>
               {t('common.save')}
             </Button>
           </DialogFooter>

@@ -15,6 +15,8 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import type { TranslationKey } from '@/lib/i18n/translations'
 import type { Request } from '@/lib/types'
 import { notifyCustomerRequestUpdate } from './actions'
+import { useBranchFilter } from '@/lib/session/useBranch'
+import { branchRpcErrorKey, useBranchColumn } from '@/components/customers/branchUi'
 
 const ITEMS_PER_PAGE = 10
 
@@ -31,6 +33,7 @@ interface RequestRow {
   source: Request['source'] | null
   mode: Request['mode'] | null
   ticket_number: number
+  branch_id?: string | null
 }
 
 function mapRequest(row: RequestRow): Request {
@@ -76,22 +79,29 @@ export default function RequestsPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [notes, setNotes] = useState('')
   const [newStatus, setNewStatus] = useState<Request['status']>('new')
+  const applyBranch = useBranchFilter()
+  const branchCol = useBranchColumn()
+  const showBranch = branchCol.show
+  // Request id -> branch id (kept beside the shared Request type).
+  const [requestBranch, setRequestBranch] = useState<Map<string, string | null>>(new Map())
 
   const fetchRequests = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const { data, error } = await supabase
+    const { data, error } = await applyBranch(supabase
       .from('requests')
       .select('*')
-      .eq('mode', 'shikoyat')
+      .eq('mode', 'shikoyat'))
       .order('created_at', { ascending: false })
     if (error) {
       toast.error(t('common.error'))
     } else {
-      setRequests((data as RequestRow[]).map(mapRequest))
+      const rows = data as RequestRow[]
+      setRequests(rows.map(mapRequest))
+      setRequestBranch(new Map(rows.map(r => [r.id, r.branch_id ?? null])))
     }
     setLoading(false)
-  }, [t])
+  }, [t, applyBranch])
 
   useEffect(() => {
     fetchRequests()
@@ -136,7 +146,7 @@ export default function RequestsPage() {
     })
     setSaving(false)
     if (error) {
-      toast.error(t('common.error'))
+      toast.error(t(branchRpcErrorKey(error.message) ?? 'common.error'))
       return
     }
     setIsDetailOpen(false)
@@ -226,20 +236,21 @@ export default function RequestsPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.priority')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.status')}</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.date')}</th>
+                {showBranch && <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">{t('branchCustomers.branchColumn')}</th>}
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{t('requests.table.action')}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+                  <td colSpan={showBranch ? 10 : 9} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                     <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
                     {t('common.loading')}
                   </td>
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+                  <td colSpan={showBranch ? 10 : 9} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                     {t('requests.notFound')}
                   </td>
                 </tr>
@@ -263,6 +274,7 @@ export default function RequestsPage() {
                   <td className="px-4 py-3"><MiniBadge status={r.priority} /></td>
                   <td className="px-4 py-3"><MiniBadge status={r.status} /></td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatDate(r.createdAt)}</td>
+                  {showBranch && <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{branchCol.branchName(requestBranch.get(r.id))}</td>}
                   <td className="px-4 py-3 text-center">
                     <button
                       onClick={e => { e.stopPropagation(); openDetail(r) }}

@@ -8,8 +8,11 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { createClient } from '@/lib/supabase/client'
+import { fetchAllRows } from '@/lib/supabase/helpers'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
+import { useBranchFilter } from '@/lib/session/useBranch'
+import { BranchScopeLabel } from '@/components/reports/BranchScopeLabel'
 import { ReportPeriodFilterBar } from '@/components/reports/ReportPeriodFilterBar'
 import { DonutChart, type DonutSlice } from '@/components/reports/DonutChart'
 import { periodRange, bucketGranularity, buildBuckets, bucketKey, bucketLabel, type Period } from '@/lib/reports/period'
@@ -66,6 +69,7 @@ interface TxnItemRow {
 interface ReturnRow {
   id: string
   created_at: string
+  transaction_id: string
 }
 
 interface ReturnItemRow {
@@ -101,6 +105,12 @@ interface ExpenseRow {
   date: string
 }
 
+function shiftDay(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 export default function MoliyaReportPage() {
   const { t } = useLanguage()
   const { formatPrice, formatShortPrice } = useCurrency()
@@ -122,46 +132,88 @@ export default function MoliyaReportPage() {
   const [productSizes, setProductSizes] = useState<ProductSizeRow[]>([])
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [nasiyaTxns, setNasiyaTxns] = useState<NasiyaTxnRow[]>([])
+  const applyBranch = useBranchFilter()
 
+  const [from, to] = useMemo(() => periodRange(period, customFrom, customTo), [period, customFrom, customTo])
+
+  // Loads only what the selected period needs, filtered and paged in the DB.
+  // Previously every table was downloaded in full on each visit (whole
+  // history, and silently cut at PostgREST's 1000-row cap, so totals went
+  // wrong once a store passed 1000 sales). The in-memory math below is
+  // unchanged — it still applies inRange() exactly as before.
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
+    type Page<T> = PromiseLike<{ data: T[] | null; error: unknown }>
+    // timestamptz columns: widen by a day on each side (timezone slack);
+    // inRange() below does the exact per-day cut.
+    const tsFrom = shiftDay(from, -1)
+    const tsTo = shiftDay(to, 2)
+
     const [
-      txnRes, itemRes, returnsRes, returnItemsRes, loyaltyRes, loyaltyConfigRes,
+      txnRes, itemRes, returnsRes, loyaltyRes, loyaltyConfigRes,
       brakRes, sizesRes, expensesRes, nasiyaRes,
     ] = await Promise.all([
-      supabase.from('transactions').select('id, total_amount, date, status').eq('status', 'completed'),
-      supabase.from('transaction_items').select('transaction_id, price, list_price, purchase_price, quantity'),
-      supabase.from('returns').select('id, created_at'),
-      supabase.from('return_items').select('return_id, refund_amount'),
-      supabase.from('loyalty_transactions').select('type, amount, created_at').eq('type', 'redeem'),
+      // Every branch-carrying table is narrowed to the Header branch (no-op on
+      // "All branches"). transaction_items carries its sale's branch_id.
+      fetchAllRows<TxnRow>((a, b) => applyBranch(supabase.from('transactions').select('id, total_amount, date, status')
+        .eq('status', 'completed').gte('date', from).lte('date', to)).order('id').range(a, b) as unknown as Page<TxnRow>),
+      fetchAllRows<TxnItemRow>((a, b) => applyBranch(supabase.from('transaction_items')
+        .select('transaction_id, price, list_price, purchase_price, quantity, transactions!inner(date, status)')
+        .eq('transactions.status', 'completed').gte('transactions.date', from).lte('transactions.date', to))
+        .order('id').range(a, b) as unknown as Page<TxnItemRow>),
+      fetchAllRows<ReturnRow & { return_items: { refund_amount: number }[] | null }>((a, b) => applyBranch(supabase.from('returns')
+        .select('id, created_at, transaction_id, return_items(refund_amount)')
+        .gte('created_at', tsFrom).lt('created_at', tsTo)).order('id').range(a, b) as unknown as Page<ReturnRow & { return_items: { refund_amount: number }[] | null }>),
+      fetchAllRows<LoyaltyTxnRow>((a, b) => applyBranch(supabase.from('loyalty_transactions').select('type, amount, created_at')
+        .eq('type', 'redeem').gte('created_at', tsFrom).lt('created_at', tsTo)).order('id').range(a, b) as unknown as Page<LoyaltyTxnRow>),
       supabase.from('loyalty_config').select('redeem_rate').maybeSingle(),
-      supabase.from('stock_out_entries').select('quantity, date, product_size_id').eq('entry_type', 'brak'),
-      supabase.from('product_sizes').select('id, purchase_price'),
-      supabase.from('expenses').select('amount, date'),
-      supabase.from('nasiya_transactions').select('type, amount, created_at'),
+      fetchAllRows<StockOutBrakRow>((a, b) => applyBranch(supabase.from('stock_out_entries').select('quantity, date, product_size_id')
+        .eq('entry_type', 'brak').gte('date', from).lte('date', to)).order('id').range(a, b) as unknown as Page<StockOutBrakRow>),
+      // Lookup only (variant id -> purchase price for the brak rows above,
+      // which are already branch-narrowed), so not branch-filtered.
+      fetchAllRows<ProductSizeRow>((a, b) => supabase.from('product_sizes').select('id, purchase_price')
+        .order('id').range(a, b) as unknown as Page<ProductSizeRow>),
+      fetchAllRows<ExpenseRow>((a, b) => applyBranch(supabase.from('expenses').select('amount, date')
+        .gte('date', from).lte('date', to)).order('id').range(a, b) as unknown as Page<ExpenseRow>),
+      // All-time on purpose: the outstanding-debt card sums every given/repaid
+      // row (per branch when one is active).
+      fetchAllRows<NasiyaTxnRow>((a, b) => applyBranch(supabase.from('nasiya_transactions').select('type, amount, created_at'))
+        .order('id').range(a, b) as unknown as Page<NasiyaTxnRow>),
     ])
 
-    if (txnRes.error || itemRes.error || returnsRes.error || returnItemsRes.error) {
+    if (txnRes.error || itemRes.error || returnsRes.error) {
       toast.error(t('common.error'))
-    } else {
-      setTransactions((txnRes.data ?? []) as TxnRow[])
-      setTxnItems((itemRes.data ?? []) as TxnItemRow[])
-      setReturns((returnsRes.data ?? []) as ReturnRow[])
-      setReturnItems((returnItemsRes.data ?? []) as ReturnItemRow[])
-      setLoyaltyTxns((loyaltyRes.data ?? []) as LoyaltyTxnRow[])
-      setRedeemRate(loyaltyConfigRes.data?.redeem_rate != null ? Number(loyaltyConfigRes.data.redeem_rate) : 0)
-      setBrakEntries((brakRes.data ?? []) as StockOutBrakRow[])
-      setProductSizes((sizesRes.data ?? []) as ProductSizeRow[])
-      setExpenses((expensesRes.data ?? []) as ExpenseRow[])
-      setNasiyaTxns((nasiyaRes.data ?? []) as NasiyaTxnRow[])
+      setLoading(false)
+      return
     }
+
+    const returnRows = returnsRes.data
+    // Returns in the period may belong to sales made before it; the revenue
+    // math needs to know whether those sales are still 'completed'.
+    const txns = [...txnRes.data]
+    const known = new Set(txns.map(x => x.id))
+    const missing = [...new Set(returnRows.map(r => r.transaction_id).filter(id => id && !known.has(id)))]
+    for (let i = 0; i < missing.length; i += 150) {
+      const { data } = await supabase.from('transactions').select('id, total_amount, date, status')
+        .eq('status', 'completed').in('id', missing.slice(i, i + 150))
+      txns.push(...((data ?? []) as TxnRow[]))
+    }
+
+    setTransactions(txns)
+    setTxnItems(itemRes.data)
+    setReturns(returnRows.map(r => ({ id: r.id, created_at: r.created_at, transaction_id: r.transaction_id })))
+    setReturnItems(returnRows.flatMap(r => (r.return_items ?? []).map(ri => ({ return_id: r.id, refund_amount: ri.refund_amount }) as ReturnItemRow)))
+    setLoyaltyTxns(loyaltyRes.data)
+    setRedeemRate(loyaltyConfigRes.data?.redeem_rate != null ? Number(loyaltyConfigRes.data.redeem_rate) : 0)
+    setBrakEntries(brakRes.data)
+    setProductSizes(sizesRes.data)
+    setExpenses(expensesRes.data)
+    setNasiyaTxns(nasiyaRes.data)
     setLoading(false)
-  }, [t])
+  }, [t, from, to, applyBranch])
 
   useEffect(() => { fetchAll() }, [fetchAll])
-
-  const [from, to] = useMemo(() => periodRange(period, customFrom, customTo), [period, customFrom, customTo])
   const inRange = useCallback((d: string) => { const day = d.slice(0, 10); return day >= from && day <= to }, [from, to])
 
   // ─── Section 1: P&L ───────────────────────────────────────────────────────
@@ -214,8 +266,23 @@ export default function MoliyaReportPage() {
     [filteredItems],
   )
 
-  const filteredReturns = useMemo(() => returns.filter(r => inRange(r.created_at)), [returns, inRange])
+  // A fully-returned sale is flipped to status='cancelled' by
+  // process_return, so it's already gone from `transactions` (completed
+  // only). Subtracting its refunds as well would count the same money
+  // twice — only refunds on still-completed (partially returned) sales
+  // reduce revenue here.
+  const completedTxnIds = useMemo(() => new Set(transactions.map(t => t.id)), [transactions])
+  const filteredReturns = useMemo(() =>
+    returns.filter(r => inRange(r.created_at) && completedTxnIds.has(r.transaction_id)),
+    [returns, inRange, completedTxnIds],
+  )
   const returnIdSet = useMemo(() => new Set(filteredReturns.map(r => r.id)), [filteredReturns])
+  // Every refund paid out in the period (full + partial) — shown on the KPI
+  // card only; revenue math uses returnsAmount above.
+  const allReturnsAmount = useMemo(() => {
+    const ids = new Set(returns.filter(r => inRange(r.created_at)).map(r => r.id))
+    return returnItems.filter(ri => ids.has(ri.return_id)).reduce((s, ri) => s + Number(ri.refund_amount), 0)
+  }, [returns, returnItems, inRange])
   const returnsAmount = useMemo(() =>
     returnItems.filter(ri => returnIdSet.has(ri.return_id)).reduce((s, ri) => s + Number(ri.refund_amount), 0),
     [returnItems, returnIdSet],
@@ -378,6 +445,7 @@ export default function MoliyaReportPage() {
       <div>
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('reports.moliya.title')}</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('reports.moliya.subtitle')}</p>
+        <BranchScopeLabel className="mt-1" />
       </div>
 
       <ReportPeriodFilterBar
@@ -398,7 +466,7 @@ export default function MoliyaReportPage() {
           icon={TrendingUp}
           valueClassName={netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}
         />
-        <KpiCard title={t('reports.moliya.kpi.returns')} value={formatPrice(returnsAmount)} icon={Undo2} />
+        <KpiCard title={t('reports.moliya.kpi.returns')} value={formatPrice(allReturnsAmount)} icon={Undo2} />
         <KpiCard
           title={t('reports.moliya.kpi.nasiyaBalance')}
           value={formatPrice(nasiyaCurrentBalance)}

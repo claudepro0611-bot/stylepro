@@ -9,7 +9,10 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { withDefaultPermissions, PERMISSION_ITEMS, type Permissions } from '@/lib/permissions'
-import { updateTeamUser, type TeamUserRow } from '@/app/(dashboard)/jamoa/actions'
+import { updateTeamUser, type TeamUserRow, type TeamBranchOption } from '@/app/(dashboard)/jamoa/actions'
+import { BranchSelect } from '@/components/filiallar/BranchSelect'
+import { defaultBranchId } from '@/components/jamoa/AddUserModal'
+import { branchErrorKey } from '@/lib/branches'
 
 const inputCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 
@@ -18,10 +21,12 @@ interface EditFormState {
   password: string
   status: 'active' | 'inactive'
   permissions: Permissions
+  branchId: string
 }
 
-function formFromUser(user: TeamUserRow): EditFormState {
+function formFromUser(user: TeamUserRow, branches: TeamBranchOption[]): EditFormState {
   return {
+    branchId: user.branchId ?? defaultBranchId(branches),
     fullName: user.fullName,
     password: '',
     status: user.status,
@@ -33,9 +38,10 @@ interface EditUserModalProps {
   user: TeamUserRow | null
   onOpenChange: (open: boolean) => void
   onUpdated: () => void
+  branches: TeamBranchOption[]
 }
 
-export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalProps) {
+export function EditUserModal({ user, onOpenChange, onUpdated, branches }: EditUserModalProps) {
   const { t } = useLanguage()
   const [tab, setTab] = useState('info')
   const [form, setForm] = useState<EditFormState | null>(null)
@@ -45,13 +51,13 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
 
   useEffect(() => {
     if (user) {
-      const initialForm = formFromUser(user)
+      const initialForm = formFromUser(user, branches)
       setForm(initialForm)
       setInitial(initialForm)
       setTab('info')
       setShowPassword(false)
     }
-  }, [user])
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!user || !form) {
     return (
@@ -65,6 +71,7 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
     form.fullName !== initial.fullName ||
     form.password !== initial.password ||
     form.status !== initial.status ||
+    form.branchId !== initial.branchId ||
     JSON.stringify(form.permissions) !== JSON.stringify(initial.permissions)
   )
 
@@ -76,11 +83,13 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
       password: form.password || undefined,
       status: form.status,
       permissions: form.permissions,
+      branchId: form.branchId,
     })
     setSubmitting(false)
 
     if ('error' in result && result.error) {
-      toast.error(result.error)
+      const key = branchErrorKey(result.error)
+      toast.error(key ? t(key) : result.error)
       return
     }
 
@@ -133,6 +142,13 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
               </div>
             </div>
 
+            <BranchSelect
+              value={form.branchId}
+              onChange={id => setForm(f => f && ({ ...f, branchId: id }))}
+              options={branches.filter(b => b.isActive)}
+              allBranches={branches}
+            />
+
             <div>
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('jamoa.editModal.status')}</label>
               <div className="flex gap-2">
@@ -157,16 +173,21 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
           <TabsContent value="access" className="mt-4">
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{t('jamoa.editModal.accessTitle')}</p>
             <div className="space-y-0.5 max-h-[50vh] overflow-y-auto pr-1">
-              {PERMISSION_ITEMS.map(({ key, labelKey, icon: Icon }) => (
+              {PERMISSION_ITEMS.map(({ key, labelKey, icon: Icon, parent }) => {
+                const parentOff = parent ? !form.permissions[parent] : false
+                return (
                 <div
                   key={key}
-                  className="flex items-center justify-between gap-3 rounded-md px-2.5 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+                  className={`flex items-center justify-between gap-3 rounded-md py-2 pr-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors ${
+                    parent ? 'pl-9' : 'pl-2.5'
+                  } ${parentOff ? 'opacity-50' : ''}`}
                 >
-                  <div className="flex items-center gap-2.5 text-sm text-gray-700 dark:text-gray-300">
-                    <Icon className="h-4 w-4 text-gray-400 dark:text-gray-500 shrink-0" />
+                  <div className={`flex items-center gap-2.5 text-sm ${parent ? 'text-gray-600 dark:text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                    <Icon className={`${parent ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-gray-400 dark:text-gray-500 shrink-0`} />
                     {t(labelKey)}
                   </div>
                   <Switch
+                    disabled={parentOff}
                     checked={form.permissions[key]}
                     onCheckedChange={checked => setForm(f => f && ({
                       ...f,
@@ -175,7 +196,8 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
                     className="data-checked:bg-emerald-500 dark:data-checked:bg-emerald-500"
                   />
                 </div>
-              ))}
+                )
+              })}
             </div>
           </TabsContent>
         </Tabs>
@@ -189,7 +211,7 @@ export function EditUserModal({ user, onOpenChange, onUpdated }: EditUserModalPr
           ) : <span />}
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSubmit} disabled={submitting} loading={submitting}>
+            <Button onClick={handleSubmit} disabled={submitting || !form.branchId} loading={submitting}>
               {t('common.save')}
             </Button>
           </div>

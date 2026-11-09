@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { branchAwareErrorKey } from '@/lib/branchStock'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { parseVolume, sortSizes } from '@/lib/sizes'
+import { useBranchFilter } from '@/lib/session/useBranch'
 
 interface SizeRow {
   id: string
@@ -32,13 +34,15 @@ export function CompanionSection({ productId }: Props) {
   const [rows, setRows] = useState<SizeRow[]>([])
   const [options, setOptions] = useState<{ value: string; label: string; price: number }[]>([])
   const [savingId, setSavingId] = useState<string | null>(null)
+  // Owner/admin with a branch selected: only that branch's variant rows.
+  const applyBranch = useBranchFilter()
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       const supabase = createClient()
       const [{ data: sizes }, { data: prods }] = await Promise.all([
-        supabase.from('product_sizes').select('id, product_id, size, color, selling_price, companion_product_size_id'),
+        applyBranch(supabase.from('product_sizes').select('id, product_id, size, color, selling_price, companion_product_size_id')),
         supabase.from('products').select('id, name'),
       ])
       if (cancelled) return
@@ -55,7 +59,7 @@ export function CompanionSection({ productId }: Props) {
     }
     load()
     return () => { cancelled = true }
-  }, [productId])
+  }, [productId, applyBranch])
 
   async function setCompanion(rowId: string, companionId: string) {
     setSavingId(rowId)
@@ -67,7 +71,7 @@ export function CompanionSection({ productId }: Props) {
     ) => Promise<{ error: { message: string } | null }>
     const { error } = await rpc.call(supabase, 'set_product_size_companion', { p_id: rowId, p_companion_id: companionId || null })
     setSavingId(null)
-    if (error) { toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error')); return }
+    if (error) { toast.error(t(branchAwareErrorKey(error.message))); return }
     setRows(prev => prev.map(r => r.id === rowId ? { ...r, companion_product_size_id: companionId || null } : r))
     toast.success(t('products.companion.saved'))
   }

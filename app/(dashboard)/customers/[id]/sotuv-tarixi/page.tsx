@@ -10,6 +10,8 @@ import { formatDate } from '@/lib/utils/formatters'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { cn } from '@/lib/utils'
+import { SaleDetailDialog } from '@/components/sales/SaleDetailDialog'
+import { useBranchFilter } from '@/lib/session/useBranch'
 
 const SALES_PAYMENT_FILTERS = ['Barchasi', 'Naqd', 'Karta', 'Click', 'Payme', 'Nasiya'] as const
 
@@ -17,7 +19,7 @@ const PILL_CLS = (active: boolean) =>
   cn(
     'px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors',
     active
-      ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+      ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
       : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
   )
 
@@ -44,8 +46,10 @@ interface SalesHistoryRow {
 
 export default function SotuvTarixiPage() {
   const { id: customerId } = useParams<{ id: string }>()
+  const [openTx, setOpenTx] = useState<string | null>(null)
   const { t } = useLanguage()
   const { formatPrice } = useCurrency()
+  const applyBranch = useBranchFilter()
 
   const [loading, setLoading] = useState(true)
   const [customer, setCustomer] = useState<CustomerHeader | null>(null)
@@ -66,24 +70,24 @@ export default function SotuvTarixiPage() {
     const supabase = createClient()
 
     const [{ data: txnRows, error: txnError }, { data: earnRows }, { data: nasiyaGivenRows }] = await Promise.all([
-      supabase
+      applyBranch(supabase
         .from('transactions_net')
         .select('id, date, total_amount, net_amount, payment_method, transaction_items(quantity, list_price)')
         .eq('customer_id', c.id)
-        .eq('status', 'completed')
+        .eq('status', 'completed'))
         .order('date', { ascending: false }),
-      supabase
+      applyBranch(supabase
         .from('loyalty_transactions')
         .select('transaction_id, amount')
         .eq('customer_id', c.id)
         .eq('type', 'earn')
-        .not('transaction_id', 'is', null),
-      supabase
+        .not('transaction_id', 'is', null)),
+      applyBranch(supabase
         .from('nasiya_transactions')
         .select('related_transaction_id')
         .eq('customer_id', c.id)
         .eq('type', 'given')
-        .not('related_transaction_id', 'is', null),
+        .not('related_transaction_id', 'is', null)),
     ])
 
     if (txnError) {
@@ -131,7 +135,7 @@ export default function SotuvTarixiPage() {
     })
 
     setSalesHistory(rows)
-  }, [t])
+  }, [t, applyBranch])
 
   useEffect(() => {
     let cancelled = false
@@ -249,7 +253,7 @@ export default function SotuvTarixiPage() {
                           </td>
                         </tr>
                       ) : filteredSalesHistory.map(r => (
-                        <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
+                        <tr key={r.id} onClick={() => setOpenTx(r.id)} className="cursor-pointer border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                           <td className="px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(r.date)}</td>
                           <td className="px-3 py-2.5 text-sm text-center text-gray-700 dark:text-gray-300">{r.itemCount}</td>
                           <td className="px-3 py-2.5 text-sm text-right tabular-nums text-gray-400 dark:text-gray-500 line-through whitespace-nowrap">
@@ -296,6 +300,7 @@ export default function SotuvTarixiPage() {
           )}
         </>
       )}
+      <SaleDetailDialog transactionId={openTx} onClose={() => setOpenTx(null)} />
     </div>
   )
 }

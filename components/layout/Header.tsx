@@ -8,9 +8,11 @@ import { useTheme } from 'next-themes'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { createClient } from '@/lib/supabase/client'
+import { useSession } from '@/lib/session/SessionContext'
 import { cn } from '@/lib/utils'
 import { PaymentModal } from '@/components/PaymentModal'
 import { ChangePasswordForm } from '@/components/sozlamalar/ChangePasswordForm'
+import { BranchSwitcher } from '@/components/layout/BranchSwitcher'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Breadcrumb,
@@ -27,7 +29,6 @@ interface HeaderProps {
   onMenuClick?: () => void
 }
 
-const SUPER_ADMIN_EMAIL = 'admin@stylepro.local'
 
 interface Crumb {
   label: string
@@ -73,50 +74,15 @@ export function Header({ onMenuClick }: HeaderProps) {
   useEffect(() => setMounted(true), [])
   const isNight = resolvedTheme !== 'light'
   const breadcrumbTrail = buildBreadcrumbTrail(pathname, t)
-  const [companyName, setCompanyName] = useState('')
-  const [userName, setUserName] = useState('')
-  const [balance, setBalance] = useState(0)
-  const [monthlyFee, setMonthlyFee] = useState(0)
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const { isSuperAdmin, profile, company } = useSession()
+  const companyName = company?.name || ''
+  const userName = profile?.fullName || ''
+  const balance = company?.balance ?? 0
+  const monthlyFee = company?.monthlyFee ?? 0
   const [profileOpen, setProfileOpen] = useState(false)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const supabase = createClient()
-
-    async function loadCompany() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      if (user.email?.toLowerCase() === SUPER_ADMIN_EMAIL) {
-        setIsSuperAdmin(true)
-        return
-      }
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('company_id, full_name')
-        .eq('id', user.id)
-        .single()
-
-      if (userData?.company_id) {
-        const { data: company } = await supabase
-          .from('companies')
-          .select('name, balance, monthly_fee')
-          .eq('id', userData.company_id)
-          .single()
-
-        setCompanyName(company?.name || '')
-        setBalance(Number(company?.balance ?? 0))
-        setMonthlyFee(Number(company?.monthly_fee ?? 0))
-        setUserName(userData.full_name || '')
-      }
-    }
-
-    loadCompany()
-  }, [])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -176,6 +142,9 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Right — notifications + profile */}
       <div className="flex items-center gap-2">
+        {/* Branch switcher - renders nothing for single-branch companies */}
+        <BranchSwitcher />
+
         {/* Notification bell */}
         <button className="relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
@@ -195,7 +164,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               className={cn(
                 'rounded-md px-2 py-1 text-xs font-medium transition-colors',
                 currency === c
-                  ? 'bg-slate-900 dark:bg-white shadow-sm text-white dark:text-gray-900'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm text-white'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100',
               )}
             >

@@ -6,6 +6,8 @@ import {
   Plus, Trash2, Loader2, PackageSearch,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { branchAwareErrorKey, useWarehouseScope } from '@/lib/branchStock'
+import { useBranchFilter } from '@/lib/session/useBranch'
 import { StatsPanel } from '@/components/ui/StatsPanel'
 import { Pagination } from '@/components/ui/Pagination'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -66,7 +68,7 @@ interface SizeOption { id: string; size: string; color: string; stock: number; p
 function sizeLabel(s: { size: string; color: string }): string {
   return s.color ? `${s.color} / ${s.size}` : s.size
 }
-interface WarehouseRow { id: string; name: string; type: WarehouseType }
+interface WarehouseRow { id: string; name: string; type: WarehouseType; branch_id: string | null }
 
 interface BrakRow {
   id: string
@@ -135,14 +137,16 @@ export default function BrakPage() {
   const [productPurchasePrice, setProductPurchasePrice] = useState(0)
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
   const [activeWarehouseId, setActiveWarehouseId] = useLocalStorage<string>('stylepro-active-warehouse-id', '')
+  const applyBranch = useBranchFilter()
+  const { scope: scopeWarehouses, groupByBranch, label: warehouseLabel } = useWarehouseScope()
 
   const fetchEntries = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const { data, error } = await supabase
+    const { data, error } = await applyBranch(supabase
       .from('stock_out_entries')
       .select('*')
-      .eq('entry_type', 'brak')
+      .eq('entry_type', 'brak'))
       .order('date', { ascending: false })
     if (error) {
       toast.error(t('common.error'))
@@ -150,13 +154,13 @@ export default function BrakPage() {
       setEntries((data as BrakRow[]).map(mapBrak))
     }
     setLoading(false)
-  }, [t])
+  }, [t, applyBranch])
 
   const fetchProducts = useCallback(async () => {
     const supabase = createClient()
     const [{ data, error }, { data: whData, error: whErr }] = await Promise.all([
       supabase.from('products').select('*').order('name'),
-      supabase.from('warehouses').select('id, name, type'),
+      supabase.from('warehouses').select('id, name, type, branch_id'),
     ])
     if (error || whErr) {
       toast.error(t('common.error'))
@@ -171,19 +175,34 @@ export default function BrakPage() {
     fetchProducts()
   }, [fetchEntries, fetchProducts])
 
-  useEffect(() => {
-    if (!activeWarehouseId && warehouses.length > 0) setActiveWarehouseId(warehouses[0].id)
-  }, [warehouses, activeWarehouseId, setActiveWarehouseId])
+  // Only the active branch's warehouses (owner on "All branches": all).
+  const branchWarehouses = useMemo(() => groupByBranch(scopeWarehouses(warehouses)), [warehouses, scopeWarehouses, groupByBranch])
 
-  const activeWarehouse = useMemo(() => warehouses.find(w => w.id === activeWarehouseId) ?? warehouses[0], [warehouses, activeWarehouseId])
+  useEffect(() => {
+    if (!activeWarehouseId && branchWarehouses.length > 0) setActiveWarehouseId(branchWarehouses[0].id)
+  }, [branchWarehouses, activeWarehouseId, setActiveWarehouseId])
+
+  const activeWarehouse = useMemo(() => branchWarehouses.find(w => w.id === activeWarehouseId) ?? branchWarehouses[0], [branchWarehouses, activeWarehouseId])
   // Which products are eligible for a warehouse is not determined by
   // matching product category to warehouse type — the actual stock lookup
   // below (onProductSelect) already scopes strictly by
   // product_sizes.warehouse_id, which is the only real source of truth.
+  // Products that actually have a variant row in the active warehouse —
+  // after a transfer (peremeshenie) a product can be stocked outside its
+  // home products.warehouse_id.
+  const [stockedHere, setStockedHere] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (!activeWarehouse) return
+    let cancelled = false
+    createClient().from('product_sizes').select('product_id').eq('warehouse_id', activeWarehouse.id).gt('stock', 0)
+      .then(({ data }) => { if (!cancelled) setStockedHere(new Set((data ?? []).map(r => r.product_id))) })
+    return () => { cancelled = true }
+  }, [activeWarehouse])
+
   const warehouseProducts = useMemo(() => {
     if (!activeWarehouse) return []
-    return products.filter(p => !p.warehouseId || p.warehouseId === activeWarehouse.id)
-  }, [products, activeWarehouse])
+    return products.filter(p => !p.warehouseId || p.warehouseId === activeWarehouse.id || stockedHere.has(p.id))
+  }, [products, activeWarehouse, stockedHere])
 
   async function onProductSelect(productId: string) {
     setForm(p => ({ ...p, productId, sizeRowId: '' }))
@@ -250,10 +269,8 @@ export default function BrakPage() {
     if (error) {
       if (error.message.includes('Insufficient stock')) {
         toast.error(`${t('common.error')} — ${t('brak.available')}: ${sizeRow.stock}`)
-      } else if (error.message.includes('forbidden')) {
-        toast.error(t('common.forbidden'))
       } else {
-        toast.error(t('common.error'))
+        toast.error(t(branchAwareErrorKey(error.message)))
       }
       return
     }
@@ -269,7 +286,7 @@ export default function BrakPage() {
     const supabase = createClient()
     const { error } = await supabase.rpc('delete_stock_out_entry', { p_id: id })
     if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      toast.error(t(branchAwareErrorKey(error.message)))
       return
     }
     toast.success(t('brak.toasts.deleteSuccess'))
@@ -293,10 +310,10 @@ export default function BrakPage() {
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('brak.title')}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('brak.subtitle')}</p>
         </div>
-        <Tabs value={activeWarehouseId} onValueChange={setActiveWarehouseId}>
+        <Tabs value={activeWarehouse?.id ?? activeWarehouseId} onValueChange={setActiveWarehouseId}>
           <TabsList variant="underline">
-            {warehouses.map(w => (
-              <TabsTrigger key={w.id} value={w.id}>{w.name}</TabsTrigger>
+            {branchWarehouses.map(w => (
+              <TabsTrigger key={w.id} value={w.id}>{warehouseLabel(w)}</TabsTrigger>
             ))}
           </TabsList>
         </Tabs>

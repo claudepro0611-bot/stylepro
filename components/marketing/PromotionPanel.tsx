@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { branchAwareErrorKey } from '@/lib/branchStock'
 import { Switch } from '@/components/ui/switch'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -177,7 +178,7 @@ export function PromotionPanel({
         })
     setSaving(false)
     if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      toast.error(t(branchAwareErrorKey(error.message)))
       return
     }
     toast.success(promotion ? t('marketing.aksiya.toasts.updateSuccess') : t('marketing.aksiya.toasts.createSuccess'))

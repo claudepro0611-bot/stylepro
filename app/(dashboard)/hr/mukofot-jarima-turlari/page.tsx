@@ -294,7 +294,7 @@ export default function MukofotJarimaTurlariPage() {
                       onClick={() => setForm(f => ({ ...f, unit: u }))}
                       className={`flex-1 h-9 rounded-lg text-[13px] font-medium border transition-colors ${
                         form.unit === u
-                          ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                          ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
                           : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }`}
                     >

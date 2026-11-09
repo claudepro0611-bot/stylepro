@@ -3,12 +3,14 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Plus, Edit2, Trash2, AlertTriangle, Layers, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { branchAwareErrorKey } from '@/lib/branchStock'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import type { ProductGroup } from '@/lib/types'
 import { type SizeType } from '@/lib/sizes'
+import { useSession } from '@/lib/session/SessionContext'
 
 const emptyForm = { name: '', description: '', status: 'active' as ProductGroup['status'], sizeType: 'clothing' as SizeType }
 
@@ -29,6 +31,8 @@ export default function MahsulotGuruhlariPage() {
   const [editGroup, setEditGroup] = useState<ProductGroup | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [deleteTarget, setDeleteTarget] = useState<ProductGroup | null>(null)
+  // Catalog mutations are owner/admin only ('catalog_forbidden' server-side).
+  const { canSeeAllBranches: canEditCatalog } = useSession()
 
   const fetchGroups = useCallback(async () => {
     setLoading(true)
@@ -100,7 +104,7 @@ export default function MahsulotGuruhlariPage() {
       const { error } = await supabase.rpc('update_product_group', { p_id: editGroup.id, p_data: payload })
       setSaving(false)
       if (error) {
-        toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+        toast.error(t(branchAwareErrorKey(error.message)))
         return
       }
       toast.success(t('productGroups.toasts.updateSuccess'))
@@ -108,7 +112,7 @@ export default function MahsulotGuruhlariPage() {
       const { error } = await supabase.rpc('create_product_group', { p_data: payload })
       setSaving(false)
       if (error) {
-        toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+        toast.error(t(branchAwareErrorKey(error.message)))
         return
       }
       toast.success(t('productGroups.toasts.addSuccess'))
@@ -122,7 +126,7 @@ export default function MahsulotGuruhlariPage() {
     const newStatus = g.status === 'active' ? 'inactive' : 'active'
     const { error } = await supabase.rpc('update_product_group', { p_id: g.id, p_data: { status: newStatus } })
     if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      toast.error(t(branchAwareErrorKey(error.message)))
       return
     }
     fetchGroups()
@@ -137,7 +141,7 @@ export default function MahsulotGuruhlariPage() {
     const supabase = createClient()
     const { error } = await supabase.rpc('delete_product_group', { p_id: deleteTarget.id })
     if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      toast.error(t(branchAwareErrorKey(error.message)))
       return
     }
     toast.success(t('productGroups.toasts.deleteSuccess'))
@@ -155,13 +159,15 @@ export default function MahsulotGuruhlariPage() {
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('productGroups.title')}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('productGroups.subtitle')}</p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t('productGroups.addNew')}
-        </button>
+        {canEditCatalog && (
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('productGroups.addNew')}
+          </button>
+        )}
       </div>
 
       {/* Stat cards */}
@@ -228,7 +234,9 @@ export default function MahsulotGuruhlariPage() {
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => toggleStatus(g)}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                        disabled={!canEditCatalog}
+                        title={canEditCatalog ? undefined : t('branchStock.catalogReadOnly')}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
                           g.status === 'active' ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
                         }`}
                         aria-label="toggle status"
@@ -241,7 +249,7 @@ export default function MahsulotGuruhlariPage() {
                       </button>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
+                      {canEditCatalog && <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => openEdit(g)}
                           className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
@@ -254,7 +262,7 @@ export default function MahsulotGuruhlariPage() {
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                      </div>
+                      </div>}
                     </td>
                   </tr>
                 ))

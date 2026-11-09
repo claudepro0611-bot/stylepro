@@ -9,6 +9,9 @@ import { createClient } from '@/lib/supabase/client'
 import { getCompanyId } from '@/lib/supabase/helpers'
 import { generateEAN13, generateUniqueBarcode } from '@/lib/barcode'
 import type { Product } from '@/lib/types'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { useBranchFilter } from '@/lib/session/useBranch'
+import { branchAwareErrorKey } from '@/lib/branchStock'
 
 interface SizeRow {
   id: string
@@ -35,6 +38,8 @@ interface BarcodeModalProps {
 export function BarcodeModal({ product, open, onOpenChange }: BarcodeModalProps) {
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState<SizeRow[]>([])
+  const { t } = useLanguage()
+  const applyBranch = useBranchFilter()
 
   useEffect(() => {
     if (!open || !product) return
@@ -47,10 +52,10 @@ export function BarcodeModal({ product, open, onOpenChange }: BarcodeModalProps)
       const companyId = await getCompanyId(supabase)
       if (!companyId) { setLoading(false); toast.error('Xatolik yuz berdi'); return }
 
-      const { data, error } = await supabase
+      const { data, error } = await applyBranch(supabase
         .from('product_sizes')
         .select('id, size, color, selling_price, barcode')
-        .eq('product_id', product.id)
+        .eq('product_id', product.id))
         .order('size')
       if (error || !data) { setLoading(false); toast.error('Xatolik yuz berdi'); return }
 
@@ -58,7 +63,14 @@ export function BarcodeModal({ product, open, onOpenChange }: BarcodeModalProps)
       const prefix = companyId.replace(/-/g, '').slice(0, 3)
       const resolved: SizeRow[] = []
 
+      // A variant stocked in several warehouses has one product_sizes row per
+      // warehouse, all sharing one barcode — show it once.
+      const seen = new Set<string>()
+      let saveError: string | null = null
       for (const row of sizeRows) {
+        const variantKey = `${row.size}|${row.color ?? ''}`
+        if (seen.has(variantKey)) continue
+        seen.add(variantKey)
         let barcode = row.barcode
         if (!barcode) {
           const candidate = generateEAN13(prefix, product.id, row.size)
@@ -67,9 +79,12 @@ export function BarcodeModal({ product, open, onOpenChange }: BarcodeModalProps)
             .select('id')
             .eq('company_id', companyId)
             .eq('barcode', candidate)
-            .maybeSingle()
-          barcode = dupe ? generateUniqueBarcode() : candidate
-          await supabase.rpc('set_product_size_barcode', { p_id: row.id, p_barcode: barcode })
+            .limit(1)
+          barcode = dupe && dupe.length > 0 ? generateUniqueBarcode() : candidate
+          const { error: setErr } = await supabase.rpc('set_product_size_barcode', { p_id: row.id, p_barcode: barcode })
+          // Not saved (e.g. catalog_forbidden / branch_forbidden): don't
+          // print a label with a barcode the scanner won't find.
+          if (setErr) { saveError = setErr.message; continue }
         }
         resolved.push({
           id: row.id,
@@ -80,11 +95,12 @@ export function BarcodeModal({ product, open, onOpenChange }: BarcodeModalProps)
         })
       }
 
+      if (saveError && !cancelled) toast.error(t(branchAwareErrorKey(saveError)))
       if (!cancelled) { setRows(resolved); setLoading(false) }
     }
     load()
     return () => { cancelled = true }
-  }, [open, product])
+  }, [open, product, applyBranch, t])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

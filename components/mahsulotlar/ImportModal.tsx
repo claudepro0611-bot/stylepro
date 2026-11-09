@@ -7,11 +7,12 @@ import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
+import { useIsMultiBranch, useWriteBranchId } from '@/lib/session/useBranch'
 
 const PREVIEW_LIMIT = 10
 const BOLIM_TO_TYPE: Record<string, string> = { Kiyimlar: 'clothing', 'Oyoq kiyim': 'footwear' }
 
-interface WarehouseRow { id: string; name: string; type: string }
+interface WarehouseRow { id: string; name: string; type: string; branch_id: string | null }
 interface ParsedRow {
   rowNumber: number
   name: string
@@ -74,6 +75,15 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
   const [parsing, setParsing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [summary, setSummary] = useState<{ success: number; failed: number } | null>(null)
+  // Stock lands in a warehouse of the active branch (owner/admin on "All
+  // branches": their write branch). Single-branch: every warehouse, as before.
+  const multiBranch = useIsMultiBranch()
+  const writeBranchId = useWriteBranchId()
+  async function loadWarehouses(supabase: ReturnType<typeof createClient>): Promise<WarehouseRow[]> {
+    const { data } = await supabase.from('warehouses').select('id, name, type, branch_id')
+    const all = (data ?? []) as WarehouseRow[]
+    return multiBranch && writeBranchId ? all.filter(w => w.branch_id === writeBranchId) : all
+  }
 
   function reset() {
     setStep('upload')
@@ -93,8 +103,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
     setFileName(file.name)
     try {
       const supabase = createClient()
-      const { data: whData } = await supabase.from('warehouses').select('id, name, type')
-      const warehouses = (whData ?? []) as WarehouseRow[]
+      const warehouses = await loadWarehouses(supabase)
 
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array' })
@@ -119,8 +128,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
     setImporting(true)
     const supabase = createClient()
 
-    const { data: whData } = await supabase.from('warehouses').select('id, name, type')
-    const warehouses = (whData ?? []) as WarehouseRow[]
+    const warehouses = await loadWarehouses(supabase)
 
     const { data: groupData } = await supabase.from('product_groups').select('id, name, size_type')
     let groups = (groupData ?? []) as { id: string; name: string; size_type: string }[]

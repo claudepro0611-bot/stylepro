@@ -8,25 +8,32 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { WAREHOUSE_TYPE_LABEL_KEYS, CREATABLE_WAREHOUSE_TYPES, type WarehouseType } from '@/lib/warehouses'
+import { BranchSelect, type BranchSelectOption } from '@/components/filiallar/BranchSelect'
+import { branchErrorKey } from '@/lib/branches'
+import { useSession } from '@/lib/session/SessionContext'
 
-export interface EditableWarehouse { id: string; name: string; type: WarehouseType }
+export interface EditableWarehouse { id: string; name: string; type: WarehouseType; branch_id?: string | null }
 
 interface EditWarehouseDialogProps {
   warehouse: EditableWarehouse | null
   onOpenChange: (open: boolean) => void
   onSaved: (updated: EditableWarehouse) => void
+  /** Company branches; pass [] for single-branch companies to hide the field. */
+  branches?: BranchSelectOption[]
 }
 
 const inputCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
 
-export function EditWarehouseDialog({ warehouse, onOpenChange, onSaved }: EditWarehouseDialogProps) {
+export function EditWarehouseDialog({ warehouse, onOpenChange, onSaved, branches = [] }: EditWarehouseDialogProps) {
   const { t } = useLanguage()
   const [name, setName] = useState('')
   const [type, setType] = useState<WarehouseType>('clothing')
+  const [branchId, setBranchId] = useState('')
   const [saving, setSaving] = useState(false)
+  const { canSeeAllBranches } = useSession()
 
   useEffect(() => {
-    if (warehouse) { setName(warehouse.name); setType(warehouse.type) }
+    if (warehouse) { setName(warehouse.name); setType(warehouse.type); setBranchId(warehouse.branch_id ?? '') }
   }, [warehouse])
 
   // Legacy types (e.g. 'footwear') aren't creatable anymore but must stay selectable for their own warehouse.
@@ -37,14 +44,21 @@ export function EditWarehouseDialog({ warehouse, onOpenChange, onSaved }: EditWa
   async function save() {
     if (!warehouse || !name.trim()) return
     setSaving(true)
-    const { error } = await createClient().rpc('update_warehouse', { p_id: warehouse.id, p_name: name.trim(), p_type: type })
+    // Only send p_branch_id when it actually changes: the move is refused
+    // server-side for a warehouse that holds stock (warehouse_not_empty).
+    const branchChanged = branches.length > 1 && !!branchId && branchId !== (warehouse.branch_id ?? '')
+    const { error } = await createClient().rpc('update_warehouse', {
+      p_id: warehouse.id, p_name: name.trim(), p_type: type,
+      ...(branchChanged ? { p_branch_id: branchId } : {}),
+    })
     setSaving(false)
     if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      const key = branchErrorKey(error.message, error.code)
+      toast.error(key ? t(key) : error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
       return
     }
     toast.success(t('warehouses.editSuccess'))
-    onSaved({ id: warehouse.id, name: name.trim(), type })
+    onSaved({ id: warehouse.id, name: name.trim(), type, branch_id: branchChanged ? branchId : warehouse.branch_id })
     onOpenChange(false)
   }
 
@@ -65,6 +79,17 @@ export function EditWarehouseDialog({ warehouse, onOpenChange, onSaved }: EditWa
               placeholder={t('inventory.warehouses.namePlaceholder')}
             />
           </div>
+          {branches.length > 1 && (
+            // Moving is owner/admin only and only for an empty warehouse
+            // (update_warehouse raises warehouse_not_empty otherwise).
+            <BranchSelect
+              value={branchId}
+              onChange={setBranchId}
+              options={branches.filter(b => b.isActive)}
+              allBranches={branches}
+              disabled={!canSeeAllBranches}
+            />
+          )}
           <div>
             <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">{t('inventory.warehouses.typeLabel')}</label>
             <div className="flex gap-2 flex-wrap">
@@ -76,7 +101,7 @@ export function EditWarehouseDialog({ warehouse, onOpenChange, onSaved }: EditWa
                   className={cn(
                     'flex-1 h-9 rounded-lg text-[13px] font-medium border transition-colors',
                     type === opt
-                      ? 'bg-slate-900 dark:bg-white shadow-sm border-slate-900 dark:border-white text-white dark:text-gray-900'
+                      ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border-indigo-600 dark:border-indigo-500 text-white'
                       : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                   )}
                 >

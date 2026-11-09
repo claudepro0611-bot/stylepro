@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 export interface CompanyFormValues {
   name: string
@@ -12,6 +13,7 @@ export interface CompanyFormValues {
   status: 'active' | 'inactive'
   userLimit: number
   warehouseLimit: number
+  branchLimit: number
 }
 
 export const emptyCompanyForm: CompanyFormValues = {
@@ -23,6 +25,7 @@ export const emptyCompanyForm: CompanyFormValues = {
   status: 'active',
   userLimit: 1,
   warehouseLimit: 2,
+  branchLimit: 1,
 }
 
 const inputCls = 'w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors'
@@ -34,6 +37,7 @@ interface CompanyFormFieldsProps {
 }
 
 export function CompanyFormFields({ values, onChange, mode }: CompanyFormFieldsProps) {
+  const { t } = useLanguage()
   const [showPassword, setShowPassword] = useState(false)
 
   function set<K extends keyof CompanyFormValues>(key: K, value: CompanyFormValues[K]) {
@@ -123,6 +127,22 @@ export function CompanyFormFields({ values, onChange, mode }: CompanyFormFieldsP
             onChange={e => set('warehouseLimit', Math.min(100, Math.max(1, Number(e.target.value) || 1)))}
             className={inputCls}
             placeholder="2"
+          />
+        </div>
+      )}
+
+      {mode === 'create' && (
+        <div>
+          <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {t('branches.superAdminLimit')}
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={values.branchLimit}
+            onChange={e => set('branchLimit', Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+            className={inputCls}
+            placeholder="1"
           />
         </div>
       )}

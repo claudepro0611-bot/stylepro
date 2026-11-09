@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { createClient } from '@/lib/supabase/client'
 import type { CompanyRow } from '@/app/(dashboard)/super-admin/actions'
 import { updateCompanyBilling } from '@/app/(dashboard)/super-admin/actions'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
 
 interface FeatureDefRow {
   key: string
@@ -25,6 +26,7 @@ interface CompanyFeatureRow {
 interface CompanyLimitsRow {
   user_limit: number
   warehouse_limit: number
+  branch_limit: number
   balance: number
   payment_due_date: string | null
   has_contract: boolean
@@ -59,13 +61,14 @@ interface FeatureModalProps {
 }
 
 export function FeatureModal({ company, open, onOpenChange }: FeatureModalProps) {
+  const { t } = useLanguage()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [features, setFeatures] = useState<FeatureCard[]>([])
   const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({})
   const [companyLimits, setCompanyLimits] = useState<CompanyLimitsRow | null>(null)
   const [pendingLimits, setPendingLimits] = useState<{
-    user_limit?: number; warehouse_limit?: number; balance?: number; payment_due_date?: string
+    user_limit?: number; warehouse_limit?: number; branch_limit?: number; balance?: number; payment_due_date?: string
     has_contract?: boolean; daily_penalty?: number; max_grace_days?: number
   }>({})
   const [clearingPenalty, setClearingPenalty] = useState(false)
@@ -83,7 +86,7 @@ export function FeatureModal({ company, open, onOpenChange }: FeatureModalProps)
       const [{ data: defs, error: defsError }, { data: cf, error: cfError }, { data: companyData }] = await Promise.all([
         supabase.from('feature_definitions').select('key, name, description, price_usd, is_core').order('is_core', { ascending: false }),
         supabase.from('company_features').select('feature_key, is_active').eq('company_id', company.id),
-        supabase.from('companies').select('user_limit, warehouse_limit, balance, payment_due_date, has_contract, daily_penalty, penalty_days, total_penalty, max_grace_days').eq('id', company.id).single(),
+        supabase.from('companies').select('user_limit, warehouse_limit, branch_limit, balance, payment_due_date, has_contract, daily_penalty, penalty_days, total_penalty, max_grace_days').eq('id', company.id).single(),
       ])
       if (defsError || cfError || !defs) {
         setLoading(false)
@@ -263,6 +266,17 @@ export function FeatureModal({ company, open, onOpenChange }: FeatureModalProps)
                       max={20}
                       value={pendingLimits.warehouse_limit ?? companyLimits?.warehouse_limit ?? company?.warehouseLimit ?? 2}
                       onChange={e => setPendingLimits(prev => ({ ...prev, warehouse_limit: Number(e.target.value) }))}
+                      className="w-full bg-transparent text-sm font-medium text-gray-800 dark:text-gray-200 outline-none"
+                    />
+                  </div>
+
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('branches.superAdminLimit')}</p>
+                    <input
+                      type="number"
+                      min={1}
+                      value={pendingLimits.branch_limit ?? companyLimits?.branch_limit ?? company?.branchLimit ?? 1}
+                      onChange={e => setPendingLimits(prev => ({ ...prev, branch_limit: Math.max(1, Math.floor(Number(e.target.value) || 1)) }))}
                       className="w-full bg-transparent text-sm font-medium text-gray-800 dark:text-gray-200 outline-none"
                     />
                   </div>

@@ -15,6 +15,11 @@ import { getCompanyId } from '@/lib/supabase/helpers'
 import { formatDate } from '@/lib/utils/formatters'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { useFeatures } from '@/lib/features'
+import { useLanguage } from '@/lib/i18n/LanguageContext'
+import { useSession } from '@/lib/session/SessionContext'
+import { useBranchFilter, useIsMultiBranch, useWriteBranchId } from '@/lib/session/useBranch'
+import { BranchSelect } from '@/components/filiallar/BranchSelect'
+import { branchRpcErrorKey, useBranchColumn } from '@/components/customers/branchUi'
 
 const ITEMS_PER_PAGE = 10
 type Period = 'today' | 'week' | 'month' | 'year'
@@ -53,6 +58,7 @@ interface Expense {
   paymentMethod: PaymentMethod
   date: string
   note: string
+  branchId: string | null
 }
 
 const emptyExpenseForm = {
@@ -69,6 +75,18 @@ export default function XarajatlarPage() {
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { features, loading: featuresLoading } = useFeatures()
+  const { t } = useLanguage()
+  const applyBranch = useBranchFilter()
+  const branchCol = useBranchColumn()
+  const showBranch = branchCol.show
+  const { branches } = useSession()
+  const isMultiBranch = useIsMultiBranch()
+  const writeBranchId = useWriteBranchId()
+  const activeBranches = branches.filter(b => b.isActive)
+  // Owner/admin on "All branches" choose the branch in the add dialog.
+  const showBranchSelect = showBranch
+  const [pickedBranchId, setPickedBranchId] = useState<string | null>(null)
+  const expenseBranchId = showBranchSelect ? (pickedBranchId ?? writeBranchId) : writeBranchId
 
   useEffect(() => {
     if (!featuresLoading && !features.expenses) router.push('/dashboard')
@@ -94,9 +112,11 @@ export default function XarajatlarPage() {
     const supabase = createClient()
     const [{ data: catRows, error: catError }, { data: expRows, error: expError }] = await Promise.all([
       supabase.from('expense_categories').select('id, name, color').order('name'),
-      supabase
+      applyBranch(supabase
         .from('expenses')
-        .select('id, category_id, amount, payment_method, date, note, expense_categories(name, color)')
+        // branch_id is only selected when the branch column is shown, so
+        // single-branch installs send the same query as before.
+        .select(`id, category_id, amount, payment_method, date, note, expense_categories(name, color)${showBranch ? ', branch_id' : ''}`))
         .order('date', { ascending: false }),
     ])
 
@@ -107,7 +127,8 @@ export default function XarajatlarPage() {
     }
 
     setCategories((catRows ?? []).map(c => ({ id: c.id, name: c.name, color: c.color ?? '#6366f1' })))
-    setExpenses((expRows ?? []).map(e => {
+    type ExpenseDbRow = { id: string; category_id: string | null; amount: number; payment_method: string; date: string; note: string | null; expense_categories: unknown; branch_id?: string | null }
+    setExpenses(((expRows ?? []) as unknown as ExpenseDbRow[]).map(e => {
       const cat = e.expense_categories as { name: string; color: string | null } | null
       return {
         id: e.id,
@@ -118,10 +139,11 @@ export default function XarajatlarPage() {
         paymentMethod: e.payment_method as PaymentMethod,
         date: e.date,
         note: e.note ?? '',
+        branchId: e.branch_id ?? null,
       }
     }))
     setLoading(false)
-  }, [])
+  }, [applyBranch, showBranch])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -159,6 +181,7 @@ export default function XarajatlarPage() {
 
   function openAddExpense() {
     setForm({ ...emptyExpenseForm, categoryId: categories[0]?.id ?? '' })
+    setPickedBranchId(null)
     setIsAddOpen(true)
   }
 
@@ -180,11 +203,15 @@ export default function XarajatlarPage() {
         date: form.date,
         note: form.note.trim() || null,
       },
-    })
+      // Only sent in multi-branch companies so single-branch installs keep
+      // working against the pre-branch create_expense signature.
+      ...(isMultiBranch && expenseBranchId ? { p_branch_id: expenseBranchId } : {}),
+    } as { p_data: { category_id: string; amount: number; payment_method: PaymentMethod; date: string; note: string | null } })
 
     setSaving(false)
     if (error) {
-      toast.error('Xatolik yuz berdi')
+      const key = branchRpcErrorKey(error.message)
+      toast.error(key ? t(key) : 'Xatolik yuz berdi')
       return
     }
     setIsAddOpen(false)
@@ -197,7 +224,8 @@ export default function XarajatlarPage() {
     const supabase = createClient()
     const { error } = await supabase.rpc('delete_expense', { p_id: id })
     if (error) {
-      toast.error('Xatolik yuz berdi')
+      const key = branchRpcErrorKey(error.message)
+      toast.error(key ? t(key) : 'Xatolik yuz berdi')
       return
     }
     toast.success("Xarajat o'chirildi")
@@ -273,7 +301,7 @@ export default function XarajatlarPage() {
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium transition-colors',
               tab === key
-                ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
                 : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
             )}
           >
@@ -292,7 +320,7 @@ export default function XarajatlarPage() {
                 className={cn(
                   'px-4 py-1.5 rounded-md text-sm font-medium transition-all',
                   period === key
-                    ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                    ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700',
                 )}
               >
@@ -314,6 +342,7 @@ export default function XarajatlarPage() {
                     <th className="px-6 py-3 font-medium">Kategoriya</th>
                     <th className="px-6 py-3 font-medium hidden md:table-cell">Izoh</th>
                     <th className="px-6 py-3 font-medium">To&apos;lov turi</th>
+                    {showBranch && <th className="px-6 py-3 font-medium">{t('branchCustomers.branchColumn')}</th>}
                     <th className="px-6 py-3 font-medium text-right">Summa</th>
                     <th className="px-6 py-3" />
                   </tr>
@@ -321,14 +350,14 @@ export default function XarajatlarPage() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+                      <td colSpan={showBranch ? 7 : 6} className="px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                         <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
                         Yuklanmoqda...
                       </td>
                     </tr>
                   ) : paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+                      <td colSpan={showBranch ? 7 : 6} className="px-6 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                         Xarajatlar topilmadi
                       </td>
                     </tr>
@@ -351,6 +380,7 @@ export default function XarajatlarPage() {
                             {PAYMENT_LABELS[e.paymentMethod]}
                           </span>
                         </td>
+                        {showBranch && <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{branchCol.branchName(e.branchId)}</td>}
                         <td className="px-6 py-4 text-right text-sm font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
                           {formatPrice(e.amount)}
                         </td>
@@ -463,7 +493,7 @@ export default function XarajatlarPage() {
                     className={cn(
                       'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                       form.paymentMethod === m
-                        ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                        ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
                         : 'border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
                     )}
                   >
@@ -491,6 +521,9 @@ export default function XarajatlarPage() {
                 placeholder="Ixtiyoriy"
               />
             </div>
+            {showBranchSelect && (
+              <BranchSelect value={expenseBranchId ?? ''} onChange={setPickedBranchId} options={activeBranches} allBranches={branches} />
+            )}
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Bekor qilish</Button>

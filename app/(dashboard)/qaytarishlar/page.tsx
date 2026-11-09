@@ -1,5 +1,6 @@
 'use client'
 
+import { SaleDetailDialog } from '@/components/sales/SaleDetailDialog'
 import { useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, RotateCcw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -10,6 +11,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { formatDateTime } from '@/lib/utils/formatters'
 import { localYmd } from '@/lib/utils/date'
+import { eqBranch, useWarehouseScope } from '@/lib/branchStock'
 
 const ITEMS_PER_PAGE = 20
 
@@ -19,12 +21,14 @@ interface ReturnRow {
   created_at: string
   created_by: string | null
   transaction_id: string
+  branch_id?: string | null
   transactions: { customer_name: string | null; payment_method: string | null } | null
   return_items: { quantity: number; refund_amount: number; transaction_items: { product_name: string | null } | null }[]
 }
 
 interface ReturnView {
   id: string
+  txId: string
   createdAt: string
   receipt: string
   customer: string
@@ -34,6 +38,7 @@ interface ReturnView {
   paymentMethod: string
   reason: string
   by: string
+  branch: string
 }
 
 function csvCell(value: string): string {
@@ -41,6 +46,7 @@ function csvCell(value: string): string {
 }
 
 export default function QaytarishlarPage() {
+  const [openTx, setOpenTx] = useState<string | null>(null)
   const { t } = useLanguage()
   const { formatPrice } = useCurrency()
   const [loading, setLoading] = useState(true)
@@ -48,16 +54,19 @@ export default function QaytarishlarPage() {
   const [range, setRange] = useState<DateRangeValue | null>(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  // Header branch filter; multi-branch owner/admin on "All" get a Branch column.
+  const { showBranch: showBranchCol, branchName, activeBranchId } = useWarehouseScope()
 
   useEffect(() => {
     let active = true
     ;(async () => {
+      setLoading(true)
       const supabase = createClient()
       const [{ data: returnsData }, usersRes] = await Promise.all([
         fetchAllRows<ReturnRow>((from, to) =>
-          supabase
+          eqBranch(supabase
             .from('returns')
-            .select('id, reason, created_at, created_by, transaction_id, transactions(customer_name, payment_method), return_items(quantity, refund_amount, transaction_items(product_name))')
+            .select('id, reason, created_at, created_by, transaction_id, branch_id, transactions(customer_name, payment_method), return_items(quantity, refund_amount, transaction_items(product_name))'), activeBranchId)
             .order('id')
             .range(from, to) as unknown as PromiseLike<{ data: ReturnRow[] | null; error: unknown }>,
         ),
@@ -69,6 +78,7 @@ export default function QaytarishlarPage() {
         const names = Array.from(new Set(r.return_items.map(i => i.transaction_items?.product_name ?? '—')))
         return {
           id: r.id,
+          txId: r.transaction_id,
           createdAt: r.created_at,
           receipt: `#${r.transaction_id.slice(0, 8).toUpperCase()}`,
           customer: r.transactions?.customer_name ?? '—',
@@ -78,6 +88,7 @@ export default function QaytarishlarPage() {
           paymentMethod: r.transactions?.payment_method ?? '—',
           reason: r.reason,
           by: (r.created_by && userName.get(r.created_by)) || '—',
+          branch: branchName(r.branch_id) || '—',
         }
       })
       views.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -85,7 +96,7 @@ export default function QaytarishlarPage() {
       setLoading(false)
     })()
     return () => { active = false }
-  }, [])
+  }, [activeBranchId, branchName])
 
   const filtered = useMemo(() => {
     let list = rows
@@ -113,8 +124,8 @@ export default function QaytarishlarPage() {
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
   function exportCSV() {
-    const headers = [t('returnsPage.date'), t('returnsPage.receipt'), t('returnsPage.customer'), t('returnsPage.products'), t('returnsPage.quantity'), t('returnsPage.refund'), t('returnsPage.payment'), t('returnsPage.reason'), t('returnsPage.by')]
-    const data = filtered.map(r => [formatDateTime(r.createdAt), r.receipt, r.customer, r.products, String(r.quantity), String(r.refund), r.paymentMethod, r.reason, r.by])
+    const headers = [t('returnsPage.date'), t('returnsPage.receipt'), t('returnsPage.customer'), t('returnsPage.products'), t('returnsPage.quantity'), t('returnsPage.refund'), t('returnsPage.payment'), t('returnsPage.reason'), t('returnsPage.by'), ...(showBranchCol ? [t('branches.branchLabel')] : [])]
+    const data = filtered.map(r => [formatDateTime(r.createdAt), r.receipt, r.customer, r.products, String(r.quantity), String(r.refund), r.paymentMethod, r.reason, r.by, ...(showBranchCol ? [r.branch] : [])])
     const csv = [headers, ...data].map(r => r.map(csvCell).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -175,6 +186,7 @@ export default function QaytarishlarPage() {
                   <th className="px-4 py-3 font-medium">{t('returnsPage.date')}</th>
                   <th className="px-4 py-3 font-medium">{t('returnsPage.receipt')}</th>
                   <th className="px-4 py-3 font-medium">{t('returnsPage.customer')}</th>
+                  {showBranchCol && <th className="px-4 py-3 font-medium">{t('branches.branchLabel')}</th>}
                   <th className="px-4 py-3 font-medium">{t('returnsPage.products')}</th>
                   <th className="px-4 py-3 font-medium text-right">{t('returnsPage.quantity')}</th>
                   <th className="px-4 py-3 font-medium text-right">{t('returnsPage.refund')}</th>
@@ -185,10 +197,11 @@ export default function QaytarishlarPage() {
               </thead>
               <tbody>
                 {paginated.map(r => (
-                  <tr key={r.id} className="border-b border-gray-50 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                  <tr key={r.id} onClick={() => setOpenTx(r.txId)} className="cursor-pointer border-b border-gray-50 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                     <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 tabular-nums">{formatDateTime(r.createdAt)}</td>
                     <td className="px-4 py-3 font-mono text-[12.5px] text-gray-700 dark:text-gray-300">{r.receipt}</td>
                     <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{r.customer}</td>
+                    {showBranchCol && <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{r.branch}</td>}
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-xs truncate" title={r.products}>{r.products}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-900 dark:text-gray-100">{r.quantity}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium text-red-600 dark:text-red-400">−{formatPrice(r.refund)}</td>
@@ -204,6 +217,7 @@ export default function QaytarishlarPage() {
       </div>
 
       <Pagination currentPage={page} totalPages={totalPages} totalItems={filtered.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setPage} />
+      <SaleDetailDialog transactionId={openTx} onClose={() => setOpenTx(null)} />
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { branchAwareErrorKey } from '@/lib/branchStock'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
@@ -66,7 +67,7 @@ export function ReturnModal({ transactionId, items, onOpenChange, onReturned }: 
     setSaving(false)
 
     if (error) {
-      toast.error(error.message.includes('forbidden') ? t('common.forbidden') : t('common.error'))
+      toast.error(t(branchAwareErrorKey(error.message)))
       return
     }
 

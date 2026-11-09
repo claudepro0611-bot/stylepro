@@ -25,6 +25,9 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import type { Product, ProductGroup } from '@/lib/types'
 import { WAREHOUSE_TYPE_LABEL_KEYS, type WarehouseType } from '@/lib/warehouses'
+import { useSession } from '@/lib/session/SessionContext'
+import { useBranchFilter } from '@/lib/session/useBranch'
+import { branchStockErrorKey, useWarehouseScope } from '@/lib/branchStock'
 
 const ITEMS_PER_PAGE = 12
 const COLORS_LIST = ['Qora', 'Oq', "Ko'k", 'Qizil', 'Yashil', 'Sariq', 'Kulrang', 'Jigarrang', 'Bej']
@@ -45,7 +48,7 @@ interface ProductRow {
   created_at: string
 }
 
-interface WarehouseRow { id: string; name: string; type: WarehouseType }
+interface WarehouseRow { id: string; name: string; type: WarehouseType; branch_id: string | null }
 
 interface ProductListItem extends Product { createdAt: string }
 
@@ -145,9 +148,11 @@ async function generateUniqueProductBarcode(
   for (let i = 0; i < 5; i++) {
     const [{ data: productDupe }, { data: sizeDupe }] = await Promise.all([
       supabase.from('products').select('id').eq('company_id', companyId).eq('barcode', candidate).maybeSingle(),
-      supabase.from('product_sizes').select('id').eq('company_id', companyId).eq('barcode', candidate).maybeSingle(),
+      // limit(1), not maybeSingle(): a variant's warehouse rows share one
+      // barcode, and maybeSingle() errors (data=null) on multiple matches.
+      supabase.from('product_sizes').select('id').eq('company_id', companyId).eq('barcode', candidate).limit(1),
     ])
-    if (!productDupe && !sizeDupe) return candidate
+    if (!productDupe && !(sizeDupe && sizeDupe.length > 0)) return candidate
     candidate = generateUniqueBarcode()
   }
   return candidate
@@ -209,13 +214,20 @@ export default function MahsulotlarPage() {
   const [editImageFile, setEditImageFile] = useState<File | null>(null)
   const [editImagePreview, setEditImagePreview] = useState('')
 
+  // Catalog mutations are owner/admin only ('catalog_forbidden' server-side).
+  const { canSeeAllBranches: canEditCatalog } = useSession()
+  const applyBranch = useBranchFilter()
+  // Home warehouse may be any company warehouse - label it with its branch.
+  const { labelAlways: warehouseLabel, groupByBranch } = useWarehouseScope()
+  const pickerWarehouses = useMemo(() => groupByBranch(warehouses, true), [warehouses, groupByBranch])
+
   const fetchProducts = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
     const [{ data, error }, { data: sizeData, error: sizeErr }] = await Promise.all([
       supabase.from('products').select('*').order('name'),
       fetchAllRows<{ product_id: string; stock: number | null }>((from, to) =>
-        supabase.from('product_sizes').select('product_id, stock').order('id').range(from, to)),
+        applyBranch(supabase.from('product_sizes').select('product_id, stock')).order('id').range(from, to)),
     ])
     if (error) toast.error(t('common.error'))
     else setProducts((data as ProductRow[]).map(mapProduct))
@@ -230,7 +242,7 @@ export default function MahsulotlarPage() {
       setStockTotals(totals)
     }
     setLoading(false)
-  }, [t])
+  }, [t, applyBranch])
 
   const fetchGroups = useCallback(async () => {
     const supabase = createClient()
@@ -241,7 +253,7 @@ export default function MahsulotlarPage() {
 
   const fetchWarehouses = useCallback(async () => {
     const supabase = createClient()
-    const { data, error } = await supabase.from('warehouses').select('id, name, type')
+    const { data, error } = await supabase.from('warehouses').select('id, name, type, branch_id')
     if (error) toast.error(t('common.error'))
     else setWarehouses(data as WarehouseRow[])
   }, [t])
@@ -343,7 +355,9 @@ export default function MahsulotlarPage() {
     const { error } = await supabase.rpc('delete_product', { p_id: deleteTarget.id })
     setDeleting(false)
     if (error) {
-      if (error.message.includes('forbidden')) toast.error(t('common.forbidden'))
+      const branchKey = branchStockErrorKey(error.message)
+      if (branchKey) toast.error(t(branchKey))
+      else if (error.message.includes('forbidden')) toast.error(t('common.forbidden'))
       else if (error.message.includes('Product not found')) toast.error(t('products.list.deleteNotFound'))
       else toast.error(t('products.list.deleteError'))
       return
@@ -354,6 +368,8 @@ export default function MahsulotlarPage() {
   }
 
   function rpcErrorMessage(error: { code?: string; message: string }) {
+    const branchKey = branchStockErrorKey(error.message)
+    if (branchKey) return t(branchKey)
     if (error.message.includes('forbidden')) return t('common.forbidden')
     if (error.code === '23505' && error.message.includes('barcode')) return t('products.toasts.barcodeDuplicate')
     return t('common.error')
@@ -361,7 +377,7 @@ export default function MahsulotlarPage() {
 
   function openAdd() {
     const defaultCat = activeGroups[0]?.name ?? "Ko'ylak"
-    setAddForm({ ...emptyAddForm, category: defaultCat, warehouseId: warehouses[0]?.id ?? '' })
+    setAddForm({ ...emptyAddForm, category: defaultCat, warehouseId: pickerWarehouses[0]?.id ?? '' })
     setAddImageFile(null)
     setAddImagePreview('')
     setIsAddOpen(true)
@@ -518,17 +534,21 @@ export default function MahsulotlarPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={openAdd} className="flex h-9 items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white px-3.5 text-[13px] font-medium text-white dark:text-slate-900 transition-colors">
-              <Plus className="h-3.5 w-3.5" />
-              {t('products.addNew')}
-            </button>
+            {canEditCatalog && (
+              <button onClick={openAdd} className="flex h-9 items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white px-3.5 text-[13px] font-medium text-white dark:text-slate-900 transition-colors">
+                <Plus className="h-3.5 w-3.5" />
+                {t('products.addNew')}
+              </button>
+            )}
             <button onClick={exportCsv} className="flex h-9 items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-700 px-3.5 text-[13px] font-medium text-white dark:text-white transition-colors">
               <Download className="h-3.5 w-3.5" />
               {t('common.export')}
             </button>
-            <button onClick={() => setIsImportOpen(true)} className={outlineBtnCls}>
-              Excel import
-            </button>
+            {canEditCatalog && (
+              <button onClick={() => setIsImportOpen(true)} className={outlineBtnCls}>
+                Excel import
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -568,11 +588,11 @@ export default function MahsulotlarPage() {
             </button>
             <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5">
               <button onClick={() => setView('list')} title={t('products.list.viewList')} aria-label={t('products.list.viewList')}
-                className={`flex h-7 w-8 items-center justify-center rounded-md border transition-colors ${view === 'list' ? 'bg-slate-900 dark:bg-white shadow-sm border-slate-900 dark:border-white text-white dark:text-gray-900' : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}>
+                className={`flex h-7 w-8 items-center justify-center rounded-md border transition-colors ${view === 'list' ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border-indigo-600 dark:border-indigo-500 text-white' : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}>
                 <List className="h-4 w-4" />
               </button>
               <button onClick={() => setView('grid')} title={t('products.list.viewGrid')} aria-label={t('products.list.viewGrid')}
-                className={`flex h-7 w-8 items-center justify-center rounded-md border transition-colors ${view === 'grid' ? 'bg-slate-900 dark:bg-white shadow-sm border-slate-900 dark:border-white text-white dark:text-gray-900' : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}>
+                className={`flex h-7 w-8 items-center justify-center rounded-md border transition-colors ${view === 'grid' ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border-indigo-600 dark:border-indigo-500 text-white' : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}>
                 <Grid className="h-4 w-4" />
               </button>
             </div>
@@ -657,9 +677,11 @@ export default function MahsulotlarPage() {
                     ))}
                   </div>
                   <div className="mt-2 flex items-center gap-3">
-                    <button onClick={e => openEdit(p, e)} className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                      <Edit2 className="h-3 w-3" />{t('products.edit')}
-                    </button>
+                    {canEditCatalog && (
+                      <button onClick={e => openEdit(p, e)} className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                        <Edit2 className="h-3 w-3" />{t('products.edit')}
+                      </button>
+                    )}
                     <button onClick={e => openBarcode(p, e)} className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                       <ScanBarcode className="h-3.5 w-3.5" /> Shtrix-kod
                     </button>
@@ -745,14 +767,18 @@ export default function MahsulotlarPage() {
                             className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                             <Eye className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={e => openEdit(p, e)} title={t('products.edit')} aria-label={t('products.edit')}
-                            className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => setDeleteTarget(p)} title={t('common.delete')} aria-label={t('common.delete')}
-                            className="flex h-7 w-7 items-center justify-center rounded-md text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-300 transition-colors">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {canEditCatalog && (
+                            <>
+                              <button onClick={e => openEdit(p, e)} title={t('products.edit')} aria-label={t('products.edit')}
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => setDeleteTarget(p)} title={t('common.delete')} aria-label={t('common.delete')}
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-300 transition-colors">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -810,7 +836,7 @@ export default function MahsulotlarPage() {
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('products.modal.warehouse')}</label>
               <select value={addForm.warehouseId} onChange={e => setAddForm(f => ({ ...f, warehouseId: e.target.value }))} className="w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 px-3 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900 outline-none focus:border-gray-400 dark:focus:border-gray-500">
                 <option value="">—</option>
-                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name} ({t(WAREHOUSE_TYPE_LABEL_KEYS[w.type])})</option>)}
+                {pickerWarehouses.map(w => <option key={w.id} value={w.id}>{warehouseLabel(w)} ({t(WAREHOUSE_TYPE_LABEL_KEYS[w.type])})</option>)}
               </select>
             </div>
             <div>
@@ -916,7 +942,7 @@ export default function MahsulotlarPage() {
               <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1">{t('products.modal.warehouse')}</label>
               <select value={editForm.warehouseId} onChange={e => setEditForm(f => ({ ...f, warehouseId: e.target.value }))} className="w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 px-3 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900 outline-none focus:border-gray-400 dark:focus:border-gray-500">
                 <option value="">—</option>
-                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name} ({t(WAREHOUSE_TYPE_LABEL_KEYS[w.type])})</option>)}
+                {pickerWarehouses.map(w => <option key={w.id} value={w.id}>{warehouseLabel(w)} ({t(WAREHOUSE_TYPE_LABEL_KEYS[w.type])})</option>)}
               </select>
             </div>
             <div>

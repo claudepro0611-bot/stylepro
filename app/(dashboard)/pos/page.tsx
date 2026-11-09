@@ -2,12 +2,13 @@
 
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { localYmd } from '@/lib/utils/date'
-import { Search, Plus, Minus, X, Tag, Loader2, Printer, Clock, ScanBarcode, Gift } from 'lucide-react'
+import { Search, Plus, Minus, X, Tag, Loader2, Printer, Clock, ScanBarcode, Gift, History } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { VariantMatrixModal } from '@/components/pos/VariantMatrixModal'
+import { PastPurchasesDialog, type PastPurchase } from '@/components/pos/PastPurchasesDialog'
 import { createClient } from '@/lib/supabase/client'
 import { getCompanyId } from '@/lib/supabase/helpers'
 import { formatPhone, formatDuration, formatDateTime, formatDate } from '@/lib/utils/formatters'
@@ -19,6 +20,18 @@ import type { Shift, Promotion } from '@/lib/types'
 import { isPerMl } from '@/lib/sizes'
 import { computeListPrice, mapPriceList, type PriceList, type PriceListRow } from '@/lib/price-lists'
 import { fetchAllRows } from '@/lib/supabase/helpers'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { useSession } from '@/lib/session/SessionContext'
+import { useBranchFilter, useIsMultiBranch, useWriteBranchId } from '@/lib/session/useBranch'
+import { branchStockErrorKey, eqBranch } from '@/lib/branchStock'
+import type { Database } from '@/lib/database.types'
+import { BranchSelect } from '@/components/filiallar/BranchSelect'
+
+// pos_catalog / pos_lookups aren't in the generated Database types yet.
+async function callRpc<T>(supabase: SupabaseClient, fn: string, args?: Record<string, unknown>): Promise<{ data: T | null; error: unknown }> {
+  const { data, error } = await (supabase.rpc as unknown as (f: string, a?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>).call(supabase, fn, args)
+  return { data: (data as T | null) ?? null, error }
+}
 
 const CATEGORIES = ['Barchasi', "Ko'ylak", 'Shim', 'Kurtka', 'Libos']
 const PAYMENT_METHODS = ['Naqd', 'Karta', 'Click', 'Payme']
@@ -58,6 +71,10 @@ interface PosItem {
   sku: string
   imageUrl: string
   companionId: string | null  // product_sizes.id of the auto-added bottle
+  // Every warehouse row of this variant (same product+size+color), most
+  // stock first. `id` is rows[0]; `stock` is the sum. sell_cart works on
+  // concrete rows, so handleSell splits a line's quantity across these.
+  rows: { id: string; stock: number }[]
 }
 
 // One card per parent product.
@@ -74,6 +91,18 @@ interface CustomerLite { id: string; fullName: string; phone: string; priceListI
 interface CustomerRow { id: string; full_name: string; phone: string | null; price_list_id?: string | null }
 function mapCustomerLite(row: CustomerRow): CustomerLite {
   return { id: row.id, fullName: row.full_name, phone: row.phone ?? '', priceListId: row.price_list_id ?? null }
+}
+
+interface PastPurchaseRow {
+  product_id: string | null
+  product_size_id: string | null
+  product_name: string | null
+  product_sizes: { size: string | null; color: string | null } | { size: string | null; color: string | null }[] | null
+  products: { name: string | null; category: string | null } | { name: string | null; category: string | null }[] | null
+  price: number
+  quantity: number
+  returned_quantity: number | null
+  transactions: { date: string } | { date: string }[] | null
 }
 
 interface CartLine {
@@ -104,6 +133,7 @@ interface OrderTab {
   customerId: string
   paymentMethod: string
   amountReceived: string
+  manualDiscount: string  // cheque-level discount in so'm, typed by the cashier
   selectedPromotion: SelectedPromotion | null
 }
 
@@ -113,7 +143,9 @@ const MAX_TABS = 5
 // placed right after it, dropped when the perfume line is gone, and not
 // regenerated once the cashier removed them (bottleDropped on the parent).
 function syncBottles(cart: CartLine[], items: PosItem[]): CartLine[] {
-  const byId = new Map(items.map(i => [i.id, i]))
+  // Keyed by every warehouse row id, so a companion pointing at any row of
+  // the bottle variant still resolves to its (merged) POS item.
+  const byId = new Map(items.flatMap(i => i.rows.map(r => [r.id, i] as const)))
   const out: CartLine[] = []
   for (const line of cart) {
     if (line.companionOf) continue
@@ -133,7 +165,7 @@ function syncBottles(cart: CartLine[], items: PosItem[]): CartLine[] {
 }
 
 function createEmptyTab(id: string): OrderTab {
-  return { id, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null }
+  return { id, cart: [], customerId: '', paymentMethod: '', amountReceived: '', manualDiscount: '', selectedPromotion: null }
 }
 
 interface PromotionRow {
@@ -164,7 +196,7 @@ const pillCls = (active: boolean) =>
   cn(
     'rounded-lg px-3 py-1.5 text-sm transition-colors',
     active
-      ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+      ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
       : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800',
   )
 
@@ -206,6 +238,7 @@ interface ReceiptData {
   date: string
   receiptNumber: string
   items: ReceiptItem[]
+  discount: number
   total: number
   paymentType: string
 }
@@ -247,6 +280,12 @@ function ReceiptModal({ open, onOpenChange, data }: { open: boolean; onOpenChang
 
             <div className="border-t border-dashed border-gray-300 my-3" />
 
+            {data.discount > 0 && (
+              <div className="flex items-center justify-between mb-1 text-sm text-gray-600">
+                <span>Chegirma:</span>
+                <span className="tabular-nums">−{formatPrice(data.discount)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-base font-semibold">Jami:</span>
               <span className="text-xl font-bold">{formatPrice(data.total)}</span>
@@ -304,6 +343,21 @@ export default function POSPage() {
   const canGift = !!giftSettings && giftSettings.maxPercent > 0 && userRole !== '' && (userRole !== 'staff' || giftSettings.staffAllowed)
   const [activeShift, setActiveShift] = useState<Shift | null>(null)
   const [shiftLoading, setShiftLoading] = useState(true)
+
+  // Branch: POS branch = the open shift's branch (locked while the shift is
+  // open), else the header-selected branch / useWriteBranchId(). Owner/admin
+  // on "All branches" in a multi-branch company pick it with a compact select.
+  const { loading: sessionLoading, branches, canSeeAllBranches, activeBranchId } = useSession()
+  const applyBranch = useBranchFilter()
+  const multiBranch = useIsMultiBranch()
+  const writeBranchId = useWriteBranchId()
+  const activeBranches = branches.filter(b => b.isActive)
+  const [shiftBranchId, setShiftBranchId] = useState<string | null>(null)
+  const [pickedBranchId, setPickedBranchId] = useState<string | null>(null)
+  const showBranchPicker = multiBranch && canSeeAllBranches && activeBranchId === null
+  const pickedValid = !!pickedBranchId && activeBranches.some(b => b.id === pickedBranchId)
+  const posBranchId: string | null = shiftBranchId
+    ?? (showBranchPicker && pickedValid ? pickedBranchId : writeBranchId)
   const [startingShift, setStartingShift] = useState(false)
   const [closeReportOpen, setCloseReportOpen] = useState(false)
   const [closingShift, setClosingShift] = useState(false)
@@ -322,11 +376,16 @@ export default function POSPage() {
     const { data: userRow } = await supabase.from('users').select('id, full_name, role').eq('id', user.id).single()
     setCurrentUser({ id: user.id, fullName: userRow?.full_name ?? user.email ?? '' })
     setUserRole(userRow?.role ?? '')
-    const { data: shiftRow } = await supabase.from('shifts').select('*')
-      .eq('cashier_id', user.id).eq('status', 'active').order('started_at', { ascending: false }).limit(1).maybeSingle()
+    // Header branch filter: a concrete branch only finds a shift opened in
+    // it; owner/admin on "All branches" pick up any open shift and the POS
+    // locks to that shift's branch.
+    const { data: shiftRow } = await applyBranch(supabase.from('shifts').select('*')
+      .eq('cashier_id', user.id).eq('status', 'active'))
+      .order('started_at', { ascending: false }).limit(1).maybeSingle()
     setActiveShift(shiftRow as Shift | null)
+    setShiftBranchId((shiftRow as { branch_id?: string | null } | null)?.branch_id ?? null)
     setShiftLoading(false)
-  }, [])
+  }, [applyBranch])
 
   useEffect(() => { fetchShiftState() }, [fetchShiftState])
   useEffect(() => {
@@ -358,13 +417,21 @@ export default function POSPage() {
     const supabase = createClient()
     const companyId = await getCompanyId(supabase)
     if (!companyId) { setStartingShift(false); toast.error(t('common.error')); return }
+    // branch_id isn't in the generated shifts Insert type yet - cast. Omitted
+    // when unknown so the DB fill trigger picks the user's branch as before.
     const { data, error } = await supabase.from('shifts').insert({
       company_id: companyId, cashier_id: currentUser.id, cashier_name: currentUser.fullName,
-      initial_cash: 0, status: 'active',
-    }).select().single()
+      initial_cash: 0, status: 'active' as const,
+      ...(posBranchId ? { branch_id: posBranchId } : {}),
+    } as Database['public']['Tables']['shifts']['Insert']).select().single()
     setStartingShift(false)
-    if (error || !data) { toast.error(t('common.error')); return }
+    if (error || !data) {
+      const branchKey = branchStockErrorKey(error?.message)
+      toast.error(branchKey ? t(branchKey) : t('common.error'))
+      return
+    }
     setActiveShift(data as Shift)
+    setShiftBranchId((data as { branch_id?: string | null }).branch_id ?? posBranchId)
   }
 
   async function openCloseReport() {
@@ -398,23 +465,63 @@ export default function POSPage() {
     setClosingShift(false)
     if (error || !data || data.length === 0) { toast.error(t('common.error')); return }
     toast.success(t('pos.shift.closedSuccess'))
-    setCloseReportOpen(false); setShiftSummary(null); setActiveShift(null)
+    setCloseReportOpen(false); setShiftSummary(null); setActiveShift(null); setShiftBranchId(null)
   }
+
+  // product_sizes.id → all warehouse rows of the same variant (incl. itself).
+  const variantRowsRef = useRef<Map<string, { id: string; stock: number }[]>>(new Map())
 
   const fetchProducts = useCallback(async (): Promise<PosItem[]> => {
     const supabase = createClient()
-    const [{ data: catalogData }, { data: sizesData }] = await Promise.all([
-      supabase.from('products').select('id, name, sku, category, price, status, image_url').eq('status', 'active'),
-      // Unfiltered (including stock=0 rows): the variant matrix needs every
-      // size/color a product has ever been stocked in, so it can show
-      // zero-stock cells grayed-out rather than omitting them.
-      supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price, selling_price, sku, companion_product_size_id'),
-    ])
-    const catalogMap = new Map((catalogData as ProductCatalogRow[] ?? []).map(p => [p.id, p]))
+    let catalogData: ProductCatalogRow[] = []
+    let sizesData: ProductSizeRow[] = []
+    // One round trip, no PostgREST 1000-row cap (returns a single jsonb).
+    type Catalog = { products: ProductCatalogRow[]; sizes: ProductSizeRow[] }
+    let { data: rpcData, error: rpcError } = await callRpc<Catalog>(supabase, 'pos_catalog', { p_branch_id: posBranchId })
+    if ((rpcError || !rpcData) && !multiBranch) {
+      // Pre-branch DB: pos_catalog() has no p_branch_id yet. With one branch
+      // the unfiltered catalog is the same thing.
+      ({ data: rpcData, error: rpcError } = await callRpc<Catalog>(supabase, 'pos_catalog'))
+    }
+    if (!rpcError && rpcData) {
+      catalogData = rpcData.products ?? []
+      sizesData = rpcData.sizes ?? []
+    } else {
+      // Fallback (RPC not deployed yet): page through both tables so big
+      // catalogs aren't silently truncated at 1000 rows.
+      const [catalogRes, sizesRes] = await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase.from('products').select('id, name, sku, category, price, status, image_url').eq('status', 'active').order('id').range(from, to)),
+        // Unfiltered (including stock=0 rows): the variant matrix needs every
+        // size/color a product has ever been stocked in, so it can show
+        // zero-stock cells grayed-out rather than omitting them.
+        fetchAllRows((from, to) => {
+          const q = supabase.from('product_sizes').select('id, product_id, size, color, stock, purchase_price, selling_price, sku, companion_product_size_id')
+          return eqBranch(q, posBranchId).order('id').range(from, to)
+        }),
+      ])
+      catalogData = catalogRes.data as unknown as ProductCatalogRow[]
+      sizesData = sizesRes.data as unknown as ProductSizeRow[]
+    }
+    const catalogMap = new Map(catalogData.map(p => [p.id, p]))
+    // One POS item per variant: a variant stocked in several warehouses has
+    // one product_sizes row per warehouse — merge them.
+    const byVariant = new Map<string, ProductSizeRow[]>()
+    for (const sz of sizesData) {
+      if (!catalogMap.has(sz.product_id)) continue
+      const k = `${sz.product_id}|${sz.size}|${sz.color ?? ''}`
+      const list = byVariant.get(k)
+      if (list) list.push(sz)
+      else byVariant.set(k, [sz])
+    }
     const items: PosItem[] = []
-    for (const sz of (sizesData as ProductSizeRow[] ?? [])) {
-      const p = catalogMap.get(sz.product_id)
-      if (!p) continue
+    const rowMap = new Map<string, { id: string; stock: number }[]>()
+    for (const group of byVariant.values()) {
+      group.sort((a, b) => b.stock - a.stock)
+      const sz = group[0]
+      const p = catalogMap.get(sz.product_id)!
+      const rows = group.map(g => ({ id: g.id, stock: g.stock }))
+      for (const r of rows) rowMap.set(r.id, rows)
       items.push({
         id: sz.id,
         productId: p.id,
@@ -422,25 +529,51 @@ export default function POSPage() {
         category: p.category,
         size: sz.size,
         color: sz.color ?? '',
-        stock: sz.stock,
+        stock: group.reduce((s, g) => s + g.stock, 0),
         price: sz.selling_price > 0 ? sz.selling_price : p.price,
         purchasePrice: sz.purchase_price,
         sku: sz.sku ?? p.sku ?? '',
         imageUrl: p.image_url ?? '',
-        companionId: sz.companion_product_size_id ?? null,
+        companionId: group.find(g => g.companion_product_size_id)?.companion_product_size_id ?? null,
+        rows,
       })
     }
+    variantRowsRef.current = rowMap
     items.sort((a, b) => a.productName.localeCompare(b.productName) || a.size.localeCompare(b.size))
     setPosItems(items)
     return items
-  }, [])
+  }, [posBranchId, multiBranch])
+
+  // Re-reads stock for just the given product_sizes rows and patches local
+  // state — after a sale only the sold variants changed, so re-downloading
+  // the whole catalog (thousands of rows in a big store) is wasted time.
+  const refreshStock = useCallback(async (rowIds: string[]) => {
+    const ids = [...new Set(rowIds)]
+    if (ids.length === 0) return
+    const supabase = createClient()
+    const stockById = new Map<string, number>()
+    for (let i = 0; i < ids.length; i += 150) {
+      const { data, error } = await supabase.from('product_sizes').select('id, stock').in('id', ids.slice(i, i + 150))
+      if (error) { await fetchProducts(); return }
+      for (const r of data ?? []) stockById.set(r.id, r.stock)
+    }
+    setPosItems(prev => prev.map(item => {
+      if (!item.rows.some(r => stockById.has(r.id))) return item
+      const rows = item.rows.map(r => ({ id: r.id, stock: stockById.get(r.id) ?? r.stock }))
+      for (const r of rows) variantRowsRef.current.set(r.id, rows)
+      return { ...item, rows, stock: rows.reduce((sum, r) => sum + r.stock, 0) }
+    }))
+  }, [fetchProducts])
 
   const fetchCustomers = useCallback(async () => {
     const supabase = createClient()
-    const { data, error } = await supabase.from('customers').select('id, full_name, phone, price_list_id')
+    const { data, error } = await fetchAllRows((from, to) => {
+      const q = supabase.from('customers').select('id, full_name, phone, price_list_id')
+      return eqBranch(q, posBranchId).order('id').range(from, to)
+    })
     if (error) toast.error(t('common.error'))
-    else setCustomers((data as CustomerRow[]).map(mapCustomerLite))
-  }, [t])
+    else setCustomers((data as unknown as CustomerRow[]).map(mapCustomerLite))
+  }, [t, posBranchId])
 
   // Price lists (wholesale etc.) for customers attached to one. Preview only —
   // sell_cart recomputes the same price server-side.
@@ -457,10 +590,37 @@ export default function POSPage() {
     setPlOverrides(new Map(items.map(i => [`${i.price_list_id}|${i.product_size_id}`, Number(i.price)])))
   }, [])
 
+  // Customers + price lists in one round trip; falls back to the separate
+  // (paged) fetches if the RPC isn't deployed yet.
+  const fetchLookups = useCallback(async () => {
+    const supabase = createClient()
+    type Lookups = {
+      customers: CustomerRow[]
+      price_lists: PriceListRow[]
+      price_list_items: { price_list_id: string; product_size_id: string; price: number }[]
+    }
+    let { data, error } = await callRpc<Lookups>(supabase, 'pos_lookups', { p_branch_id: posBranchId })
+    if ((error || !data) && !multiBranch) {
+      // Pre-branch DB: pos_lookups() has no p_branch_id yet (one branch = same data).
+      ({ data, error } = await callRpc<Lookups>(supabase, 'pos_lookups'))
+    }
+    if (error || !data) {
+      await Promise.all([fetchCustomers(), fetchPriceLists()])
+      return
+    }
+    setCustomers((data.customers ?? []).map(mapCustomerLite))
+    setPriceLists((data.price_lists ?? []).map(mapPriceList))
+    setPlOverrides(new Map((data.price_list_items ?? []).map(i => [`${i.price_list_id}|${i.product_size_id}`, Number(i.price)])))
+  }, [fetchCustomers, fetchPriceLists, posBranchId, multiBranch])
+
+  // Waits for the session (branch list) and the shift (its branch locks the
+  // POS) so the catalog isn't downloaded twice on load; re-runs when the POS
+  // branch changes.
   useEffect(() => {
+    if (sessionLoading || shiftLoading) return
     setLoading(true)
-    Promise.all([fetchProducts(), fetchCustomers(), fetchPriceLists()]).finally(() => setLoading(false))
-  }, [fetchProducts, fetchCustomers, fetchPriceLists])
+    Promise.all([fetchProducts(), fetchLookups()]).finally(() => setLoading(false))
+  }, [fetchProducts, fetchLookups, sessionLoading, shiftLoading])
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Barchasi')
@@ -469,8 +629,28 @@ export default function POSPage() {
   const [tabs, setTabs] = useState<OrderTab[]>(() => [createEmptyTab('tab-1')])
   const [activeTabId, setActiveTabId] = useState('tab-1')
 
+  // Cart lines / customers belong to one branch's stock: switching the POS
+  // branch (picker or header switcher) starts with fresh, empty tabs.
+  const lastBranchRef = useRef<string | null>(posBranchId)
+  useEffect(() => {
+    if (lastBranchRef.current === posBranchId) return
+    const hadBranch = lastBranchRef.current !== null
+    lastBranchRef.current = posBranchId
+    if (!hadBranch) return
+    tabIdRef.current += 1
+    const id = `tab-${tabIdRef.current}`
+    setTabs([createEmptyTab(id)])
+    setActiveTabId(id)
+  }, [posBranchId])
+
+  function pickPosBranch(id: string) {
+    if (id === posBranchId) return
+    if (tabs.some(tb => tb.cart.length > 0) && !window.confirm(t('branchStock.switchConfirm'))) return
+    setPickedBranchId(id)
+  }
+
   const activeTab = tabs.find(tb => tb.id === activeTabId) ?? tabs[0]
-  const { cart: rawCart, customerId, paymentMethod, amountReceived, selectedPromotion: tabPromotion } = activeTab
+  const { cart: rawCart, customerId, paymentMethod, amountReceived, manualDiscount: rawManualDiscount = '', selectedPromotion: tabPromotion } = activeTab
 
   function updateActiveTab(updater: (tab: OrderTab) => OrderTab) {
     setTabs(prev => prev.map(tb => (tb.id === activeTabId ? updater(tb) : tb)))
@@ -559,6 +739,73 @@ export default function POSPage() {
     : rawCart
   const selectedPromotion = customerPriceList ? null : tabPromotion
 
+  // Selected customer's past purchases, so the cashier can answer "what did I
+  // pay for this last time?". Newest first; gifts, cancelled cheques and
+  // fully returned lines are skipped.
+  const [pastPurchases, setPastPurchases] = useState<PastPurchase[]>([])
+  useEffect(() => {
+    if (!customerId) { setPastPurchases([]); return }
+    let cancelled = false
+    const supabase = createClient()
+    supabase
+      .from('transaction_items')
+      .select('product_id, product_size_id, product_name, price, quantity, returned_quantity, product_sizes(size, color), products(name, category), transactions!inner(date, customer_id, status)')
+      .eq('transactions.customer_id', customerId)
+      .neq('transactions.status', 'cancelled')
+      .eq('is_gift', false)
+      .limit(2000)
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { setPastPurchases([]); return }
+        const rows = (data ?? []) as unknown as PastPurchaseRow[]
+        setPastPurchases(rows
+          .filter(r => r.product_id && Number(r.quantity) > Number(r.returned_quantity ?? 0))
+          .map(r => {
+            const one = <T,>(v: T | T[] | null): T | null => Array.isArray(v) ? v[0] ?? null : v
+            const tx = one(r.transactions)
+            const ps = one(r.product_sizes)
+            const pr = one(r.products)
+            return {
+              productId: r.product_id as string, productSizeId: r.product_size_id,
+              productName: r.product_name || pr?.name || '', size: ps?.size ?? '', color: ps?.color ?? '', category: pr?.category ?? '',
+              price: Number(r.price), quantity: Number(r.quantity), date: tx?.date ?? '',
+            }
+          })
+          .sort((a, b) => b.date.localeCompare(a.date)))
+      })
+    return () => { cancelled = true }
+  }, [customerId])
+
+  // Last purchase for a cart line: same variant (any of its warehouse rows)
+  // first, otherwise the latest purchase of the same product.
+  const lastPurchaseFor = useCallback((line: CartLine): { purchase: PastPurchase; sameVariant: boolean } | null => {
+    const item = posItems.find(i => i.id === line.key)
+    const rowIds = new Set(item ? item.rows.map(r => r.id) : [line.productSizeId])
+    const exact = pastPurchases.find(p => p.productSizeId && rowIds.has(p.productSizeId))
+    if (exact) return { purchase: exact, sameVariant: true }
+    const any = pastPurchases.find(p => p.productId === line.productId)
+    return any ? { purchase: any, sameVariant: false } : null
+  }, [pastPurchases, posItems])
+
+  const [pastPurchasesOpen, setPastPurchasesOpen] = useState(false)
+
+  // A past purchase maps back to today's POS item: the same variant if it is
+  // still stocked, otherwise the product's variant picker.
+  function resolvePastPurchase(p: PastPurchase): { item: PosItem } | { group: ProductGroupCard } | null {
+    const item = p.productSizeId ? posItems.find(i => i.rows.some(r => r.id === p.productSizeId)) : undefined
+    if (item && item.stock > 0) return { item }
+    const group = productGroups.find(g => g.productId === p.productId)
+    return group && group.totalStock > 0 ? { group } : null
+  }
+
+  function addPastPurchase(p: PastPurchase) {
+    const target = resolvePastPurchase(p)
+    if (!target) { toast.error(t('pos.noSizesAvailable')); return }
+    setPastPurchasesOpen(false)
+    if ('item' in target) addToCart(target.item)
+    else setMatrixProduct(target.group)
+  }
+
   // Per-ml perfume: ask the cashier how many ml before adding.
   const [mlPrompt, setMlPrompt] = useState<{ item: PosItem; value: string } | null>(null)
 
@@ -603,12 +850,17 @@ export default function POSPage() {
     const companyId = await getCompanyId(supabase)
     if (!companyId) return
 
-    const { data, error } = await supabase
+    // limit(1), not maybeSingle(): a variant stocked in several warehouses
+    // has one row per warehouse, all sharing the barcode.
+    let barcodeQuery = supabase
       .from('product_sizes')
       .select('id, product_id, size, color, stock')
       .eq('barcode', value)
       .eq('company_id', companyId)
-      .maybeSingle()
+    // Only this POS branch's warehouse rows are sellable here.
+    barcodeQuery = eqBranch(barcodeQuery, posBranchId)
+    const { data: matches, error } = await barcodeQuery.limit(1)
+    const data = matches?.[0] ?? null
 
     if (error || !data) {
       // Fallback: no variant matched — try the product-level barcode and, if
@@ -649,17 +901,18 @@ export default function POSPage() {
 
     // The scanned row may not be in local state yet (e.g. just stocked in
     // from another till) — refetch once before giving up.
-    let item = posItems.find(p => p.id === data.id)
+    const matchesRow = (p: PosItem) => p.rows.some(r => r.id === data.id)
+    let item = posItems.find(matchesRow)
     if (!item) {
       const refreshed = await fetchProducts()
-      item = refreshed.find(p => p.id === data.id)
+      item = refreshed.find(matchesRow)
     }
     if (!item) {
       toast.error(t('pos.barcode.notFound'))
       return
     }
 
-    if (data.stock <= 0) {
+    if (item.stock <= 0) {
       toast.error(`${t('pos.barcode.outOfStock')} — ${item.productName} ${colorOrDefault(item.color)} ${item.size}`)
       return
     }
@@ -817,7 +1070,7 @@ export default function POSPage() {
   }
 
   function resetSale() {
-    updateActiveTab(tab => ({ ...tab, cart: [], customerId: '', paymentMethod: '', amountReceived: '', selectedPromotion: null }))
+    updateActiveTab(tab => ({ ...tab, cart: [], customerId: '', paymentMethod: '', amountReceived: '', manualDiscount: '', selectedPromotion: null }))
   }
 
   // ─── Promotion selector ("Aksiya qo'llash") ────────────────────────────
@@ -879,7 +1132,11 @@ export default function POSPage() {
   // sell_cart doesn't read promotion_id yet, so this is a simplified
   // estimate, consistent with pos.estimateNote's "may differ" framing).
   const promoDiscountAmount = selectedPromotion ? Math.round(subtotal * selectedPromotion.discountPercent / 100) : 0
-  const total = subtotal - promoDiscountAmount
+  // Paid total before the cashier's manual discount — gift limits use this.
+  const totalBeforeDiscount = subtotal - promoDiscountAmount
+  const manualDiscount = Math.max(0, Number(rawManualDiscount) || 0)
+  const discountTooBig = manualDiscount > totalBeforeDiscount
+  const total = Math.max(0, totalBeforeDiscount - manualDiscount)
   // Per-line breakdown for the cart list: each line's promo-discounted unit
   // price/total, computed independently per line (no cross-line remainder
   // distribution needed — that only existed to split a single whole-cart
@@ -899,17 +1156,17 @@ export default function POSPage() {
   for (const l of cart) qtyBySize.set(l.productSizeId, (qtyBySize.get(l.productSizeId) ?? 0) + l.quantity)
   const isLineShort = (l: CartLine) => (qtyBySize.get(l.productSizeId) ?? 0) > l.maxStock
   const hasStockShortage = cart.some(isLineShort)
-  const giftLimit = giftSettings ? Math.floor(total * giftSettings.maxPercent / 100) : 0
+  const giftLimit = giftSettings ? Math.floor(totalBeforeDiscount * giftSettings.maxPercent / 100) : 0
   const giftError = giftAmount <= 0
     ? null
     : !canGift
       ? t('pos.gift.forbidden')
-      : total <= 0
+      : totalBeforeDiscount <= 0
         ? t('pos.gift.needsPaidItem')
         : giftAmount > giftLimit
           ? t('pos.gift.limitExceeded')
           : null
-  const canSell = cart.length > 0 && !hasStockShortage && !giftError && paymentMethod !== '' && (!features.shift_system || !!activeShift)
+  const canSell = cart.length > 0 && !hasStockShortage && !giftError && !discountTooBig && paymentMethod !== '' && (!features.shift_system || !!activeShift)
 
   async function handleSell() {
     if (!canSell) return
@@ -922,14 +1179,40 @@ export default function POSPage() {
     // Bottle lines are separate cart lines but merge here if the same bottle
     // is also present twice (e.g. two perfumes sharing one bottle size) so
     // sell_cart sees one line per product_size.
-    const merged = new Map<string, { product_size_id: string; quantity: number; is_gift: boolean }>()
+    const perVariant = new Map<string, { product_size_id: string; quantity: number; is_gift: boolean }>()
     for (const line of cart) {
       const k = `${line.productSizeId}|${line.isGift ? 1 : 0}`
-      const prev = merged.get(k)
+      const prev = perVariant.get(k)
       if (prev) prev.quantity += line.quantity
-      else merged.set(k, { product_size_id: line.productSizeId, quantity: line.quantity, is_gift: line.isGift })
+      else perVariant.set(k, { product_size_id: line.productSizeId, quantity: line.quantity, is_gift: line.isGift })
+    }
+    // A variant held in several warehouses: take the quantity from its
+    // warehouse rows, most stock first. Any shortfall stays on the first row
+    // so sell_cart reports "insufficient stock" as before.
+    const merged = new Map<string, { product_size_id: string; quantity: number; is_gift: boolean }>()
+    const used = new Map<string, number>()
+    const put = (id: string, quantity: number, isGift: boolean) => {
+      const k = `${id}|${isGift ? 1 : 0}`
+      const prev = merged.get(k)
+      if (prev) prev.quantity += quantity
+      else merged.set(k, { product_size_id: id, quantity, is_gift: isGift })
+      used.set(id, (used.get(id) ?? 0) + quantity)
+    }
+    for (const it of perVariant.values()) {
+      const rows = variantRowsRef.current.get(it.product_size_id)
+      if (!rows || rows.length < 2) { put(it.product_size_id, it.quantity, it.is_gift); continue }
+      let left = it.quantity
+      for (const r of rows) {
+        if (left <= 0) break
+        const take = Math.min(left, Math.max(0, r.stock - (used.get(r.id) ?? 0)))
+        if (take > 0) { put(r.id, take, it.is_gift); left -= take }
+      }
+      if (left > 0) put(rows[0].id, left, it.is_gift)
     }
     const items = Array.from(merged.values())
+    // Every warehouse row of every variant in the cart — the only stock
+    // that can change because of this sale.
+    const touchedRowIds = cart.flatMap(l => (variantRowsRef.current.get(l.productSizeId) ?? [{ id: l.productSizeId }]).map(r => r.id))
 
     const { data: transactionId, error } = await supabase.rpc('sell_cart', {
       p_items: items,
@@ -943,17 +1226,27 @@ export default function POSPage() {
         shift_id: activeShift?.id ?? null,
         cashier_id: currentUser?.id ?? null,
         cashier_name: currentUser?.fullName ?? null,
+        branch_id: posBranchId,
         // Not yet read by sell_cart (server derives discounts itself from
         // active promotions/VIP status) — carried through for future use,
         // e.g. attributing a sale to the promotion the cashier picked.
         promotion_id: selectedPromotion?.id ?? null,
+        manual_discount: manualDiscount,
       },
     })
 
     setSelling(false)
 
     if (error || !transactionId) {
-      if (error?.message.includes('gift_forbidden')) {
+      const branchKey = branchStockErrorKey(error?.message)
+      if (branchKey) {
+        toast.error(t(branchKey))
+        // A stale shift (closed elsewhere / other branch): re-read it so the
+        // open-shift dialog shows up again.
+        if (error?.message.includes('invalid_shift')) fetchShiftState()
+      } else if (error?.message.includes('discount_exceeds_total') || error?.message.includes('invalid_discount')) {
+        toast.error(t('pos.manualDiscount.tooBig'))
+      } else if (error?.message.includes('gift_forbidden')) {
         toast.error(t('pos.gift.forbidden'))
       } else if (error?.message.includes('gift_requires_paid_item')) {
         toast.error(t('pos.gift.needsPaidItem'))
@@ -969,14 +1262,14 @@ export default function POSPage() {
         // sell_cart raises "Insufficient stock for product_size <uuid>" — pull the
         // uuid back out so the toast names the item instead of a generic error.
         const failedId = error?.message.match(/product_size ([0-9a-f-]{36})/i)?.[1]
-        const failedItem = failedId ? posItems.find(p => p.id === failedId) : undefined
+        const failedItem = failedId ? posItems.find(p => p.rows.some(r => r.id === failedId)) : undefined
         toast.error(failedItem ? `${t('pos.noSizesAvailable')}: ${failedItem.productName} (${failedItem.size})` : t('common.error'))
       }
-      await fetchProducts()
+      await refreshStock(touchedRowIds)
       return
     }
 
-    await fetchProducts()
+    await refreshStock(touchedRowIds)
     toast.success(t('pos.success.title'))
     setReceiptData({
       companyName,
@@ -992,6 +1285,7 @@ export default function POSPage() {
         quantity: isPerMl(line.size) ? 1 : line.quantity,
         price: (isPerMl(line.size) ? line.quantity : 1) * (line.isGift ? 0 : selectedPromotion ? Math.round(line.unitPrice * (1 - selectedPromotion.discountPercent / 100)) : line.unitPrice),
       })),
+      discount: manualDiscount,
       total,
       paymentType: paymentMethod,
     })
@@ -1020,6 +1314,24 @@ export default function POSPage() {
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('pos.title')}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('pos.subtitle')}</p>
         </div>
+        {showBranchPicker && (
+          <div className="ml-auto flex items-center gap-2" title={activeShift ? t('branchStock.shiftLockedHint') : undefined}>
+            <span className="text-[13px] text-gray-500 dark:text-gray-400">{t('branchStock.posBranch')}</span>
+            <select
+              value={posBranchId ?? ''}
+              onChange={e => pickPosBranch(e.target.value)}
+              disabled={!!activeShift}
+              aria-label={t('branchStock.posBranch')}
+              className="h-9 max-w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 dark:focus:border-gray-500 transition-colors disabled:opacity-60"
+            >
+              {!posBranchId && <option value="" disabled>{t('branches.errors.branchRequired')}</option>}
+              {posBranchId && !activeBranches.some(b => b.id === posBranchId) && (
+                <option value={posBranchId}>{branches.find(b => b.id === posBranchId)?.name ?? ''}</option>
+              )}
+              {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+        )}
         {features.shift_system && activeShift && (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
             <span className="flex items-center gap-1.5 text-[13px] font-medium text-green-600 dark:text-green-400">
@@ -1043,7 +1355,7 @@ export default function POSPage() {
           {tabs.map((tb, i) => (
             <button key={tb.id} onClick={() => setActiveTabId(tb.id)}
               className={cn('flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors shrink-0',
-                tb.id === activeTabId ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800')}>
+                tb.id === activeTabId ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800')}>
               <span>{t('pos.tabs.label')} #{i + 1}</span>
               {tb.cart.length > 0 && <span className="tabular-nums opacity-70">({tb.cart.reduce((s, l) => s + l.quantity, 0)})</span>}
               {tabs.length > 1 && <X className="h-3.5 w-3.5 opacity-60 hover:opacity-100" onClick={e => { e.stopPropagation(); closeTab(tb.id) }} />}
@@ -1129,6 +1441,14 @@ export default function POSPage() {
                             {t('pos.priceList')}: {customerPriceList.name}
                           </span>
                         )}
+                        <button
+                          onClick={() => setPastPurchasesOpen(true)}
+                          className="mt-1.5 flex items-center gap-1 text-[11.5px] font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                        >
+                          <History className="h-3.5 w-3.5" />
+                          {t('pos.pastPurchases.button')}
+                          <span className="tabular-nums text-gray-400 dark:text-gray-500">({new Set(pastPurchases.map(p => p.productSizeId ? `${p.productId}|${p.size}|${p.color}` : p.productId)).size})</span>
+                        </button>
                       </div>
                       <button onClick={() => updateActiveTab(tab => ({ ...tab, customerId: '' }))} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                         <X className="h-3.5 w-3.5" />
@@ -1190,6 +1510,15 @@ export default function POSPage() {
                             formatPrice(line.unitPrice)
                           )}
                           {isPerMl(line.size) && ` / 1 ml`}
+                          {customer && !line.companionOf && (() => {
+                            const last = lastPurchaseFor(line)
+                            if (!last) return null
+                            const { purchase, sameVariant } = last
+                            const hint = [t('pos.lastPurchase.label'), purchase.date && formatDate(purchase.date), !sameVariant && t('pos.lastPurchase.otherSize')].filter(Boolean).join(' · ')
+                            return (
+                              <span title={hint} className="ml-1 font-medium text-red-600 dark:text-red-400">← {formatPrice(purchase.price)}</span>
+                            )
+                          })()}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -1245,7 +1574,7 @@ export default function POSPage() {
                             className={cn(
                               'flex h-6 w-6 items-center justify-center rounded-md transition-colors',
                               line.isGift
-                                ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+                                ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
                                 : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
                             )}
                           >
@@ -1316,6 +1645,39 @@ export default function POSPage() {
                     </div>
                   )}
                   {giftError && <p className="text-xs text-red-500">{giftError}</p>}
+                  <div className="flex items-center justify-between gap-2 py-1">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">{t('pos.manualDiscount.label')}</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number" min={0} inputMode="numeric"
+                        value={rawManualDiscount}
+                        onChange={e => updateActiveTab(tab => ({ ...tab, manualDiscount: e.target.value }))}
+                        placeholder="0"
+                        aria-label={t('pos.manualDiscount.label')}
+                        className={cn(
+                          'h-8 w-32 rounded-lg border bg-white dark:bg-gray-900 px-2 text-right text-sm text-gray-900 dark:text-gray-100 tabular-nums outline-none transition-colors',
+                          discountTooBig ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700 focus:border-gray-400 dark:focus:border-gray-500',
+                        )}
+                      />
+                      {rawManualDiscount !== '' && (
+                        <button
+                          type="button"
+                          onClick={() => updateActiveTab(tab => ({ ...tab, manualDiscount: '' }))}
+                          aria-label={t('pos.manualDiscount.clear')}
+                          className="flex h-6 w-6 items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {discountTooBig && <p className="text-xs text-red-500">{t('pos.manualDiscount.tooBig')}</p>}
+                  {manualDiscount > 0 && !discountTooBig && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400 dark:text-gray-500">{t('pos.manualDiscount.before')}</span>
+                      <span className="text-gray-400 dark:text-gray-500 line-through tabular-nums">{formatPrice(totalBeforeDiscount)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-base font-bold text-gray-900 dark:text-gray-100">{t('pos.payment')}</span>
                     <span className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{formatPrice(total)}</span>
@@ -1361,6 +1723,15 @@ export default function POSPage() {
       </div>
 
       {/* Promotion selector modal */}
+      <PastPurchasesDialog
+        open={pastPurchasesOpen && !!customer}
+        onOpenChange={setPastPurchasesOpen}
+        customerName={customer?.fullName ?? ''}
+        purchases={pastPurchases}
+        canAdd={p => resolvePastPurchase(p) !== null}
+        onAdd={addPastPurchase}
+      />
+
       <Dialog open={promotionModalOpen} onOpenChange={setPromotionModalOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -1487,8 +1858,11 @@ export default function POSPage() {
       <Dialog open={Boolean(features.shift_system && !shiftLoading && !activeShift)} onOpenChange={() => {}}>
         <DialogContent className="sm:max-w-sm" showCloseButton={false}>
           <DialogHeader><DialogTitle>{t('pos.shift.openTitle')}</DialogTitle></DialogHeader>
+          {showBranchPicker && (
+            <BranchSelect value={posBranchId ?? ''} onChange={pickPosBranch} options={activeBranches} allBranches={branches} />
+          )}
           <DialogFooter className="mt-4">
-            <Button onClick={startShift} disabled={startingShift} className="w-full">
+            <Button onClick={startShift} disabled={startingShift || (showBranchPicker && !posBranchId)} className="w-full">
               {startingShift ? <Loader2 className="h-4 w-4 animate-spin" /> : t('pos.shift.startButton')}
             </Button>
           </DialogFooter>

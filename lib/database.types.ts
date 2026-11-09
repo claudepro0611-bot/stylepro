@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      branches: {
+        Row: {
+          address: string | null
+          company_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          company_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branches_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
           company_id: string
@@ -69,6 +113,7 @@ export type Database = {
       }
       companies: {
         Row: {
+          branch_limit: number
           address: string | null
           balance: number | null
           billing_status: string | null
@@ -94,6 +139,7 @@ export type Database = {
           warehouse_limit: number
         }
         Insert: {
+          branch_limit?: number
           address?: string | null
           balance?: number | null
           billing_status?: string | null
@@ -119,6 +165,7 @@ export type Database = {
           warehouse_limit?: number
         }
         Update: {
+          branch_limit?: number
           address?: string | null
           balance?: number | null
           billing_status?: string | null
@@ -1744,6 +1791,365 @@ export type Database = {
           },
         ]
       }
+      stock_transfer_items: {
+        Row: {
+          category: string | null
+          color: string
+          company_id: string
+          created_at: string
+          from_product_size_id: string | null
+          id: string
+          product_id: string | null
+          product_name: string
+          purchase_price: number
+          quantity: number
+          size: string
+          to_product_size_id: string | null
+          transfer_id: string
+        }
+        Insert: {
+          category?: string | null
+          color?: string
+          company_id: string
+          created_at?: string
+          from_product_size_id?: string | null
+          id?: string
+          product_id?: string | null
+          product_name: string
+          purchase_price?: number
+          quantity: number
+          size: string
+          to_product_size_id?: string | null
+          transfer_id: string
+        }
+        Update: {
+          category?: string | null
+          color?: string
+          company_id?: string
+          created_at?: string
+          from_product_size_id?: string | null
+          id?: string
+          product_id?: string | null
+          product_name?: string
+          purchase_price?: number
+          quantity?: number
+          size?: string
+          to_product_size_id?: string | null
+          transfer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfer_items_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfer_items_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "stock_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_transfers: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          date: string
+          from_warehouse_id: string
+          id: string
+          note: string | null
+          number: number
+          to_warehouse_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          date?: string
+          from_warehouse_id: string
+          id?: string
+          note?: string | null
+          number: number
+          to_warehouse_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          date?: string
+          from_warehouse_id?: string
+          id?: string
+          note?: string | null
+          number?: number
+          to_warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transfers_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_from_warehouse_id_fkey"
+            columns: ["from_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_transfers_to_warehouse_id_fkey"
+            columns: ["to_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_payments: {
+        Row: {
+          amount: number
+          company_id: string
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          date: string
+          id: string
+          note: string | null
+          payment_method: string
+          supplier_id: string
+        }
+        Insert: {
+          amount: number
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          date?: string
+          id?: string
+          note?: string | null
+          payment_method?: string
+          supplier_id: string
+        }
+        Update: {
+          amount?: number
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          date?: string
+          id?: string
+          note?: string | null
+          payment_method?: string
+          supplier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_payments_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_payments_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_return_items: {
+        Row: {
+          category: string | null
+          color: string
+          company_id: string
+          created_at: string
+          id: string
+          price: number
+          product_id: string | null
+          product_name: string
+          product_size_id: string | null
+          quantity: number
+          return_id: string
+          size: string
+        }
+        Insert: {
+          category?: string | null
+          color?: string
+          company_id: string
+          created_at?: string
+          id?: string
+          price: number
+          product_id?: string | null
+          product_name: string
+          product_size_id?: string | null
+          quantity: number
+          return_id: string
+          size: string
+        }
+        Update: {
+          category?: string | null
+          color?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          price?: number
+          product_id?: string | null
+          product_name?: string
+          product_size_id?: string | null
+          quantity?: number
+          return_id?: string
+          size?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_return_items_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_return_items_return_id_fkey"
+            columns: ["return_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_returns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_returns: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          date: string
+          id: string
+          note: string | null
+          number: number
+          supplier_id: string
+          warehouse_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          date?: string
+          id?: string
+          note?: string | null
+          number: number
+          supplier_id: string
+          warehouse_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          date?: string
+          id?: string
+          note?: string | null
+          number?: number
+          supplier_id?: string
+          warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_returns_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_returns_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_returns_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          company_id: string
+          company_name: string | null
+          created_at: string
+          id: string
+          inn: string | null
+          is_active: boolean
+          name: string
+          note: string | null
+          opening_balance: number
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          company_id: string
+          company_name?: string | null
+          created_at?: string
+          id?: string
+          inn?: string | null
+          is_active?: boolean
+          name: string
+          note?: string | null
+          opening_balance?: number
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          company_id?: string
+          company_name?: string | null
+          created_at?: string
+          id?: string
+          inn?: string | null
+          is_active?: boolean
+          name?: string
+          note?: string | null
+          opening_balance?: number
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "suppliers_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_counts: {
         Row: {
           company_id: string
@@ -1822,6 +2228,7 @@ export type Database = {
           selling_price: number | null
           size: string | null
           supplier: string | null
+          supplier_id: string | null
           total_amount: number
           unit_price: number
         }
@@ -1842,6 +2249,7 @@ export type Database = {
           selling_price?: number | null
           size?: string | null
           supplier?: string | null
+          supplier_id?: string | null
           total_amount?: number
           unit_price?: number
         }
@@ -1862,6 +2270,7 @@ export type Database = {
           selling_price?: number | null
           size?: string | null
           supplier?: string | null
+          supplier_id?: string | null
           total_amount?: number
           unit_price?: number
         }
@@ -2076,6 +2485,7 @@ export type Database = {
           date: string
           id: string
           invoice_id: string | null
+          manual_discount: number
           payment_method: string | null
           shift_id: string | null
           status: string
@@ -2091,6 +2501,7 @@ export type Database = {
           date?: string
           id?: string
           invoice_id?: string | null
+          manual_discount?: number
           payment_method?: string | null
           shift_id?: string | null
           status?: string
@@ -2106,6 +2517,7 @@ export type Database = {
           date?: string
           id?: string
           invoice_id?: string | null
+          manual_discount?: number
           payment_method?: string | null
           shift_id?: string | null
           status?: string
@@ -2144,6 +2556,7 @@ export type Database = {
       }
       users: {
         Row: {
+          branch_id: string | null
           company_id: string | null
           created_at: string
           email: string
@@ -2156,6 +2569,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          branch_id?: string | null
           company_id?: string | null
           created_at?: string
           email: string
@@ -2168,6 +2582,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          branch_id?: string | null
           company_id?: string | null
           created_at?: string
           email?: string
@@ -2191,6 +2606,7 @@ export type Database = {
       }
       warehouses: {
         Row: {
+          branch_id: string
           company_id: string
           created_at: string
           id: string
@@ -2198,6 +2614,7 @@ export type Database = {
           type: string
         }
         Insert: {
+          branch_id?: string
           company_id: string
           created_at?: string
           id?: string
@@ -2205,6 +2622,7 @@ export type Database = {
           type: string
         }
         Update: {
+          branch_id?: string
           company_id?: string
           created_at?: string
           id?: string
@@ -2414,6 +2832,20 @@ export type Database = {
       }
     }
     Functions: {
+      branch_overview: {
+        Args: never
+        Returns: {
+          address: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          phone: string | null
+          user_count: number
+          warehouse_count: number
+        }[]
+      }
       cancel_stock_count: { Args: { p_count_id: string }; Returns: undefined }
       complete_stock_count: {
         Args: { p_count_id: string; p_zero_uncounted?: boolean }
@@ -2450,14 +2882,54 @@ export type Database = {
       }
       create_reward_penalty_entry: { Args: { p_data: Json }; Returns: string }
       create_reward_penalty_type: { Args: { p_data: Json }; Returns: string }
+      create_stock_transfer: {
+        Args: {
+          p_date?: string | null
+          p_from_warehouse_id: string
+          p_items: Json
+          p_note?: string | null
+          p_to_warehouse_id: string
+        }
+        Returns: string
+      }
+      create_supplier_return: {
+        Args: {
+          p_date?: string | null
+          p_items: Json
+          p_note?: string | null
+          p_supplier_id: string
+          p_warehouse_id: string
+        }
+        Returns: string
+      }
+      delete_supplier_return: { Args: { p_id: string }; Returns: undefined }
+      create_supplier: { Args: { p_data: Json }; Returns: string }
+      create_supplier_payment: {
+        Args: {
+          p_amount: number
+          p_date?: string | null
+          p_note?: string | null
+          p_payment_method?: string
+          p_supplier_id: string
+        }
+        Returns: string
+      }
+      delete_supplier: { Args: { p_id: string }; Returns: undefined }
+      delete_supplier_payment: { Args: { p_id: string }; Returns: undefined }
+      update_supplier: { Args: { p_data: Json; p_id: string }; Returns: undefined }
       create_stock_count: {
         Args: { p_note?: string | null; p_warehouse_id: string }
         Returns: string
       }
-      create_warehouse: {
-        Args: { p_name: string; p_type: string }
+      create_branch: {
+        Args: { p_address?: string | null; p_name: string; p_phone?: string | null }
         Returns: string
       }
+      create_warehouse: {
+        Args: { p_branch_id?: string | null; p_name: string; p_type: string }
+        Returns: string
+      }
+      delete_branch: { Args: { p_id: string }; Returns: undefined }
       delete_department: { Args: { p_id: string }; Returns: undefined }
       delete_exchange_rate: { Args: { p_id: string }; Returns: undefined }
       delete_expense: { Args: { p_id: string }; Returns: undefined }
@@ -2629,8 +3101,17 @@ export type Database = {
         Args: { p_data: Json; p_id: string }
         Returns: undefined
       }
+      set_branch_active: {
+        Args: { p_active: boolean; p_id: string }
+        Returns: undefined
+      }
+      set_default_branch: { Args: { p_id: string }; Returns: undefined }
+      update_branch: {
+        Args: { p_address?: string | null; p_id: string; p_name: string; p_phone?: string | null }
+        Returns: undefined
+      }
       update_warehouse: {
-        Args: { p_id: string; p_name: string; p_type: string }
+        Args: { p_id: string; p_name: string; p_type: string; p_branch_id?: string | null }
         Returns: undefined
       }
       use_cashback: {

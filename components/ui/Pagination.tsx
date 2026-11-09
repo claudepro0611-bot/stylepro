@@ -175,7 +175,7 @@ export function Pagination({
     cn(
       "flex h-7 w-7 items-center justify-center rounded text-xs font-medium transition-colors",
       active
-        ? "bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900"
+        ? "bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white"
         : "border-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800",
     );
 

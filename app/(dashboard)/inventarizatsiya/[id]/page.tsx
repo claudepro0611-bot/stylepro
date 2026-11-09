@@ -23,6 +23,7 @@ import {
   STOCK_COUNT_STATUS_LABEL_KEYS, STOCK_COUNT_STATUS_PILL, formatCountNumber, stockCountErrorKey,
   type StockCountItemRow, type StockCountRow,
 } from '@/lib/stock-counts'
+import { branchStockErrorKey } from '@/lib/branchStock'
 
 const PAGE_SIZE = 50
 const MAX_SUGGESTIONS = 20
@@ -32,7 +33,7 @@ const pillGroup = 'flex items-center gap-0.5 rounded-lg bg-gray-100 dark:bg-gray
 const segCls = (active: boolean) => cn(
   'flex h-8 items-center justify-center rounded-md px-3 text-[12.5px] font-medium transition-colors',
   active
-    ? 'bg-slate-900 dark:bg-white shadow-sm border border-slate-900 dark:border-white text-white dark:text-gray-900'
+    ? 'bg-indigo-600 dark:bg-indigo-500 shadow-sm border border-indigo-600 dark:border-indigo-500 text-white'
     : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
 )
 
@@ -258,7 +259,7 @@ export default function StockCountDetailPage() {
   const reload = useCallback(() => setReloadKey(k => k + 1), [])
 
   const handleItemError = useCallback((message: string | undefined) => {
-    toast.error(t(stockCountErrorKey(message)))
+    toast.error(t(branchStockErrorKey(message) ?? stockCountErrorKey(message)))
     // Closed or removed by someone else — re-read so the page goes read-only / not found.
     if (message?.includes('Count is not open') || message?.includes('Count not found')) reload()
   }, [t, reload])
