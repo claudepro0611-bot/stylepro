@@ -46,3 +46,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# supabase CLI local state (linked project, tokens)
+supabase/.temp/
