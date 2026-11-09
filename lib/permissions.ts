@@ -43,9 +43,10 @@ export function isProductionPermissionKey(key: PermissionKey): boolean {
 }
 
 /** Whether a permission key means anything for the given business type. */
-export function isPermissionKeyForType(key: PermissionKey, type: BusinessType): boolean {
+export function isPermissionKeyForType(key: PermissionKey, type: BusinessType, productionModule = false): boolean {
   if (type === 'production') return isProductionPermissionKey(key) || SHARED_PERMISSION_KEYS.includes(key)
-  return !isProductionPermissionKey(key)
+  // Retail firm with the "production" add-on module: retail keys + prod keys.
+  return productionModule || !isProductionPermissionKey(key)
 }
 
 // Legacy retail keys default to true (rows written before a key existed keep
@@ -112,6 +113,6 @@ export const PERMISSION_ITEMS: { key: PermissionKey; labelKey: TranslationKey; i
 ]
 
 /** The access-editor rows relevant to a firm of the given business type. */
-export function permissionItemsFor(type: BusinessType) {
-  return PERMISSION_ITEMS.filter(item => isPermissionKeyForType(item.key, type))
+export function permissionItemsFor(type: BusinessType, productionModule = false) {
+  return PERMISSION_ITEMS.filter(item => isPermissionKeyForType(item.key, type, productionModule))
 }

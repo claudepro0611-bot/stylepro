@@ -50,11 +50,12 @@ export function isProductionPath(pathname: string): boolean {
 
 /**
  * Production firms: only production + shared routes.
- * Retail firms: everything except production routes (unchanged behaviour).
+ * Retail firms: everything except production routes, unless the super admin
+ * switched the "production" add-on module on for them (company_features).
  */
-export function isPathAllowed(type: BusinessType, pathname: string): boolean {
+export function isPathAllowed(type: BusinessType, pathname: string, productionModule = false): boolean {
   if (type === 'production') {
     return matchesPrefix(pathname, PRODUCTION_PREFIXES) || matchesPrefix(pathname, SHARED_PREFIXES)
   }
-  return !isProductionPath(pathname)
+  return productionModule || !isProductionPath(pathname)
 }

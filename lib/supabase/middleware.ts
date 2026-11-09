@@ -82,6 +82,17 @@ function embeddedBusinessType(companies: unknown): unknown {
   return row && typeof row === 'object' ? (row as { business_type?: unknown }).business_type : undefined
 }
 
+/** Whether the firm has the "production" add-on module active and unexpired. */
+function embeddedProductionModule(companies: unknown): boolean {
+  const row = Array.isArray(companies) ? companies[0] : companies
+  const features = row && typeof row === 'object' ? (row as { company_features?: unknown }).company_features : undefined
+  if (!Array.isArray(features)) return false
+  const now = Date.now()
+  return features.some((f: { feature_key?: unknown; is_active?: unknown; expires_at?: unknown }) =>
+    f.feature_key === 'production' && f.is_active === true &&
+    (f.expires_at == null || new Date(String(f.expires_at)).getTime() > now))
+}
+
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -141,7 +152,7 @@ export async function updateSession(request: NextRequest) {
     // eslint-disable-next-line prefer-const
     let { data: me, error: meError } = await supabase
       .from('users')
-      .select('role, companies(business_type)')
+      .select('role, companies(business_type, company_features(feature_key, is_active, expires_at))')
       .eq('id', user.id)
       .maybeSingle()
     // Safety net while migration 20261110000001 is not yet applied (column
@@ -157,7 +168,7 @@ export async function updateSession(request: NextRequest) {
       const businessType = toBusinessType(embeddedBusinessType(me?.companies))
       // Production firms: only production + shared routes (this also blocks
       // /pos and /filiallar). Retail firms: production routes are blocked.
-      if (!isPathAllowed(businessType, pathname)) {
+      if (!isPathAllowed(businessType, pathname, embeddedProductionModule(me?.companies))) {
         const url = request.nextUrl.clone()
         url.pathname = '/dashboard'
         return NextResponse.redirect(url)

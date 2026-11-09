@@ -119,6 +119,23 @@ export const NAV_ITEMS: NavEntry[] = [
       { href: '/valyuta-kurslari', labelKey: 'sidebar.exchangeRates', icon: TrendingUp, permKey: 'sozlamalar' },
     ],
   },
+  // "Ishlab chiqarish" add-on module for retail firms (super-admin enables the
+  // 'production' feature). Production-type firms use PRODUCTION_NAV_ITEMS.
+  {
+    href: '/ishlab-chiqarish-moduli', labelKey: 'production.nav.production', icon: Factory, noLink: true, featureKey: 'production',
+    children: [
+      { href: '/ishlab-chiqarish', labelKey: 'production.nav.production', icon: Factory, permKey: 'prod_production' },
+      { href: '/qayta-ishlash', labelKey: 'production.nav.processing', icon: Recycle, permKey: 'prod_processing' },
+      { href: '/xom-ashyo-kirim', labelKey: 'production.nav.receipts', icon: PackagePlus, permKey: 'prod_receipts' },
+      { href: '/zavod-qoldiq', labelKey: 'production.nav.stock', icon: Boxes, permKey: 'prod_stock' },
+      { href: '/zavod-mahsulotlar', labelKey: 'production.nav.items', icon: ShoppingBag, permKey: 'prod_catalog' },
+      { href: '/zavod-guruhlar', labelKey: 'production.nav.groups', icon: Tag, permKey: 'prod_catalog' },
+      { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_catalog' },
+      { href: '/taminot', labelKey: 'production.nav.agents', icon: Contact, permKey: 'prod_supply', exact: true },
+      { href: '/taminot/pul-berish', labelKey: 'production.nav.cashIssue', icon: Banknote, permKey: 'prod_supply' },
+      { href: '/taminot/sarflar', labelKey: 'production.nav.spending', icon: Receipt, permKey: 'prod_supply' },
+    ],
+  },
   { href: '/marketing', labelKey: 'sidebar.marketing', icon: Megaphone, permKey: 'marketing', featureKey: 'marketing' },
   { href: '/requests', labelKey: 'sidebar.requests', icon: MessageSquare, permKey: 'requests' },
   { href: '/jamoa', labelKey: 'sidebar.jamoa', icon: UserCog, permKey: 'jamoa' },

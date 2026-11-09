@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { withDefaultPermissions, permissionItemsFor, type Permissions } from '@/lib/permissions'
 import { useSession } from '@/lib/session/SessionContext'
+import { useFeatures } from '@/lib/features'
 import { updateTeamUser, type TeamUserRow, type TeamBranchOption } from '@/app/(dashboard)/jamoa/actions'
 import { BranchSelect } from '@/components/filiallar/BranchSelect'
 import { defaultBranchId } from '@/components/jamoa/AddUserModal'
@@ -45,7 +46,9 @@ interface EditUserModalProps {
 export function EditUserModal({ user, onOpenChange, onUpdated, branches }: EditUserModalProps) {
   const { t } = useLanguage()
   // Only show the keys that mean something for this firm's business type.
-  const permissionItems = permissionItemsFor(useSession().company?.businessType ?? 'retail')
+  // Retail firms with the "production" add-on module also get the prod keys.
+  const { features } = useFeatures()
+  const permissionItems = permissionItemsFor(useSession().company?.businessType ?? 'retail', !!features.production)
   const [tab, setTab] = useState('info')
   const [form, setForm] = useState<EditFormState | null>(null)
   const [initial, setInitial] = useState<EditFormState | null>(null)
