@@ -19,6 +19,8 @@ import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { formatQty, round2, smartUnit, sumByUnitGroup, unitKey, yieldPercent, yieldWeightOf } from '@/lib/production'
 import type { Database } from '@/lib/database.types'
 import { PrintButton, PrintFields, PrintSheet, PrintTable } from '@/components/production/PrintKit'
+import { fetchProductionOutputs, type ProductionOutput } from '@/lib/production-accounting'
+import { lotTraceHref } from '@/lib/production-reports'
 
 type Doc = Database['public']['Tables']['prod_productions']['Row']
 type Line = Database['public']['Tables']['prod_production_components']['Row']
@@ -33,15 +35,30 @@ export default function ProductionViewPage() {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [lines, setLines] = useState<Line[]>([])
   const [loading, setLoading] = useState(true)
+  // Outputs (main + co-products) with their cost share, lot and allocated
+  // overhead (migration 20261110000018); empty before it.
+  const [outputs, setOutputs] = useState<ProductionOutput[]>([])
+  const [lotNos, setLotNos] = useState<Map<string, string>>(new Map())
+  const [overheadByOutput, setOverheadByOutput] = useState<Map<string, number>>(new Map())
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const [docRes, linesRes] = await Promise.all([
+    const [docRes, linesRes, outs, allocRes] = await Promise.all([
       supabase.from('prod_productions').select('*').eq('id', id).maybeSingle(),
       supabase.from('prod_production_components').select('*').eq('production_id', id).order('id'),
+      fetchProductionOutputs(supabase, id),
+      supabase.from('prod_overhead_allocations').select('output_id, amount').eq('production_id', id),
     ])
     setDoc(docRes.data ?? null)
     setLines(linesRes.data ?? [])
+    const list = outs ?? []
+    setOutputs(list)
+    setOverheadByOutput(new Map((allocRes.error ? [] : allocRes.data ?? []).map(a => [a.output_id, Number(a.amount)])))
+    const lotIds = list.map(o => o.lotId).filter((x): x is string => !!x)
+    if (lotIds.length > 1) {
+      const { data: lots } = await supabase.from('prod_lots').select('id, lot_no').in('id', lotIds)
+      setLotNos(new Map((lots ?? []).map(l => [l.id, l.lot_no ?? ''])))
+    }
     setLoading(false)
   }, [id])
 
@@ -175,6 +192,61 @@ export default function ProductionViewPage() {
         </div>
       </div>
 
+      {outputs.length > 1 && (
+        <div className={cn(prodCardCls, 'overflow-hidden')}>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('prodAcct.co.outputs')}</h2>
+            {doc.allocation_method && (
+              <span className="text-[12px] text-gray-500 dark:text-gray-400">
+                {t('prodAcct.co.method')}: {t(doc.allocation_method === 'value' ? 'prodAcct.co.methods.value' : doc.allocation_method === 'fixed' ? 'prodAcct.co.methods.fixed' : 'prodAcct.co.methods.mass')}
+              </span>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
+                  <th className="px-4 py-2.5 text-left font-medium">{t('production.common.item')}</th>
+                  <th className="px-4 py-2.5 text-left font-medium">{t('production.common.warehouse')}</th>
+                  <th className="px-4 py-2.5 text-right font-medium">{t('production.common.qty')}</th>
+                  <th className="px-4 py-2.5 text-right font-medium">{t('prodAcct.co.shareResult')}</th>
+                  <th className="px-4 py-2.5 text-right font-medium">{t('prodAcct.co.cost')}</th>
+                  <th className="px-4 py-2.5 text-right font-medium">{t('prodAcct.co.unitCost')}</th>
+                  {overheadByOutput.size > 0 && <th className="px-4 py-2.5 text-right font-medium">{t('prodAcct.pools.overhead')}</th>}
+                  <th className="px-4 py-2.5 text-left font-medium">{t('prodAcct.co.lot')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outputs.map(o => {
+                  const item = itemById.get(o.itemId)
+                  return (
+                    <tr key={o.id} className="border-b border-gray-50 dark:border-gray-800/60 last:border-0">
+                      <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
+                        {item?.name ?? '—'}
+                        {o.sortOrder === 0 && <span className="ml-1.5 inline-flex rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">{t('prodAcct.co.main')}</span>}
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{warehouseById.get(o.warehouseId)?.name ?? '—'}</td>
+                      <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">{formatQty(o.qty)} {item ? t(unitKey(item.unit)) : ''}</td>
+                      <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{Number(o.sharePct.toFixed(2))}%</td>
+                      <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{formatPrice(o.cost)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(o.unitCost)}</td>
+                      {overheadByOutput.size > 0 && <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(overheadByOutput.get(o.id) ?? 0)}</td>}
+                      <td className="px-4 py-2">
+                        {o.lotId ? (
+                          <Link href={lotTraceHref(o.lotId)} className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+                            {lotNos.get(o.lotId) || t('prodAcct.co.lot')}
+                          </Link>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <DocOverrides docId={doc.id} reloadKey={doc.status} />
       <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={doc.status} />
 
@@ -197,6 +269,10 @@ export default function ProductionViewPage() {
       <PrintFields rows={[
         { label: t('production.productions.outputItem'), value: output?.name ?? '—' },
         { label: t('production.common.qty'), value: `${formatQty(Number(doc.output_qty))} ${outUnit}` },
+        ...outputs.slice(1).map(o => {
+          const it = itemById.get(o.itemId)
+          return { label: t('prodAcct.co.title'), value: `${it?.name ?? '—'}: ${formatQty(o.qty)} ${it ? t(unitKey(it.unit)) : ''} · ${formatPrice(o.cost)}` }
+        }),
         { label: t('production.productions.rawWarehouse'), value: warehouseById.get(doc.warehouse_id)?.name ?? '—' },
         { label: t('production.productions.outputWarehouse'), value: warehouseById.get(doc.output_warehouse_id ?? doc.warehouse_id)?.name ?? '—' },
         ...(doc.recipe_version !== null ? [{ label: t('production.productions.recipe'), value: `v${doc.recipe_version}` }] : []),

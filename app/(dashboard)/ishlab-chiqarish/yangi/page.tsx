@@ -12,7 +12,7 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import {
-  BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, useRememberedDefault,
+  BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, Segmented, TotalsBox, useRememberedDefault,
   prodCardCls, prodFieldCls, prodLabelCls, type TotalRow,
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
@@ -20,12 +20,16 @@ import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/p
 import { LotPicker } from '@/components/production/LotPicker'
 import { useMilkSettings } from '@/components/production/MilkKit'
 import { ControlHint, DocDateInput, useApprovalRetry, useControls, useProdErrorText } from '@/components/production/ControlKit'
+import { useAccounting } from '@/components/production/AccountingKit'
 import { fillText } from '@/lib/production-controls'
+import {
+  ALLOCATION_METHODS, acctErrorText, fetchRecipeOutputs, splitCost, type AllocationMethod, type SplitInput,
+} from '@/lib/production-accounting'
 import {
   CREAM_NAME_RE, activePicks, allocateFefo, fetchActiveRecipe, formatQty, fromBaseQty, lineAllocation, lineCost, localDateTimeToIso,
   makeLinePicks, nowHm, parseDecimal, picksPayload, round2, round3, round4,
   smartUnit, sumByUnitGroup, toInputString, unitKey, warehousesFor, yieldPercent, yieldWeightOf,
-  type EntryUnit, type LinePicks, type ProdItem, type ProdRecipe,
+  type EntryUnit, type LinePicks, type ProdItem, type ProdRecipe, type ProdRpcError,
 } from '@/lib/production'
 
 /**
@@ -43,6 +47,24 @@ interface ComponentLine {
 // Fakt is stored with 3 decimals, the norm with 4: ignore the rounding gap.
 const EPS = 0.0005
 
+/**
+ * Co-product row (migration 20261110000018). qty === null: follows the
+ * recipe by-product norm (perBatch per recipe batch); warehouseId '' = the
+ * output warehouse. refPrice / share are used by the value / fixed methods.
+ */
+interface CoRow { key: string; itemId: string; qty: string | null; perBatch: number | null; warehouseId: string; refPrice: string; share: string }
+
+let coSeq = 0
+const nextCoKey = () => `co${++coSeq}`
+
+/** '' -> null (not entered); otherwise a non-negative number. */
+const optNum = (v: string): number | null => {
+  if (v.trim() === '') return null
+  const n = Number(v.replace(',', '.').replace(/\s/g, ''))
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+const optNumSum = (vs: string[]) => vs.reduce((s, v) => s + (optNum(v) ?? 0), 0)
+
 function recipeLines(recipe: ProdRecipe, itemById: Map<string, ProdItem>, keepUnits?: Map<string, EntryUnit>): ComponentLine[] {
   return recipe.lines.map(l => {
     const base = itemById.get(l.itemId)?.unit ?? 'pcs'
@@ -59,7 +81,11 @@ export default function NewProductionPage() {
   const { settings: milkSettings } = useMilkSettings()
   const controls = useControls()
   const approval = useApprovalRetry()
-  const errorText = useProdErrorText()
+  const controlErrorText = useProdErrorText()
+  // Co-products (migration 20261110000018): hidden until it is applied.
+  const accounting = useAccounting()
+  const coOn = accounting.available
+  const errorText = (err: ProdRpcError) => (coOn ? acctErrorText(t, err) : controlErrorText(err))
 
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
@@ -73,6 +99,10 @@ export default function NewProductionPage() {
   const [recipeLoading, setRecipeLoading] = useState(false)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [coRows, setCoRows] = useState<CoRow[]>([])
+  const [allocMethod, setAllocMethod] = useState<AllocationMethod>('mass')
+  const [mainRef, setMainRef] = useState('')
+  const [mainShare, setMainShare] = useState('')
   const recipeReq = useRef(0)
 
   const { stock, loading: stockLoading } = useWarehouseStock(warehouseId)
@@ -95,17 +125,23 @@ export default function NewProductionPage() {
   const outUnitLabel = outputItem ? t(unitKey(outputItem.unit)) : ''
 
   const outputOptions = useMemo(() => items
-    .filter(i => i.isActive && (i.itemType === 'finished' || i.itemType === 'semi') && !lines.some(l => l.itemId === i.id))
-    .map(i => ({ value: i.id, label: i.name, sublabel: t(unitKey(i.unit)) })), [items, lines, t])
+    .filter(i => i.isActive && (i.itemType === 'finished' || i.itemType === 'semi') && !lines.some(l => l.itemId === i.id) && !coRows.some(r => r.itemId === i.id))
+    .map(i => ({ value: i.id, label: i.name, sublabel: t(unitKey(i.unit)) })), [items, lines, coRows, t])
+
+  // Co-products: finished / semi items that are neither the main output nor a component.
+  const coOptions = useMemo(() => items
+    .filter(i => i.isActive && (i.itemType === 'finished' || i.itemType === 'semi') && i.id !== outputItemId
+      && !lines.some(l => l.itemId === i.id) && !coRows.some(r => r.itemId === i.id))
+    .map(i => ({ value: i.id, label: i.name, sublabel: t(unitKey(i.unit)) })), [items, outputItemId, lines, coRows, t])
 
   // Extra components: only what the chosen warehouse actually holds.
   const componentOptions = useMemo(() => items
-    .filter(i => stock.has(i.id) && i.id !== outputItemId && !lines.some(l => l.itemId === i.id))
+    .filter(i => stock.has(i.id) && i.id !== outputItemId && !lines.some(l => l.itemId === i.id) && !coRows.some(r => r.itemId === i.id))
     .map(i => ({
       value: i.id,
       label: i.name,
       sublabel: `${t('production.common.available')}: ${formatQty(stock.get(i.id)!.qty)} ${t(unitKey(i.unit))}`,
-    })), [items, stock, outputItemId, lines, t])
+    })), [items, stock, outputItemId, lines, coRows, t])
 
   const recipeQty = useMemo(() => new Map((recipe?.lines ?? []).map(l => [l.itemId, l.qty])), [recipe])
   const outQty = parseDecimal(outputQty)
@@ -136,7 +172,23 @@ export default function NewProductionPage() {
     }
   })
   const totalCost = round2(computed.reduce((sum, c) => sum + c.total, 0))
-  const unitCost = outQty > 0 ? round2(totalCost / outQty) : 0
+
+  // Co-products: live preview of the server's cost split (main output first).
+  const coComputed = coRows.map(r => {
+    const item = itemById.get(r.itemId)
+    const planned = r.perBatch !== null && recipe && recipe.outputQty > 0 ? round3((r.perBatch * outQty) / recipe.outputQty) : null
+    const display = r.qty ?? (planned ? toInputString(planned) : '')
+    return { ...r, item, planned, display, qtyNum: round3(parseDecimal(display)) }
+  })
+  const hasCo = coOn && coComputed.length > 0
+  const split = hasCo
+    ? splitCost(totalCost, [
+      { item: outputItem, qty: round3(outQty), refPrice: optNum(mainRef), sharePct: optNum(mainShare) },
+      ...coComputed.map<SplitInput>(c => ({ item: c.item, qty: c.qtyNum, refPrice: optNum(c.refPrice), sharePct: optNum(c.share) })),
+    ], allocMethod)
+    : null
+  const shareSum = round2(optNumSum([mainShare, ...coRows.map(r => r.share)]))
+  const unitCost = split ? split.rows[0].unitCost : outQty > 0 ? round2(totalCost / outQty) : 0
   const normCost = round2(computed.reduce((sum, c) => sum + c.normTotal, 0))
   const factInputs = computed.map(c => ({ qty: c.fact, unit: c.base, weightKg: yieldWeightOf(c.item) }))
   const yieldPct = outputItem ? yieldPercent({ qty: outQty, unit: outputItem.unit, weightKg: outputItem.weightKg }, factInputs) : null
@@ -173,6 +225,7 @@ export default function NewProductionPage() {
 
   const valid = !!warehouseId && !!outputWarehouseId && !!outputItemId && round3(outQty) > 0 && computed.length > 0
     && computed.every(c => c.fact > 0 && !c.over)
+    && (!hasCo || (coComputed.every(c => c.qtyNum > 0) && !split?.error))
 
   async function changeOutput(id: string) {
     setOutputItemId(id)
@@ -180,15 +233,36 @@ export default function NewProductionPage() {
     setRecipe(null)
     // Keep only what the user typed; recipe-following lines belong to the old item.
     setLines(prev => prev.filter(l => l.value !== null && l.itemId !== id))
+    // Co-products prefilled from the old recipe go too.
+    setCoRows(prev => prev.filter(r => r.perBatch === null && r.itemId !== id))
     if (!id) return
     setRecipeLoading(true)
     const r = await fetchActiveRecipe(createClient(), id)
+    // Recipe by-products prefill the co-product rows (migration 20261110000018).
+    const byProducts = r && coOn ? await fetchRecipeOutputs(createClient(), r.id) : null
     if (req !== recipeReq.current) return
     setRecipeLoading(false)
     setRecipe(r)
     if (r) {
       setLines(prev => [...recipeLines(r, itemById), ...prev.filter(l => !r.lines.some(rl => rl.itemId === l.itemId))])
     }
+    if (byProducts && byProducts.length > 0) {
+      setCoRows(prev => [
+        ...byProducts.filter(o => o.itemId !== id).map(o => ({ key: nextCoKey(), itemId: o.itemId, qty: null, perBatch: o.qtyPerBatch, warehouseId: '', refPrice: '', share: '' })),
+        ...prev.filter(p => !byProducts.some(o => o.itemId === p.itemId)),
+      ])
+    }
+  }
+
+  function patchCo(key: string, patch: Partial<CoRow>) {
+    setCoRows(prev => prev.map(r => (r.key === key ? { ...r, ...patch } : r)))
+  }
+
+  /** ref_price / share_pct of one output for the chosen method (absent = server default). */
+  function methodExtra(refPrice: string, share: string) {
+    if (allocMethod === 'value') { const p = optNum(refPrice); return p === null ? {} : { ref_price: round2(p) } }
+    if (allocMethod === 'fixed') { const s = optNum(share); return s === null ? {} : { share_pct: round4(s) } }
+    return {}
   }
 
   function changeWarehouse(id: string) {
@@ -220,6 +294,15 @@ export default function NewProductionPage() {
         output_qty: round3(outQty),
         note: note.trim() || null,
         recipe_id: recipe?.id ?? null,
+        ...(hasCo ? {
+          allocation_method: allocMethod,
+          outputs: [
+            { item_id: outputItemId, qty: round3(outQty), output_warehouse_id: outputWarehouseId, ...methodExtra(mainRef, mainShare) },
+            ...coComputed.map(c => ({
+              item_id: c.itemId, qty: c.qtyNum, output_warehouse_id: c.warehouseId || outputWarehouseId, ...methodExtra(c.refPrice, c.share),
+            })),
+          ],
+        } : {}),
         components: computed.map(c => ({
           item_id: c.itemId,
           qty: c.fact,
@@ -253,8 +336,13 @@ export default function NewProductionPage() {
   }
   totalRows.push(
     { label: t('production.productions.totalCost'), value: formatPrice(totalCost) },
+    ...(split ? [{ label: `${t('prodAcct.co.mainCost')}${outputItem ? ` (${outputItem.name})` : ''}`, value: formatPrice(split.rows[0].cost) }] : []),
     { label: t('production.productions.unitCost'), value: outputItem ? `${formatPrice(unitCost)} / ${outUnitLabel}` : formatPrice(unitCost), strong: true },
   )
+  const splitErrorText = split?.error === 'share_pct'
+    ? fillText(t('prodAcct.co.shareSum'), { sum: shareSum })
+    : split?.error === 'output_weight' ? t('prodAcct.errors.output_weight')
+      : split?.error === 'ref_price' ? t('prodAcct.errors.ref_price') : ''
 
   return (
     <div className="space-y-5">
@@ -333,6 +421,138 @@ export default function NewProductionPage() {
             </div>
           </label>
         </div>
+
+        {coOn && warehouseId && outputItemId && (
+          <MoreFields active={coRows.length > 0} label={t('prodAcct.co.title')}>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="min-w-0 flex-1 text-[12px] text-gray-500 dark:text-gray-400">{t('prodAcct.co.hint')}</p>
+                {coRows.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] text-gray-500 dark:text-gray-400">{t('prodAcct.co.method')}</span>
+                    <Segmented<AllocationMethod>
+                      value={allocMethod}
+                      onChange={setAllocMethod}
+                      options={ALLOCATION_METHODS.map(m => ({ value: m, label: t(`prodAcct.co.methods.${m}`) }))}
+                    />
+                  </div>
+                )}
+              </div>
+              {coRows.length > 0 && split && (
+                <div className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
+                        <th className="px-3 py-2 text-left font-medium">{t('production.common.item')}</th>
+                        <th className="px-3 py-2 text-right font-medium w-36">{t('production.common.qty')}</th>
+                        <th className="px-3 py-2 text-left font-medium w-44">{t('production.common.warehouse')}</th>
+                        {allocMethod === 'value' && <th className="px-3 py-2 text-right font-medium w-32">{t('prodAcct.co.refPrice')}</th>}
+                        {allocMethod === 'fixed' && <th className="px-3 py-2 text-right font-medium w-24">{t('prodAcct.co.share')}</th>}
+                        <th className="px-3 py-2 text-right font-medium">{t('prodAcct.co.shareResult')}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t('prodAcct.co.cost')}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t('prodAcct.co.unitCost')}</th>
+                        <th className="px-3 py-2 w-10" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-gray-50 dark:border-gray-800/60">
+                        <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
+                          {outputItem?.name ?? '—'}
+                          <span className="ml-1.5 inline-flex rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">{t('prodAcct.co.main')}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatQty(round3(outQty))} {outUnitLabel}</td>
+                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{warehouses.find(w => w.id === outputWarehouseId)?.name ?? '—'}</td>
+                        {allocMethod === 'value' && (
+                          <td className="px-3 py-2">
+                            <input inputMode="decimal" value={mainRef} onChange={e => setMainRef(e.target.value)} placeholder={outputItem?.salePrice != null ? String(outputItem.salePrice) : '0'} className={cn(prodFieldCls, 'h-8 text-right tabular-nums')} />
+                          </td>
+                        )}
+                        {allocMethod === 'fixed' && (
+                          <td className="px-3 py-2">
+                            <input inputMode="decimal" value={mainShare} onChange={e => setMainShare(e.target.value)} placeholder="%" className={cn(prodFieldCls, 'h-8 text-right tabular-nums')} />
+                          </td>
+                        )}
+                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{split.rows[0].sharePct.toFixed(1)}%</td>
+                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{formatPrice(split.rows[0].cost)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(split.rows[0].unitCost)}</td>
+                        <td />
+                      </tr>
+                      {coComputed.map((c, i) => {
+                        const r = split.rows[i + 1]
+                        const unitLabel = c.item ? t(unitKey(c.item.unit)) : ''
+                        const noWeight = allocMethod === 'mass' && r?.weight === null
+                        const noPrice = allocMethod === 'value' && r?.weight === null
+                        return (
+                          <tr key={c.key} className="border-b border-gray-50 dark:border-gray-800/60 last:border-0">
+                            <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
+                              {c.item?.name ?? '—'}
+                              {c.perBatch !== null && (
+                                <span className="ml-1.5 inline-flex rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">{t('prodAcct.co.fromRecipe')}</span>
+                              )}
+                              {noWeight && <span className="mt-0.5 block text-[11px] text-red-600 dark:text-red-400">{t('prodAcct.co.noWeight')}</span>}
+                              {noPrice && <span className="mt-0.5 block text-[11px] text-red-600 dark:text-red-400">{t('prodAcct.co.noPrice')}</span>}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="relative">
+                                <input
+                                  inputMode="decimal"
+                                  value={c.display}
+                                  onChange={e => patchCo(c.key, { qty: e.target.value })}
+                                  onFocus={e => e.target.select()}
+                                  placeholder="0"
+                                  className={cn(prodFieldCls, 'h-8 pr-10 text-right tabular-nums', !(c.qtyNum > 0) && c.display !== '' && 'border-red-300 dark:border-red-500/50')}
+                                />
+                                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">{unitLabel}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <select value={c.warehouseId} onChange={e => patchCo(c.key, { warehouseId: e.target.value })} className={cn(prodFieldCls, 'h-8')}>
+                                <option value="">{warehouses.find(w => w.id === outputWarehouseId)?.name ?? t('production.productions.outputWarehouse')}</option>
+                                {outputWarehouses.filter(w => w.id !== outputWarehouseId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                              </select>
+                            </td>
+                            {allocMethod === 'value' && (
+                              <td className="px-3 py-2">
+                                <input inputMode="decimal" value={c.refPrice} onChange={e => patchCo(c.key, { refPrice: e.target.value })} placeholder={c.item?.salePrice != null ? String(c.item.salePrice) : '0'} className={cn(prodFieldCls, 'h-8 text-right tabular-nums')} />
+                              </td>
+                            )}
+                            {allocMethod === 'fixed' && (
+                              <td className="px-3 py-2">
+                                <input inputMode="decimal" value={c.share} onChange={e => patchCo(c.key, { share: e.target.value })} placeholder="%" className={cn(prodFieldCls, 'h-8 text-right tabular-nums')} />
+                              </td>
+                            )}
+                            <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{r ? `${r.sharePct.toFixed(1)}%` : '—'}</td>
+                            <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{r ? formatPrice(r.cost) : '—'}</td>
+                            <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{r ? formatPrice(r.unitCost) : '—'}</td>
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={() => setCoRows(prev => prev.filter(x => x.key !== c.key))}
+                                aria-label={t('production.common.remove')}
+                                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {splitErrorText && <ControlHint tone="error">{splitErrorText}</ControlHint>}
+              <div className="w-full sm:w-80">
+                <SearchSelect
+                  options={coOptions}
+                  value=""
+                  onChange={id => setCoRows(prev => [...prev, { key: nextCoKey(), itemId: id, qty: '', perBatch: null, warehouseId: '', refPrice: '', share: '' }])}
+                  placeholder={t('prodAcct.co.add')}
+                />
+              </div>
+            </div>
+          </MoreFields>
+        )}
 
         <MoreFields active={!!note}>
           <NoteField value={note} onChange={setNote} />

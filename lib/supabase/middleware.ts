@@ -22,7 +22,15 @@ const ALL_BRANCH_ROLES = ['owner', 'admin']
 // settings and period close are owner-only, the audit log owner/admin (the
 // RPCs and the audit-log RLS policy re-check the same roles).
 const OWNER_ONLY_PATHS = ['/zavod-nazorat', '/zavod-davr-yopish']
-const OWNER_ADMIN_PATHS = ['/zavod-audit']
+// Accounting (migration 20261110000018): overhead pools and the P&L / VAT /
+// full-cost reports are owner / admin too (prod_pnl, the pool RPCs re-check).
+const OWNER_ADMIN_PATHS = [
+  '/zavod-audit',
+  '/zavod-xarajat-taqsimoti',
+  '/zavod-hisobotlar/foyda',
+  '/zavod-hisobotlar/qqs',
+  '/zavod-hisobotlar/tannarx',
+]
 
 // Route-prefix -> PERMISSION_KEY. /dashboard, /sozlamalar, /pos stay
 // role-based-only (every authenticated company user can reach them).
@@ -105,6 +113,8 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/zavod-kassa-orderlar': 'prod_cash',
   '/zavod-kassa-otkazmalar': 'prod_cash',
   '/zavod-hisobotlar/kassa': 'prod_cash',
+  // Overhead pools (migration 20261110000018); also owner / admin (OWNER_ADMIN_PATHS).
+  '/zavod-xarajat-taqsimoti': 'prod_stock',
 }
 
 // API routes do their own auth and are called by pages of both business

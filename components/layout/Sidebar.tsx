@@ -10,7 +10,7 @@ import {
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
   Receipt, Warehouse, Store, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered, Truck, ArrowLeftRight, PackagePlus,
   Factory, Recycle, BookOpen, HandCoins, Banknote, Milk, Split, FileBarChart, PackageOpen, Tags, Undo2,
-  Landmark, ReceiptText, ArrowRightLeft, Boxes, ShieldCheck, CalendarCheck, History,
+  Landmark, ReceiptText, ArrowRightLeft, Boxes, ShieldCheck, CalendarCheck, History, PieChart,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -106,6 +106,8 @@ const PRODUCTION_GROUPS: NavEntry[] = [
       { href: '/zavod-nazorat', labelKey: 'prodControls.nav.settings', icon: ShieldCheck, ownerOnly: true },
       { href: '/zavod-davr-yopish', labelKey: 'prodControls.nav.period', icon: CalendarCheck, ownerOnly: true },
       { href: '/zavod-audit', labelKey: 'prodControls.nav.audit', icon: History, allBranchRolesOnly: true },
+      // Overhead pools (migration 20261110000018); owner / admin, see proxy.ts.
+      { href: '/zavod-xarajat-taqsimoti', labelKey: 'prodAcct.nav.pools', icon: PieChart, permKey: 'prod_stock', allBranchRolesOnly: true },
     ],
   },
   {

@@ -4,6 +4,8 @@
 // quantity + value over a period, with the in/out split by document type on
 // expand. Ledger = lot-bearing prod_stock_movements + opening lots (see
 // lib/production-reports.ts). Value = qty x unit_cost of each movement.
+// Server-side aggregation (prod_report_turnover, migration 20261110000018)
+// when available; the client paging below is the fallback before it.
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ArrowDownCircle, ArrowUpCircle, Boxes, Search, Wallet } from 'lucide-react'
@@ -20,9 +22,14 @@ import { BackLink, Segmented, TableCard, prodFieldCls, tdCls, thCls, thRightCls,
 import { ExpandChevron, FilterSelect, ProdKpiGrid, QtyValueCell } from '@/components/production/ReportKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { formatQty, rangeToIsoBounds, unitKey } from '@/lib/production'
+import { localYmd } from '@/lib/utils/date'
 import {
-  LEDGER_DOC_TYPES, aggregateTurnover, docTypeKey, downloadXlsx, fetchLedgerEvents, x2, x3, type LedgerEvent,
+  LEDGER_DOC_TYPES, aggregateTurnover, docTypeKey, downloadXlsx, fetchLedgerEvents, x2, x3, type LedgerEvent, type TurnoverRow,
 } from '@/lib/production-reports'
+import { fetchTurnoverRpc, mergeTurnoverByItem } from '@/lib/production-accounting'
+
+/** Set once the RPC turned out to be missing (pre-migration): skip it afterwards. */
+let turnoverRpcMissing = false
 
 const PAGE_SIZE = 50
 type GroupBy = 'item' | 'warehouse'
@@ -44,6 +51,8 @@ export default function TurnoverReportPage() {
   const [groupBy, setGroupBy] = useState<GroupBy>('item')
   const [search, setSearch] = useState('')
   const [events, setEvents] = useState<LedgerEvent[]>([])
+  // Per (warehouse, item) rows of prod_report_turnover; null = client fallback.
+  const [rpcRows, setRpcRows] = useState<TurnoverRow[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
@@ -66,29 +75,41 @@ export default function TurnoverReportPage() {
     if (refsLoading) return
     let cancelled = false
     setLoading(true)
-    fetchLedgerEvents(createClient(), { toIso: bounds.toIso, warehouseId: warehouseId || undefined, itemIds }).then(ev => {
+    const supabase = createClient()
+    const done = () => { setExpanded(new Set()); setPage(1); setLoading(false) }
+    ;(async () => {
+      if (!turnoverRpcMissing) {
+        const res = await fetchTurnoverRpc(supabase, {
+          from: range?.from ?? null, to: range?.to ?? localYmd(), warehouseId: warehouseId || undefined, groupId: groupId || undefined,
+        })
+        if (cancelled) return
+        if (res.status === 'ok') { setRpcRows(res.data); setEvents([]); done(); return }
+        if (res.status === 'missing') turnoverRpcMissing = true
+      }
+      const ev = await fetchLedgerEvents(supabase, { toIso: bounds.toIso, warehouseId: warehouseId || undefined, itemIds })
       if (cancelled) return
       if (ev === null) toast.error(t('productionErrors.unknown'))
+      setRpcRows(null)
       setEvents(ev ?? [])
-      setExpanded(new Set())
-      setPage(1)
-      setLoading(false)
-    })
+      done()
+    })()
     return () => { cancelled = true }
-  }, [bounds, warehouseId, itemIds, refsLoading, t])
+  }, [range, bounds, warehouseId, groupId, itemIds, refsLoading, t])
 
   const rows = useMemo(() => {
-    const agg = aggregateTurnover(events, {
-      fromMs: bounds.fromIso ? new Date(bounds.fromIso).getTime() : null,
-      toMs: new Date(bounds.toIso).getTime(),
-      byWarehouse: groupBy === 'warehouse',
-    })
+    const agg = rpcRows
+      ? (groupBy === 'warehouse' ? rpcRows : mergeTurnoverByItem(rpcRows)).filter(r => !itemId || r.itemId === itemId)
+      : aggregateTurnover(events, {
+        fromMs: bounds.fromIso ? new Date(bounds.fromIso).getTime() : null,
+        toMs: new Date(bounds.toIso).getTime(),
+        byWarehouse: groupBy === 'warehouse',
+      })
     const q = search.trim().toLowerCase()
     return agg
       .map(r => ({ ...r, item: itemById.get(r.itemId), warehouseName: r.warehouseId ? warehouseById.get(r.warehouseId)?.name ?? '' : '' }))
       .filter(r => !q || (r.item?.name ?? '').toLowerCase().includes(q) || (r.item?.sku ?? '').toLowerCase().includes(q))
       .sort((a, b) => (a.item?.name ?? '').localeCompare(b.item?.name ?? '') || a.warehouseName.localeCompare(b.warehouseName))
-  }, [events, bounds, groupBy, search, itemById, warehouseById])
+  }, [rpcRows, itemId, events, bounds, groupBy, search, itemById, warehouseById])
 
   const totals = useMemo(() => rows.reduce((s, r) => ({
     opening: s.opening + r.opening.value,

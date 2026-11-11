@@ -6,7 +6,7 @@
 
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeftRight, CalendarClock, GitBranch, HandCoins, Hourglass, Landmark, Milk, Receipt, Scale, Search, TrendingDown } from 'lucide-react'
+import { ArrowLeftRight, Calculator, CalendarClock, GitBranch, HandCoins, Hourglass, Landmark, Milk, Percent, Receipt, Scale, Search, TrendingDown, TrendingUp } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { PageHeader, prodCardCls, prodFieldCls } from '@/components/production/ProdKit'
 import { ReportNavCard } from '@/components/production/ReportKit'
-import { useHasPermission } from '@/components/production/MilkKit'
+import { useHasPermission, useIsOwnerOrAdmin } from '@/components/production/MilkKit'
 import { lotTraceHref } from '@/lib/production-reports'
 
 export default function ProductionReportsIndexPage() {
@@ -26,6 +26,8 @@ export default function ProductionReportsIndexPage() {
   const canSales = useHasPermission('prod_sales')
   // Cash report additionally needs 'prod_cash' (proxy.ts).
   const canCash = useHasPermission('prod_cash')
+  // Accounting reports (migration 20261110000018): owner / admin (proxy.ts OWNER_ADMIN_PATHS).
+  const canAccounting = useIsOwnerOrAdmin()
 
   async function findLot(e: FormEvent) {
     e.preventDefault()
@@ -52,6 +54,11 @@ export default function ProductionReportsIndexPage() {
     ] : []),
     ...(canCash ? [
       { href: '/zavod-hisobotlar/kassa', icon: Landmark, title: t('prodCash.report.title'), description: t('prodCash.report.subtitle') },
+    ] : []),
+    ...(canAccounting ? [
+      { href: '/zavod-hisobotlar/foyda', icon: TrendingUp, title: t('prodAcct.reports.pnlTitle'), description: t('prodAcct.reports.pnlSubtitle') },
+      { href: '/zavod-hisobotlar/qqs', icon: Percent, title: t('prodAcct.reports.vatTitle'), description: t('prodAcct.reports.vatSubtitle') },
+      { href: '/zavod-hisobotlar/tannarx', icon: Calculator, title: t('prodAcct.reports.costTitle'), description: t('prodAcct.reports.costSubtitle') },
     ] : []),
   ]
 

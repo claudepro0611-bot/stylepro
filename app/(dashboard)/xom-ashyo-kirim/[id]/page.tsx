@@ -84,6 +84,10 @@ export default function ReceiptViewPage() {
   const canCorrect = corrections !== null && doc.status === 'posted'
   const corrected = (corrections ?? []).length > 0
   const dueDate = (doc as { due_date?: string | null }).due_date ?? null
+  // Purchase VAT (migration 20261110000018): total is gross, net = total - vat_amount.
+  const vatTotal = Number(doc.vat_total ?? 0)
+  const hasVat = vatTotal > 0 || lines.some(l => Number(l.vat_rate ?? 0) > 0)
+  const pricesIncludeVat = !!doc.prices_include_vat
 
   return (
     <>
@@ -122,6 +126,12 @@ export default function ReceiptViewPage() {
         <InfoField label={t('production.common.author')}>{doc.created_by_name ?? '—'}</InfoField>
         <InfoField label={t('production.common.createdAt')}>{formatDateTime(doc.created_at)}</InfoField>
         {dueDate && <InfoField label={t('prodInventory.ageing.dueDate')}>{formatYmd(dueDate)}</InfoField>}
+        {hasVat && (
+          <InfoField label={t('prodAcct.vat.vat')}>
+            {t(pricesIncludeVat ? 'prodAcct.vat.pricesInclude' : 'prodAcct.vat.pricesExclude')}
+            <span className="block text-[12px] font-normal text-gray-500 dark:text-gray-400">{t(doc.vat_deductible ? 'prodAcct.vat.deductible' : 'prodAcct.vat.notDeductible')}</span>
+          </InfoField>
+        )}
         {doc.cancelled_at && <InfoField label={t('production.common.cancelledAt')}>{formatDateTime(doc.cancelled_at)}</InfoField>}
       </div>
       {hasPostedCorrection && canCancel && !intake && (
@@ -138,7 +148,10 @@ export default function ReceiptViewPage() {
                 <th className="px-4 py-2.5 text-right font-medium">{t('production.common.qty')}</th>
                 <th className="px-4 py-2.5 text-right font-medium">{t('production.common.price')}</th>
                 {corrected && <th className="px-4 py-2.5 text-right font-medium">{t('prodInventory.corrections.effectivePrice')}</th>}
-                <th className="px-4 py-2.5 text-right font-medium">{t('production.common.total')}</th>
+                {hasVat && <th className="px-4 py-2.5 text-right font-medium">{t('prodAcct.vat.rate')}</th>}
+                {hasVat && <th className="px-4 py-2.5 text-right font-medium">{t('prodAcct.vat.net')}</th>}
+                {hasVat && <th className="px-4 py-2.5 text-right font-medium">{t('prodAcct.vat.vat')}</th>}
+                <th className="px-4 py-2.5 text-right font-medium">{hasVat ? t('prodAcct.vat.gross') : t('production.common.total')}</th>
                 {canCorrect && <th className="px-4 py-2.5 w-10" />}
               </tr>
             </thead>
@@ -151,12 +164,18 @@ export default function ReceiptViewPage() {
                     <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">{formatQty(Number(l.qty))} {item ? t(unitKey(item.unit)) : ''}</td>
                     <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(Number(l.price))}</td>
                     {corrected && <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{formatPrice(effectiveLinePrice(l.id, Number(l.price), corrections ?? []))}</td>}
+                    {hasVat && <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{Number(l.vat_rate ?? 0)}%</td>}
+                    {hasVat && <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(Number(l.total) - Number(l.vat_amount ?? 0))}</td>}
+                    {hasVat && <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(Number(l.vat_amount ?? 0))}</td>}
                     <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{formatPrice(Number(l.total))}</td>
                     {canCorrect && (
                       <td className="px-4 py-2">
                         <button
                           type="button"
-                          onClick={() => setCorrecting({ id: l.id, itemId: l.item_id, qty: Number(l.qty), price: Number(l.price) })}
+                          onClick={() => setCorrecting({
+                            id: l.id, itemId: l.item_id, qty: Number(l.qty), price: Number(l.price),
+                            vatRate: Number(l.vat_rate ?? 0), pricesIncludeVat, vatDeductible: !!doc.vat_deductible,
+                          })}
                           title={t('prodInventory.corrections.button')}
                           aria-label={t('prodInventory.corrections.button')}
                           className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
@@ -195,7 +214,11 @@ export default function ReceiptViewPage() {
             <p className="mt-1 text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{doc.note}</p>
           </div>
         ) : <div className="hidden lg:block" />}
-        <TotalsBox rows={[{ label: t('production.common.total'), value: formatPrice(Number(doc.total)), strong: true }]} />
+        <TotalsBox rows={hasVat ? [
+          { label: t('prodAcct.vat.totalNet'), value: formatPrice(Number(doc.total) - vatTotal) },
+          { label: t('prodAcct.vat.totalVat'), value: formatPrice(vatTotal) },
+          { label: t('prodAcct.vat.totalGross'), value: formatPrice(Number(doc.total)), strong: true },
+        ] : [{ label: t('production.common.total'), value: formatPrice(Number(doc.total)), strong: true }]} />
       </div>
     </div>
     <PrintSheet
@@ -213,13 +236,19 @@ export default function ReceiptViewPage() {
       <PrintTable
         columns={[
           { label: t('production.common.item') }, { label: t('production.common.qty'), right: true }, { label: t('production.common.unit') },
-          { label: t('production.common.price'), right: true }, { label: t('production.common.total'), right: true },
+          { label: t('production.common.price'), right: true },
+          ...(hasVat ? [{ label: t('prodAcct.vat.rate'), right: true }, { label: t('prodAcct.vat.vat'), right: true }] : []),
+          { label: hasVat ? t('prodAcct.vat.gross') : t('production.common.total'), right: true },
         ]}
         rows={lines.map(l => {
           const item = itemById.get(l.item_id)
-          return [item?.name ?? '—', formatQty(Number(l.qty)), item ? t(unitKey(item.unit)) : '', formatPrice(Number(l.price)), formatPrice(Number(l.total))]
+          return [
+            item?.name ?? '—', formatQty(Number(l.qty)), item ? t(unitKey(item.unit)) : '', formatPrice(Number(l.price)),
+            ...(hasVat ? [Number(l.vat_rate ?? 0) + '%',formatPrice(Number(l.vat_amount ?? 0))] : []),
+            formatPrice(Number(l.total)),
+          ]
         })}
-        total={[t('production.common.total'), '', '', '', formatPrice(Number(doc.total))]}
+        total={[t('production.common.total'), '', '', '', ...(hasVat ? ['', formatPrice(vatTotal)] : []), formatPrice(Number(doc.total))]}
       />
       {doc.note && <p>{t('production.common.note')}: {doc.note}</p>}
     </PrintSheet>

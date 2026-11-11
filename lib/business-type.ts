@@ -48,6 +48,8 @@ export const PRODUCTION_PREFIXES = [
   '/zavod-nazorat',
   '/zavod-davr-yopish',
   '/zavod-audit',
+  // Accounting (migration 20261110000018); role-gated in proxy.ts.
+  '/zavod-xarajat-taqsimoti',
 ] as const
 
 /** Routes both business types may open. */

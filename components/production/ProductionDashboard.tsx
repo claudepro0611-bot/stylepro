@@ -10,8 +10,11 @@
 // always as of now). Every block is rendered and queried only for users with
 // the module's permission (without it RLS would return no rows and the block
 // would show a misleading 0); cost, gross profit and margin only for
-// owner / admin (useSeesMargin). Data is aggregated client-side from
-// paginated reads; independent reads run in parallel.
+// owner / admin (useSeesMargin). Period figures come from
+// prod_report_dashboard (server-side, migration 20261110000018) when it is
+// available; otherwise (and for the per-item "Ko'proq" charts) they are
+// aggregated client-side from paginated reads. Net profit (prod_pnl) is
+// added to the revenue card for owner / admin.
 //
 // Kept short on purpose: max 4 KPI cards per row, a "Tezkor amallar" row of
 // permission-filtered shortcuts, 4 charts by default (the rest behind
@@ -58,6 +61,10 @@ import {
   DASH_PRESETS, addDaysYmd, bucketEndYmd, bucketKeys, bucketOf, granularityOf, matchPreset, pctChange, presetRange,
   previousRange, sliceColor, topSlices, type DashPreset, type Slice, type YmdRange,
 } from '@/lib/production-dashboard'
+import { fetchDashboardRpc, fetchPnl, type DashRpc } from '@/lib/production-accounting'
+
+/** Set once prod_report_dashboard turned out to be missing (pre-migration). */
+let dashRpcMissing = false
 
 // ---------------------------------------------------------------------------
 // Row shapes of the reads
@@ -227,6 +234,36 @@ export function ProductionDashboard() {
   const kgText = (v: number) => `${formatQty(v)} ${kg}`
   const noData = t('prodDash.empty')
   const noDataNow = t('prodDash.emptyNow')
+  const [showMore, setShowMore] = useLocalStorage<boolean>('stylepro-prod-dash-more', false)
+
+  // Server-side period aggregation: undefined = deciding, null = client fallback.
+  const [dash, setDash] = useState<DashRpc | null | undefined>(undefined)
+  const dashReady = dash !== undefined
+  const rpcOn = !!dash
+
+  useEffect(() => {
+    if (salesPending) return
+    if (dashRpcMissing) { setDash(null); return }
+    let active = true
+    setDash(undefined)
+    fetchDashboardRpc(createClient(), range.from, range.to, gran).then(res => {
+      if (!active) return
+      if (res.status === 'missing') dashRpcMissing = true
+      setDash(res.status === 'ok' ? res.data : null)
+    })
+    return () => { active = false }
+  }, [range.from, range.to, gran, salesPending])
+
+  // Net profit of the period (prod_pnl, owner / admin); null when not available.
+  const [netProfit, setNetProfit] = useState<number | null>(null)
+  useEffect(() => {
+    if (!seesMargin || !canStock) { setNetProfit(null); return }
+    let active = true
+    fetchPnl(createClient(), range.from, range.to, 'total').then(res => {
+      if (active) setNetProfit(res.status === 'ok' ? res.data.total.operating_profit : null)
+    })
+    return () => { active = false }
+  }, [range.from, range.to, seesMargin, canStock])
 
   // Current and previous period are read in one pass ([prev.from, range.to]) and split by local day.
   const [salesRows, setSalesRows] = useState<SalesLine[]>([])
@@ -235,19 +272,20 @@ export function ProductionDashboard() {
   const [periodLoading, setPeriodLoading] = useState(true)
 
   useEffect(() => {
-    if (salesPending) return
+    if (salesPending || !dashReady) return
     let active = true
     setPeriodLoading(true)
     const supabase = createClient()
     const { fromIso, toIso } = rangeToIsoBounds({ from: prev.from, to: range.to })
     Promise.all([
-      showSales
+      // With the RPC the raw sales lines only feed the per-item "Ko'proq" chart.
+      showSales && (!rpcOn || showMore)
         ? fetchAllRows<SalesLine>((from, to) => supabase.from('prod_sales_lines_v')
           .select('doc_date, item_id, item_name, group_id, group_name, amount, cost, margin')
           .gte('doc_date', fromIso).lt('doc_date', toIso)
           .order('doc_date').order('sale_item_id').order('row_kind').order('return_id').range(from, to))
         : EMPTY,
-      canMilk
+      canMilk && !rpcOn
         ? fetchAllRows<MilkIntakeLite>((from, to) => supabase.from('prod_milk_intakes').select(MILK_INTAKE_COLS)
           .neq('status', 'cancelled').gte('intake_date', fromIso).lt('intake_date', toIso)
           .order('intake_date').order('id').range(from, to))
@@ -265,7 +303,7 @@ export function ProductionDashboard() {
       setPeriodLoading(false)
     })
     return () => { active = false }
-  }, [prev.from, range.to, showSales, salesPending, canMilk, canProduction])
+  }, [prev.from, range.to, showSales, salesPending, canMilk, canProduction, dashReady, rpcOn, showMore])
 
   // Cash period reads: ledger lines from the period start up to now (to roll the
   // current balance back day by day), cash-order outflows and supply expenses.
@@ -277,7 +315,9 @@ export function ProductionDashboard() {
 
   useEffect(() => {
     if (canCash && cashAvailable === null) return
-    if (!showOutflows) { setCashPeriodLoading(false); return }
+    if (!dashReady) return
+    // The RPC already returns the cash balance series and the outflows.
+    if (!showOutflows || rpcOn) { setCashPeriodLoading(false); return }
     let active = true
     setCashPeriodLoading(true)
     const supabase = createClient()
@@ -319,7 +359,7 @@ export function ProductionDashboard() {
       setCashPeriodLoading(false)
     })
     return () => { active = false }
-  }, [range, showCash, canCash, cashAvailable, canSupply, showOutflows])
+  }, [range, showCash, canCash, cashAvailable, canSupply, showOutflows, dashReady, rpcOn])
 
   // ---- current state ---------------------------------------------------------
   const [stock, setStock] = useState<ProdStockRow[]>([])
@@ -439,6 +479,24 @@ export function ProductionDashboard() {
       it.revenue += amount; it.margin += margin
       byItem.set(ik, it)
     }
+    // Server-side figures replace the client sums (top products stay client-side).
+    if (dash) {
+      const t0 = dash.totals
+      const p0 = dash.prevTotals
+      cur.revenue = num(t0.revenue); cur.cost = num(t0.cogs); cur.margin = num(t0.margin)
+      prv.revenue = num(p0.revenue); prv.margin = num(p0.margin)
+      byBucket.clear()
+      for (const s of dash.series) {
+        if (s.revenue === null && s.cogs === null) continue
+        if (!num(s.revenue) && !num(s.cogs)) continue
+        byBucket.set(bucketOf(s.period, gran), { revenue: num(s.revenue), cost: num(s.cogs), profit: num(s.margin) })
+      }
+      byGroup.clear()
+      for (const g of dash.salesByGroup ?? []) {
+        const gk = g.groupId ?? '__none'
+        byGroup.set(gk, { key: gk, name: g.groupName || t('prodDash.charts.noGroup'), value: g.revenue })
+      }
+    }
     const series = buckets.map(key => {
       const x = byBucket.get(key)
       return seesMargin
@@ -457,10 +515,22 @@ export function ProductionDashboard() {
       cur, prv, series, top, hasCur: byBucket.size > 0,
       groups: topSlices([...byGroup.values()], DONUT_TOP, t('prodDash.charts.other')),
     }
-  }, [salesRows, range.from, gran, buckets, seesMargin, t])
+  }, [salesRows, dash, range.from, gran, buckets, seesMargin, t])
 
   // ---- derived: milk -------------------------------------------------------
   const milk = useMemo(() => {
+    if (dash) {
+      const bySeries = new Map(dash.series.map(s => [bucketOf(s.period, gran), s]))
+      return {
+        cur: { receivedKg: num(dash.totals.milkKg), fat: dash.totals.avgFat },
+        prv: { receivedKg: num(dash.prevTotals.milkKg), fat: dash.prevTotals.avgFat },
+        series: buckets.map(key => {
+          const s = bySeries.get(key)
+          return { key, kg: round2(num(s?.milkKg)), fat: s?.avgFat === null || s?.avgFat === undefined ? null : round2(s.avgFat) }
+        }),
+        hasCur: num(dash.totals.milkKg) > 0,
+      }
+    }
     const isCur = (iso: string) => ymdOf(iso) >= range.from
     const curRows = intakes.filter(r => isCur(r.intake_date))
     const prvRows = intakes.filter(r => !isCur(r.intake_date))
@@ -472,7 +542,7 @@ export function ProductionDashboard() {
       return { key, kg: round2(a?.receivedKg ?? 0), fat: a?.fat === null || a?.fat === undefined ? null : round2(a.fat) }
     })
     return { cur, prv, series, hasCur: curRows.some(r => r.status === 'accepted' || r.status === 'conditional') }
-  }, [intakes, range.from, gran, buckets])
+  }, [intakes, dash, range.from, gran, buckets])
 
   // ---- derived: production output (kg; items without a kg conversion are counted apart) ----
   const output = useMemo(() => {
@@ -507,9 +577,16 @@ export function ProductionDashboard() {
       if (hasOther) row.__other = round2(other)
       return row
     })
-    const total = series.map(r => keys.reduce((s, k) => s + Number(r[k] ?? 0), 0))
+    let total = series.map(r => keys.reduce((s, k) => s + Number(r[k] ?? 0), 0))
+    // Server-side kg include co-products (prod_production_outputs).
+    if (dash && dash.totals.outputKg !== null) {
+      curKg = num(dash.totals.outputKg)
+      prvKg = num(dash.prevTotals.outputKg)
+      const bySeries = new Map(dash.series.map(s => [bucketOf(s.period, gran), num(s.outputKg)]))
+      total = buckets.map(key => round2(bySeries.get(key) ?? 0))
+    }
     return { curKg, prvKg, curDocs, unconverted, keys, series, total, hasCur: byItem.size > 0 }
-  }, [outputs, itemById, range.from, gran, buckets])
+  }, [outputs, dash, itemById, range.from, gran, buckets])
 
   const outputName = (key: string) => (key === '__other' ? t('prodDash.charts.other') : itemById.get(key)?.name ?? '—')
 
@@ -525,6 +602,10 @@ export function ProductionDashboard() {
 
   // Balance at each bucket end = today's balance minus everything that moved after it.
   const cashSeries = useMemo(() => {
+    if (dash) {
+      const bySeries = new Map(dash.series.map(s => [bucketOf(s.period, gran), s.cashBalance]))
+      return buckets.map(key => ({ key, end: bucketEndYmd(key, gran, range.to), balance: round2(num(bySeries.get(key))) }))
+    }
     const endMs = new Date(rangeToIsoBounds(range).toIso).getTime()
     let after = 0
     const net = new Map<string, number>()
@@ -541,18 +622,21 @@ export function ProductionDashboard() {
       bal -= net.get(buckets[i]) ?? 0
     }
     return out
-  }, [cashMoves, cashTotal, range, gran, buckets])
+  }, [cashMoves, dash, cashTotal, range, gran, buckets])
 
   const outflowSlices = useMemo(() => {
     const m = new Map<string, Slice>()
-    for (const r of outflowRows) {
+    const rows = dash
+      ? (dash.outflows ?? []).map(o => ({ category_id: o.categoryId, amount: o.amount, name: o.categoryName }))
+      : outflowRows.map(r => ({ ...r, name: r.category_id ? categoryNames.get(r.category_id) ?? null : null }))
+    for (const r of rows) {
       const k = r.category_id ?? '__none'
-      const s = m.get(k) ?? { key: k, name: (r.category_id && categoryNames.get(r.category_id)) || t('prodDash.charts.noCategory'), value: 0 }
+      const s = m.get(k) ?? { key: k, name: r.name || t('prodDash.charts.noCategory'), value: 0 }
       s.value += num(r.amount)
       m.set(k, s)
     }
     return topSlices([...m.values()].map(s => ({ ...s, value: round2(s.value) })), DONUT_TOP, t('prodDash.charts.other'))
-  }, [outflowRows, categoryNames, t])
+  }, [outflowRows, dash, categoryNames, t])
 
   // ---- derived: stock, lots, debts -------------------------------------------
   const [stockView, setStockView] = useState<'warehouse' | 'type'>('warehouse')
@@ -633,7 +717,7 @@ export function ProductionDashboard() {
 
   // ---- KPI cards -------------------------------------------------------------
   const prevTitle = `${t('prodDash.vsPrev')}: ${dmy(prev.from)} – ${dmy(prev.to)}`
-  const periodBusy = periodLoading || refsLoading || salesPending
+  const periodBusy = periodLoading || refsLoading || salesPending || !dashReady
 
   const periodKpis: KpiCardProps[] = [
     ...(showSales ? [{
@@ -641,8 +725,9 @@ export function ProductionDashboard() {
       // Gross profit and margin (owner / admin) as a sub-line instead of a card of their own.
       sub: seesMargin
         ? `${t('prodDash.kpi.grossProfit')}: ${formatPrice(sales.cur.margin)} · ${formatMarginPct(marginPct(sales.cur.margin, sales.cur.revenue))}`
+          + (netProfit !== null ? ` · ${t('prodAcct.dash.netProfit')}: ${formatPrice(netProfit)}` : '')
         : undefined,
-      subTone: seesMargin && sales.cur.margin < 0 ? 'negative' as const : undefined,
+      subTone: seesMargin && (sales.cur.margin < 0 || (netProfit !== null && netProfit < 0)) ? 'negative' as const : undefined,
       delta: { value: pctChange(sales.cur.revenue, sales.prv.revenue), title: `${prevTitle} · ${formatPrice(sales.prv.revenue)}` },
       spark: sales.series.map(s => s.revenue),
     }] : []),
@@ -704,7 +789,6 @@ export function ProductionDashboard() {
     ...(canReceipts ? [{ href: '/xom-ashyo-kirim/yangi', label: t('prodUx.qReceipt'), icon: PackagePlus }] : []),
     ...(showCash ? [{ href: '/zavod-kassa-orderlar?new=1', label: t('prodUx.qCashOrder'), icon: ReceiptText }] : []),
   ]
-  const [showMore, setShowMore] = useLocalStorage<boolean>('stylepro-prod-dash-more', false)
   const hasMoreCharts = showSales || salesPending || canStock || canProduction || showOutflows || canSuppliers
 
   const axis = { tick: theme.axisTick, axisLine: false, tickLine: false } as const

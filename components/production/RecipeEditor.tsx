@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { Switch } from '@/components/ui/switch'
 import {
-  BackLink, FormFooter, NoteField, PageHeader, TotalsBox, prodCardCls, prodFieldCls, prodLabelCls,
+  BackLink, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
@@ -27,8 +27,14 @@ import {
   round2, round4, smartUnit, sumByUnitGroup, toInputString, fromBaseQty, unitKey, yieldPercent, yieldWeightOf,
   type EntryUnit, type ProdRecipe,
 } from '@/lib/production'
+import { fetchRecipeOutputs } from '@/lib/production-accounting'
 
 interface EditorLine { key: string; itemId: string; value: string; unit: EntryUnit; note: string }
+
+/** Recipe by-product (migration 20261110000018): qty per recipe batch. */
+interface ByProductLine { key: string; itemId: string; value: string; unit: EntryUnit }
+
+const NO_RECIPE = '00000000-0000-0000-0000-000000000000'
 
 let lineSeq = 0
 const nextKey = () => `l${++lineSeq}`
@@ -62,6 +68,10 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
   const [isActive, setIsActive] = useState(true)
   const [note, setNote] = useState('')
   const [lines, setLines] = useState<EditorLine[]>([])
+  // By-products prefill the co-product rows of a production; null = table not available yet.
+  const [byProducts, setByProducts] = useState<ByProductLine[]>([])
+  const [byAvailable, setByAvailable] = useState(false)
+  const [byInitial, setByInitial] = useState('')
   const [saving, setSaving] = useState(false)
   const initialized = useRef(false)
 
@@ -79,9 +89,20 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
       fetchProdRecipes(supabase, { activeOnly: true }),
       fetchAvgCosts(supabase),
       sourceId ? fetchProdRecipe(supabase, sourceId) : Promise.resolve(null),
-    ]).then(([active, costs, source]) => {
+      fetchRecipeOutputs(supabase, sourceId ?? NO_RECIPE),
+    ]).then(([active, costs, source, outs]) => {
       setActiveRecipes(active)
       setAvgCosts(costs)
+      setByAvailable(outs !== null)
+      if (outs && source) {
+        const list = outs.filter(o => o.itemId !== (isEdit ? source.itemId : presetItem ?? source.itemId)).map(o => {
+          const base = itemById.get(o.itemId)?.unit ?? 'pcs'
+          const unit = smartUnit(o.qtyPerBatch, base)
+          return { key: nextKey(), itemId: o.itemId, value: toInputString(fromBaseQty(o.qtyPerBatch, base, unit)), unit }
+        })
+        setByProducts(list)
+        if (isEdit) setByInitial(JSON.stringify(outs.map(o => [o.itemId, round4(o.qtyPerBatch)])))
+      }
       if (sourceId && !source) {
         setNotFound(true)
       } else if (source) {
@@ -124,15 +145,27 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
       return { value: i.id, label: i.name, sublabel: parts.join(' · ') }
     }), [items, lines, activeByItem, t])
 
+  const byProductOptions = useMemo(() => items
+    .filter(i => i.isActive && (i.itemType === 'finished' || i.itemType === 'semi') && i.id !== itemId
+      && !lines.some(l => l.itemId === i.id) && !byProducts.some(b => b.itemId === i.id))
+    .map(i => ({ value: i.id, label: i.name, sublabel: t(unitKey(i.unit)) })), [items, itemId, lines, byProducts, t])
+
   const componentOptions = useMemo(() => items
-    .filter(i => i.id !== itemId && !lines.some(l => l.itemId === i.id))
+    .filter(i => i.id !== itemId && !lines.some(l => l.itemId === i.id) && !byProducts.some(b => b.itemId === i.id))
     .map(i => {
       const parts = [t(itemTypeKey(i.itemType)), t(unitKey(i.unit))]
       if (!i.isActive) parts.push(t('production.recipes.inactiveItem'))
       return { value: i.id, label: i.name, sublabel: parts.join(' · ') }
-    }), [items, itemId, lines, t])
+    }), [items, itemId, lines, byProducts, t])
 
   const outQty = parseDecimal(outputQty)
+  const byComputed = byProducts.map(b => {
+    const item = itemById.get(b.itemId)
+    const base = item?.unit ?? 'pcs'
+    return { ...b, item, base, qty: round4(entryToBase(b.value, base, b.unit)) }
+  })
+  const byPayload = byComputed.filter(b => b.itemId !== itemId).map(b => ({ item_id: b.itemId, qty_per_batch: b.qty }))
+  const byDirty = JSON.stringify(byPayload.map(b => [b.item_id, b.qty_per_batch])) !== byInitial
   const computed = lines.map(l => {
     const item = itemById.get(l.itemId)
     const base = item?.unit ?? 'pcs'
@@ -147,7 +180,7 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
   const outUnitLabel = outputItem ? t(unitKey(outputItem.unit)) : ''
 
   const valid = !!itemId && round4(outQty) > 0 && computed.length > 0 && computed.length <= RECIPE_MAX_LINES
-    && computed.every(c => round4(c.qty) > 0)
+    && computed.every(c => round4(c.qty) > 0) && byComputed.every(b => b.qty > 0)
 
   function patchLine(key: string, patch: Partial<EditorLine>) {
     setLines(prev => prev.map(l => (l.key === key ? { ...l, ...patch } : l)))
@@ -168,7 +201,7 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
       const { error } = await supabase.rpc('prod_save_recipe', { p_id: conflict.id, p_data: recipePayload({ ...conflict, isActive: false }) })
       if (error) { setSaving(false); toast.error(t(prodErrorKey(error))); return }
     }
-    const { error } = await supabase.rpc('prod_save_recipe', {
+    const { data: savedId, error } = await supabase.rpc('prod_save_recipe', {
       // A copy is always a new recipe.
       p_id: isEdit ? recipeId! : null,
       p_data: recipePayload({ itemId, outputQty: outQty, note, isActive, lines: computed.map(c => ({ itemId: c.itemId, qty: c.qty, note: c.note })) }),
@@ -177,8 +210,14 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
       // Best effort: put the previous recipe back so the item keeps an active one.
       await supabase.rpc('prod_save_recipe', { p_id: conflict.id, p_data: recipePayload({ ...conflict, isActive: true }) })
     }
+    if (error) { setSaving(false); toast.error(t(prodErrorKey(error))); return }
+    // By-products are a separate, unversioned list (full replace).
+    const targetId = (isEdit ? recipeId : savedId) ?? null
+    if (byAvailable && targetId && (isEdit ? byDirty : byPayload.length > 0)) {
+      const { error: outErr } = await supabase.rpc('prod_save_recipe_outputs', { p_recipe_id: targetId, p_outputs: byPayload })
+      if (outErr) toast.error(`${t('prodAcct.recipeOutputs.saveFailed')}: ${t(prodErrorKey(outErr))}`)
+    }
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
     toast.success(t('production.common.saved'))
     router.push('/zavod-retseptlar')
   }
@@ -251,6 +290,65 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
           </span>
           <Switch checked={isActive} onCheckedChange={v => setIsActive(v)} />
         </label>
+
+        {byAvailable && (
+          <MoreFields active={byProducts.length > 0} label={t('prodAcct.recipeOutputs.title')}>
+            <div className="space-y-3">
+              <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('prodAcct.recipeOutputs.hint')}</p>
+              {byComputed.length > 0 && (
+                <div className="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
+                        <th className="px-3 py-2 text-left font-medium">{t('production.common.item')}</th>
+                        <th className="px-3 py-2 text-right font-medium w-52">{t('prodAcct.recipeOutputs.perBatch')}</th>
+                        <th className="px-3 py-2 w-10" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {byComputed.map(b => (
+                        <tr key={b.key} className="border-b border-gray-50 dark:border-gray-800/60 last:border-0">
+                          <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{b.item?.name ?? '—'}</td>
+                          <td className="px-3 py-2">
+                            <UnitQtyInput
+                              value={b.value}
+                              onChange={v => setByProducts(prev => prev.map(x => (x.key === b.key ? { ...x, value: v } : x)))}
+                              base={b.base}
+                              unit={b.unit}
+                              onUnitChange={(u, v) => setByProducts(prev => prev.map(x => (x.key === b.key ? { ...x, unit: u, value: v } : x)))}
+                              invalid={b.value.trim() !== '' && !(b.qty > 0)}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => setByProducts(prev => prev.filter(x => x.key !== b.key))}
+                              aria-label={t('production.common.remove')}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="w-full sm:w-80">
+                <SearchSelect
+                  options={byProductOptions}
+                  value=""
+                  onChange={id => {
+                    const base = itemById.get(id)?.unit ?? 'pcs'
+                    setByProducts(prev => [...prev, { key: nextKey(), itemId: id, value: '', unit: base }])
+                  }}
+                  placeholder={t('prodAcct.recipeOutputs.add')}
+                />
+              </div>
+            </div>
+          </MoreFields>
+        )}
       </div>
 
       <div className={cn(prodCardCls, 'overflow-hidden')}>

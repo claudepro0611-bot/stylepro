@@ -2821,6 +2821,10 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: string | null
           due_date: string | null
+          // Accounting (migration 20261110000018); undefined before it. total = gross incl. VAT.
+          prices_include_vat?: boolean
+          vat_deductible?: boolean
+          vat_total?: number
         }
         Insert: {
           id?: string
@@ -2869,6 +2873,9 @@ export type Database = {
           qty: number
           price: number
           total: number
+          // Accounting (migration 20261110000018); undefined before it. total = gross incl. VAT.
+          vat_rate?: number
+          vat_amount?: number
         }
         Insert: {
           id?: string
@@ -3270,6 +3277,8 @@ export type Database = {
           output_warehouse_id: string | null
           // Controls (migration 20261110000017); undefined before it.
           lot_pick_deviation?: boolean
+          // Accounting (migration 20261110000018); undefined before it.
+          allocation_method?: string
         }
         Insert: {
           id?: string
@@ -4259,6 +4268,8 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          // Accounting (migration 20261110000018); undefined before it.
+          vat_delta?: number
         }
         Insert: {
           id?: string
@@ -4553,6 +4564,92 @@ export type Database = {
           created_at?: string
           account_id?: string | null
         }
+        Relationships: []
+      }
+      // Accounting (migration 20261110000018_production_accounting.sql). RPC-only writes.
+      prod_company_accounting: {
+        Row: {
+          company_id: string
+          vat_payer: boolean
+          base_currency: string
+          overhead_method: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: { company_id?: string }
+        Update: { company_id?: string }
+        Relationships: []
+      }
+      prod_production_outputs: {
+        Row: {
+          id: string
+          company_id: string
+          production_id: string
+          sort_order: number
+          item_id: string
+          warehouse_id: string
+          qty: number
+          share_pct: number
+          ref_price: number | null
+          cost: number
+          unit_cost: number
+          lot_id: string | null
+        }
+        Insert: { id?: string }
+        Update: { id?: string }
+        Relationships: []
+      }
+      prod_recipe_outputs: {
+        Row: {
+          id: string
+          company_id: string
+          recipe_id: string
+          item_id: string
+          qty_per_batch: number
+          sort_order: number
+        }
+        Insert: { id?: string }
+        Update: { id?: string }
+        Relationships: []
+      }
+      prod_cost_pools: {
+        Row: {
+          id: string
+          company_id: string
+          period: string
+          category: string
+          amount: number
+          expense_category_id: string | null
+          note: string | null
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          updated_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: { id?: string }
+        Update: { id?: string }
+        Relationships: []
+      }
+      prod_overhead_allocations: {
+        Row: {
+          id: string
+          company_id: string
+          period: string
+          production_id: string
+          output_id: string
+          item_id: string
+          method: string
+          base: number
+          amount: number
+          pool_total: number
+          created_by: string | null
+          created_at: string
+        }
+        Insert: { id?: string }
+        Update: { id?: string }
         Relationships: []
       }
       // Controls & audit (migration 20261110000017_production_controls.sql).
@@ -4919,6 +5016,51 @@ export type Database = {
       }
     }
     Views: {
+      // Accounting (migration 20261110000018_production_accounting.sql).
+      prod_vat_summary: {
+        Row: {
+          company_id: string | null
+          month: string | null
+          sales_vat: number | null
+          returns_vat: number | null
+          output_vat: number | null
+          receipts_vat: number | null
+          corrections_vat: number | null
+          input_vat: number | null
+          payable: number | null
+        }
+        Relationships: []
+      }
+      prod_product_costs_month: {
+        Row: {
+          company_id: string | null
+          month: string | null
+          item_id: string | null
+          item_name: string | null
+          item_unit: string | null
+          qty: number | null
+          material_cost: number | null
+          overhead: number | null
+          full_cost: number | null
+          material_unit_cost: number | null
+          full_unit_cost: number | null
+        }
+        Relationships: []
+      }
+      prod_cost_pool_suggestions: {
+        Row: {
+          company_id: string | null
+          period: string | null
+          expense_category_id: string | null
+          category_name: string | null
+          cash_amount: number | null
+          supply_amount: number | null
+          amount: number | null
+          doc_count: number | null
+          pooled: boolean | null
+        }
+        Relationships: []
+      }
       employees_safe: {
         Row: {
           address: string | null
@@ -5399,6 +5541,16 @@ export type Database = {
       prod_amend_milk_lab: { Args: { p_intake_id: string; p_lab: Json }; Returns: Json }
       // Controls (migration 20261110000017).
       prod_save_control_settings: { Args: { p_data: Json }; Returns: Json }
+      // Accounting (migration 20261110000018).
+      prod_save_accounting_settings: { Args: { p_data: Json }; Returns: Json }
+      prod_save_recipe_outputs: { Args: { p_recipe_id: string; p_outputs: Json }; Returns: Json }
+      prod_save_cost_pool: { Args: { p_id: string | null; p_data: Json }; Returns: Json }
+      prod_cancel_cost_pool: { Args: { p_id: string }; Returns: Json }
+      prod_allocate_overhead: { Args: { p_month: string; p_ctl?: Json | null }; Returns: Json }
+      prod_pnl: { Args: { p_from: string; p_to: string; p_group?: string }; Returns: Json }
+      prod_report_turnover: { Args: { p_from: string | null; p_to: string; p_warehouse?: string | null; p_group?: string | null }; Returns: Json }
+      prod_report_dashboard: { Args: { p_from: string; p_to: string; p_group?: string }; Returns: Json }
+      prod_report_sales: { Args: { p_from: string; p_to: string; p_by?: string }; Returns: Json }
       prod_close_period: { Args: { p_until: string }; Returns: Json }
       prod_reopen_period: { Args: { p_until: string | null; p_note: string }; Returns: Json }
       supply_cancel_move: { Args: { p_id: string; p_note: string | null }; Returns: undefined }

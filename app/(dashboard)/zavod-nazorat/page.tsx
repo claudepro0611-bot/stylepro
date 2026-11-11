@@ -14,12 +14,14 @@ import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/ui/switch'
-import { FormFooter, PageHeader, prodCardCls, prodFieldCls, prodLabelCls, secondaryBtnCls } from '@/components/production/ProdKit'
+import { FormFooter, PageHeader, Segmented, prodCardCls, prodFieldCls, prodLabelCls, secondaryBtnCls } from '@/components/production/ProdKit'
 import { invalidateControls, useControls, useRole } from '@/components/production/ControlKit'
+import { invalidateAccounting, useAccounting } from '@/components/production/AccountingKit'
 import {
   CONTROL_ROLES, DEFAULT_CONTROL_SETTINGS, controlSettingsPayload, fillText, mapControlSettings,
   type ControlRole, type ControlSettings,
 } from '@/lib/production-controls'
+import { OVERHEAD_METHODS, overheadMethodKey, type OverheadMethod } from '@/lib/production-accounting'
 import { prodErrorKey } from '@/lib/production'
 import type { TranslationKey } from '@/lib/i18n/translations'
 
@@ -90,6 +92,18 @@ export default function ControlSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [badKey, setBadKey] = useState<string | null>(null)
   const isOwner = role === 'owner'
+  // Accounting settings (migration 20261110000018): saved with the same button.
+  const accounting = useAccounting()
+  const [vatPayer, setVatPayer] = useState(false)
+  const [overheadMethod, setOverheadMethod] = useState<OverheadMethod>('per_kg')
+  const acctDirty = accounting.available
+    && (vatPayer !== accounting.settings.vatPayer || overheadMethod !== accounting.settings.overheadMethod)
+
+  useEffect(() => {
+    if (accounting.loading) return
+    setVatPayer(accounting.settings.vatPayer)
+    setOverheadMethod(accounting.settings.overheadMethod)
+  }, [accounting.loading, accounting.settings])
 
   function apply(s: ControlSettings) {
     setText(toText(s))
@@ -125,8 +139,8 @@ export default function ControlSettingsPage() {
     setSaving(true)
     setBadKey(null)
     const { data, error } = await createClient().rpc('prod_save_control_settings', { p_data: controlSettingsPayload(next) })
-    setSaving(false)
     if (error) {
+      setSaving(false)
       const k = DETAIL_TO_KEY[error.details ?? '']
       if (k) { setBadKey(k); toast.error(`${t('prodControls.settings.invalidRange')}: ${t(`prodControls.settings.${k}` as TranslationKey)}`); return }
       toast.error(t(prodErrorKey(error)))
@@ -136,6 +150,15 @@ export default function ControlSettingsPage() {
     const fresh = data && typeof data === 'object' ? mapControlSettings(data as Parameters<typeof mapControlSettings>[0]) : null
     if (fresh) apply(fresh)
     await controls.reload()
+    if (acctDirty) {
+      const { error: acctError } = await createClient().rpc('prod_save_accounting_settings', {
+        p_data: { vat_payer: vatPayer, overhead_method: overheadMethod },
+      })
+      if (acctError) { setSaving(false); toast.error(t(prodErrorKey(acctError))); return }
+      invalidateAccounting()
+      await accounting.reload()
+    }
+    setSaving(false)
     toast.success(t('prodControls.settings.saved'))
   }
 
@@ -253,6 +276,29 @@ export default function ControlSettingsPage() {
           {numField('supplyIssueDailyLimit')}
         </div>
       </Section>
+
+      {accounting.available && (
+        <Section title={t('prodAcct.settings.title')}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <label className="flex items-start justify-between gap-4 rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2.5">
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">{t('prodAcct.settings.vatPayer')}</span>
+                <span className="mt-0.5 block text-[11px] text-gray-400 dark:text-gray-500">{t('prodAcct.settings.vatPayerHint')}</span>
+              </span>
+              <Switch checked={vatPayer} onCheckedChange={setVatPayer} />
+            </label>
+            <div>
+              <span className={prodLabelCls}>{t('prodAcct.settings.overheadMethod')}</span>
+              <Segmented<OverheadMethod>
+                value={overheadMethod}
+                onChange={setOverheadMethod}
+                options={OVERHEAD_METHODS.map(m => ({ value: m, label: t(overheadMethodKey(m)) }))}
+              />
+              <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">{t('prodAcct.settings.overheadMethodHint')}</span>
+            </div>
+          </div>
+        </Section>
+      )}
 
       {controls.settings.updatedAt && (
         <p className="text-[12px] text-gray-400 dark:text-gray-500">{t('prodControls.settings.updatedAt')}: {formatDateTime(controls.settings.updatedAt)}</p>

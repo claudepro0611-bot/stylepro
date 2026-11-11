@@ -23,13 +23,14 @@ import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { useHasPermission } from '@/components/production/MilkKit'
 import { useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
 import {
-  LOT_HOLD_STATUSES, formatQty, prodErrorKey, unitKey,
+  LOT_HOLD_STATUSES, formatQty, prodErrorKey, round2, round3, unitKey,
   type LotHoldStatus, type ProdItem, type ProdUnit,
 } from '@/lib/production'
 import {
   effectiveLinePrice, fetchLineLots, latestCorrectionIds, parseMoneyOrNull, previewCorrection, probeInventoryDocs, writeoffReasonKey,
   type PriceCorrection, type RevaluedLot,
 } from '@/lib/inventory'
+import { acctErrorText, vatSplit, vatUnitCost } from '@/lib/production-accounting'
 
 /** null while probing, then whether migration 20261110000014 is live. */
 export function useInventoryDocs(): boolean | null {
@@ -169,7 +170,16 @@ export function LotHoldDialog({ lot, onClose, onSaved }: { lot: HoldTarget | nul
 // ---------------------------------------------------------------------------
 // Price correction
 
-export interface CorrectableLine { id: string; itemId: string; qty: number; price: number }
+/** vatRate / pricesIncludeVat / vatDeductible: the line's VAT basis (migration 20261110000018; absent = rate 0). */
+export interface CorrectableLine {
+  id: string
+  itemId: string
+  qty: number
+  price: number
+  vatRate?: number
+  pricesIncludeVat?: boolean
+  vatDeductible?: boolean
+}
 
 /**
  * New-price dialog of one receipt line with a live preview of the debt
@@ -213,7 +223,8 @@ export function PriceCorrectionDialog({ open, onOpenChange, receipt, line, corre
 
   const newPrice = parseMoneyOrNull(value)
   const valid = newPrice !== null && newPrice !== undefined && newPrice !== oldPrice
-  const preview = line && newPrice != null ? previewCorrection(line.qty, oldPrice, newPrice, lots ?? null) : null
+  const vatRate = line?.vatRate ?? 0
+  const preview = line && newPrice != null ? vatPreview(line, oldPrice, newPrice, lots ?? null) : null
   const unit = item ? t(unitKey(item.unit as ProdUnit)) : ''
 
   async function save() {
@@ -224,8 +235,12 @@ export function PriceCorrectionDialog({ open, onOpenChange, receipt, line, corre
     }))
     setSaving(false)
     if (!res) return
-    if (res.error) { toast.error(errorText(res.error)); return }
-    toast.success(t('prodInventory.corrections.saved'))
+    if (res.error) { toast.error(vatRate > 0 ? acctErrorText(t, res.error) : errorText(res.error)); return }
+    // vat_delta: migration 20261110000018 (absent before it).
+    const vatDelta = Number((res.data as { vat_delta?: number } | null)?.vat_delta ?? 0)
+    toast.success(vatDelta !== 0
+      ? `${t('prodInventory.corrections.saved')} · ${t('prodAcct.vat.vatDelta')}: ${formatPrice(vatDelta)}`
+      : t('prodInventory.corrections.saved'))
     onSaved()
   }
 
@@ -277,6 +292,7 @@ export function PriceCorrectionDialog({ open, onOpenChange, receipt, line, corre
             {preview && (
               <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-2">
                 {row(t('prodInventory.corrections.debtDelta'), signed(preview.debtDelta), toneCls(preview.debtDelta))}
+                {vatRate > 0 && row(`${t('prodAcct.vat.vatDelta')} (${vatRate}%)`, signed(preview.vatDelta))}
                 {lots === undefined ? (
                   <div className="flex justify-center py-1"><Loader2 className="h-4 w-4 animate-spin text-gray-400" /></div>
                 ) : lots === null ? (
@@ -303,6 +319,31 @@ export function PriceCorrectionDialog({ open, onOpenChange, receipt, line, corre
       </DialogContent>
     </Dialog>
   )
+}
+
+/**
+ * previewCorrection with the line's VAT (prod_create_price_correction of
+ * migration 20261110000018): debt = gross(new) - gross(old), vat_delta =
+ * vat(new) - vat(old); stock / consumed use the lot cost of each price
+ * (ex VAT for a VAT payer). Rate 0 = the old formulas.
+ */
+function vatPreview(line: CorrectableLine, oldPrice: number, newPrice: number, lots: RevaluedLot[] | null) {
+  const rate = line.vatRate ?? 0
+  const base = previewCorrection(line.qty, oldPrice, newPrice, lots)
+  if (!(rate > 0)) return { ...base, vatDelta: 0 }
+  const incl = !!line.pricesIncludeVat
+  const ded = !!line.vatDeductible
+  const gNew = vatSplit(line.qty, newPrice, rate, incl)
+  const gOld = vatSplit(line.qty, oldPrice, rate, incl)
+  const costNew = vatUnitCost(newPrice, rate, incl, ded)
+  const costOld = vatUnitCost(oldPrice, rate, incl, ded)
+  return {
+    ...base,
+    debtDelta: round2(gNew.gross - gOld.gross),
+    vatDelta: round2(gNew.vat - gOld.vat),
+    stockDelta: round2((lots ?? []).reduce((s, l) => s + round2(l.remaining * costNew) - round2(l.remaining * l.unitCost), 0)),
+    consumedVariance: round2((costNew - costOld) * round3(base.consumedQty)),
+  }
 }
 
 const th = 'px-4 py-2.5 text-left font-medium whitespace-nowrap'

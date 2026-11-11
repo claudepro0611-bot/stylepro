@@ -19,16 +19,25 @@ import {
 import { ControlHint, DocDateInput, useApprovalRetry, useControls, useProdErrorText } from '@/components/production/ControlKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { SupplierFormDialog, useProdSuppliers } from '@/components/production/SupplierKit'
-import { formatQty, localDateTimeToIso, nowHm, parseDecimal, round2, round3, unitKey } from '@/lib/production'
+import { VatRateInput, defaultVatRate, useAccounting } from '@/components/production/AccountingKit'
+import { formatQty, localDateTimeToIso, nowHm, parseDecimal, round2, round3, unitKey, type ProdRpcError } from '@/lib/production'
+import { acctErrorText, parseVatRate, vatSplit } from '@/lib/production-accounting'
 
-/** expiry: optional "YYYY-MM-DD"; empty = the item's shelf life (server side). */
-interface Line { itemId: string; qty: string; price: string; expiry: string }
+/**
+ * expiry: optional "YYYY-MM-DD"; empty = the item's shelf life (server side).
+ * vatRate: the line's VAT % as typed (migration 20261110000018).
+ */
+interface Line { itemId: string; qty: string; price: string; expiry: string; vatRate: string }
 
 export default function NewReceiptPage() {
   const { t } = useLanguage()
   const approval = useApprovalRetry()
   const controls = useControls()
-  const errorText = useProdErrorText()
+  const controlErrorText = useProdErrorText()
+  const accounting = useAccounting()
+  // VAT fields only once the accounting migration is applied.
+  const vatOn = accounting.available
+  const errorText = (err: ProdRpcError) => (vatOn ? acctErrorText(t, err) : controlErrorText(err))
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { items, warehouses, itemById } = useProdRefs()
@@ -44,6 +53,7 @@ export default function NewReceiptPage() {
   const [supplierId, setSupplierId] = useState('')
   const [supplierFormOpen, setSupplierFormOpen] = useState(false)
   const [lines, setLines] = useState<Line[]>([])
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(false)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -76,12 +86,16 @@ export default function NewReceiptPage() {
   const computed = lines.map(l => {
     const q = parseDecimal(l.qty)
     const p = parseDecimal(l.price)
-    return { ...l, qtyNum: q, priceNum: p, total: round2(q * p) }
+    const rate = vatOn ? parseVatRate(l.vatRate) : 0
+    const split = vatSplit(q, p, rate ?? 0, pricesIncludeVat)
+    return { ...l, qtyNum: q, priceNum: p, rate, rateBad: rate === null, ...split, total: split.gross }
   })
   const total = round2(computed.reduce((s, c) => s + c.total, 0))
+  const totalVat = round2(computed.reduce((s, c) => s + c.vat, 0))
+  const totalNet = round2(total - totalVat)
   const totalQtyLines = computed.length
 
-  const valid = !!warehouseId && computed.length > 0 && computed.every(c => c.qtyNum > 0)
+  const valid = !!warehouseId && computed.length > 0 && computed.every(c => c.qtyNum > 0 && !c.rateBad)
   // Controls (migration 20261110000017): raw-item lines with price 0 or a raw
   // receipt without a supplier need owner / admin approval (warned, not blocked).
   const hasRaw = computed.some(c => itemById.get(c.itemId)?.itemType === 'raw')
@@ -103,11 +117,13 @@ export default function NewReceiptPage() {
         supplier_id: supplierId || null,
         supplier_name: null,
         note: note.trim() || null,
+        ...(vatOn ? { prices_include_vat: pricesIncludeVat } : {}),
         items: computed.map(c => ({
           item_id: c.itemId,
           qty: round3(c.qtyNum),
           price: round2(c.priceNum),
           ...(lotsAvailable && c.expiry ? { expiry_date: c.expiry } : {}),
+          ...(vatOn ? { vat_rate: c.rate ?? 0 } : {}),
         })),
       },
     }))
@@ -168,13 +184,26 @@ export default function NewReceiptPage() {
 
       <div className={cn(prodCardCls, 'overflow-hidden')}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-3">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('production.receipts.items')}</h2>
+          <div className="flex flex-wrap items-center gap-4">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('production.receipts.items')}</h2>
+            {vatOn && (
+              <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-gray-700 dark:text-gray-300" title={t('prodAcct.vat.pricesIncludeHint')}>
+                <input
+                  type="checkbox"
+                  checked={pricesIncludeVat}
+                  onChange={e => setPricesIncludeVat(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-slate-900 dark:accent-gray-100"
+                />
+                {t('prodAcct.vat.pricesInclude')}
+              </label>
+            )}
+          </div>
           <div className="w-full sm:w-80">
             {warehouseId ? (
               <SearchSelect
                 options={itemOptions}
                 value=""
-                onChange={id => setLines(prev => [...prev, { itemId: id, qty: '', price: '', expiry: '' }])}
+                onChange={id => setLines(prev => [...prev, { itemId: id, qty: '', price: '', expiry: '', vatRate: String(defaultVatRate(accounting.settings.vatPayer)) }])}
                 placeholder={t('production.receipts.addItem')}
               />
             ) : (
@@ -194,7 +223,8 @@ export default function NewReceiptPage() {
                   <th className="px-4 py-2.5 text-right font-medium w-40">{t('production.common.qty')}</th>
                   <th className="px-4 py-2.5 text-right font-medium w-44">{t('production.common.price')}</th>
                   {lotsAvailable && <th className="px-4 py-2.5 text-left font-medium w-44">{t('production.receipts.expiry')}</th>}
-                  <th className="px-4 py-2.5 text-right font-medium">{t('production.common.total')}</th>
+                  {vatOn && <th className="px-4 py-2.5 text-left font-medium w-36">{t('prodAcct.vat.rate')}</th>}
+                  <th className="px-4 py-2.5 text-right font-medium">{vatOn ? t('prodAcct.vat.gross') : t('production.common.total')}</th>
                   <th className="px-4 py-2.5 w-10" />
                 </tr>
               </thead>
@@ -227,7 +257,19 @@ export default function NewReceiptPage() {
                           )}
                         </td>
                       )}
-                      <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{formatPrice(c.total)}</td>
+                      {vatOn && (
+                        <td className="px-4 py-2">
+                          <VatRateInput value={c.vatRate} onChange={v => setLine(c.itemId, { vatRate: v })} invalid={c.rateBad} />
+                        </td>
+                      )}
+                      <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">
+                        {formatPrice(c.total)}
+                        {vatOn && c.vat > 0 && (
+                          <p className="text-[11px] font-normal text-gray-400 dark:text-gray-500">
+                            {t('prodAcct.vat.net')} {formatPrice(c.net)} · {t('prodAcct.vat.vat')} {formatPrice(c.vat)}
+                          </p>
+                        )}
+                      </td>
                       <td className="px-4 py-2">
                         <button
                           type="button"
@@ -257,8 +299,17 @@ export default function NewReceiptPage() {
       <div className="lg:ml-auto lg:w-full lg:max-w-md">
         <TotalsBox rows={[
           { label: t('production.receipts.lines'), value: String(totalQtyLines) },
-          { label: t('production.common.total'), value: formatPrice(total), strong: true },
+          ...(vatOn ? [
+            { label: t('prodAcct.vat.totalNet'), value: formatPrice(totalNet) },
+            { label: t('prodAcct.vat.totalVat'), value: formatPrice(totalVat) },
+          ] : []),
+          { label: vatOn ? t('prodAcct.vat.totalGross') : t('production.common.total'), value: formatPrice(total), strong: true },
         ]} />
+        {vatOn && totalVat > 0 && (
+          <p className="mt-1.5 px-1 text-[11px] text-gray-400 dark:text-gray-500">
+            {t(accounting.settings.vatPayer ? 'prodAcct.vat.deductible' : 'prodAcct.vat.notDeductible')}
+          </p>
+        )}
       </div>
 
       <FormFooter

@@ -4,6 +4,9 @@
 // prod_sales_lines_v) by product, by customer or by day: quantity, revenue
 // (without VAT), VAT, COGS, margin, margin %. Cost and margin are shown to
 // owner / admin only. Route guard: proxy.ts ('prod_stock' + 'prod_sales').
+// Without extra filters the totals come from prod_report_sales (server-side,
+// migration 20261110000018); filtered views and the pre-migration fallback
+// page the raw lines.
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -24,6 +27,10 @@ import { useProdCustomers, useSalesAvailable, useSeesMargin } from '@/components
 import { formatQty, rangeToIsoBounds, round2, round3, unitKey } from '@/lib/production'
 import { formatMarginPct, marginPct } from '@/lib/sales'
 import { downloadXlsx, x2, x3, ymdOf } from '@/lib/production-reports'
+import { fetchSalesRpc, type SalesRpcRow } from '@/lib/production-accounting'
+
+/** Set once prod_report_sales turned out to be missing (pre-migration). */
+let salesRpcMissing = false
 
 type Mode = 'product' | 'customer' | 'day'
 
@@ -65,31 +72,58 @@ export default function SalesReportPage() {
   const [customerId, setCustomerId] = useState('')
   const [groupId, setGroupId] = useState('')
   const [lines, setLines] = useState<LineRow[]>([])
+  const [rpc, setRpc] = useState<{ rows: SalesRpcRow[]; salesCount: number } | null>(null)
   const [loading, setLoading] = useState(true)
+  // The RPC has no warehouse / customer / group filter: those keep the client path.
+  const rpcMode = range && !warehouseId && !customerId && !groupId ? mode : null
 
   useEffect(() => {
     if (!available) return
     let cancelled = false
     setLoading(true)
     const supabase = createClient()
-    const bounds = range ? rangeToIsoBounds(range) : null
-    fetchAllRows<LineRow>((from, to) => {
-      let q = supabase.from('prod_sales_lines_v').select(COLS)
-      if (bounds) q = q.gte('doc_date', bounds.fromIso).lt('doc_date', bounds.toIso)
-      if (warehouseId) q = q.eq('warehouse_id', warehouseId)
-      if (customerId) q = q.eq('customer_id', customerId)
-      if (groupId) q = q.eq('group_id', groupId)
-      return q.order('doc_date').order('sale_item_id').range(from, to)
-    }).then(({ data, error }) => {
-      if (cancelled) return
-      if (error) toast.error(t('productionErrors.unknown'))
-      setLines(data)
-      setLoading(false)
-    })
+    const readLines = () => {
+      const bounds = range ? rangeToIsoBounds(range) : null
+      fetchAllRows<LineRow>((from, to) => {
+        let q = supabase.from('prod_sales_lines_v').select(COLS)
+        if (bounds) q = q.gte('doc_date', bounds.fromIso).lt('doc_date', bounds.toIso)
+        if (warehouseId) q = q.eq('warehouse_id', warehouseId)
+        if (customerId) q = q.eq('customer_id', customerId)
+        if (groupId) q = q.eq('group_id', groupId)
+        return q.order('doc_date').order('sale_item_id').range(from, to)
+      }).then(({ data, error }) => {
+        if (cancelled) return
+        if (error) toast.error(t('productionErrors.unknown'))
+        setRpc(null)
+        setLines(data)
+        setLoading(false)
+      })
+    }
+    if (rpcMode && range && !salesRpcMissing) {
+      fetchSalesRpc(supabase, range.from, range.to, rpcMode).then(res => {
+        if (cancelled) return
+        if (res.status === 'ok') { setRpc(res.data); setLines([]); setLoading(false); return }
+        if (res.status === 'missing') salesRpcMissing = true
+        // Missing RPC or an error: the client aggregation still works.
+        readLines()
+      })
+    } else {
+      readLines()
+    }
     return () => { cancelled = true }
-  }, [available, range, warehouseId, customerId, groupId, t])
+  }, [available, range, warehouseId, customerId, groupId, rpcMode, t])
 
   const rows = useMemo<Agg[]>(() => {
+    if (rpc) {
+      return rpc.rows.map(r => ({
+        key: r.key,
+        label: mode === 'product' ? itemById.get(r.key)?.name ?? r.name ?? '—' : mode === 'customer' ? r.name ?? '—' : r.key,
+        href: mode === 'customer' && r.key ? `/zavod-mijozlar/${r.key}` : null,
+        unit: mode === 'product' ? itemById.get(r.key)?.unit ?? r.unit : null,
+        qty: r.qty ?? 0, returnedQty: 0, revenue: r.revenue, returns: r.returnsAmount, vat: r.vat, total: r.total,
+        cost: r.cost ?? 0, margin: r.margin ?? 0, docs: r.salesCount,
+      }))
+    }
     const m = new Map<string, Agg & { docSet: Set<string> }>()
     for (const l of lines) {
       const key = mode === 'product' ? l.item_id ?? '' : mode === 'customer' ? l.customer_id ?? '' : ymdOf(l.doc_date ?? '')
@@ -120,12 +154,12 @@ export default function SalesReportPage() {
       ...a, docs: docSet.size, qty: round3(a.qty), returnedQty: round3(a.returnedQty), revenue: round2(a.revenue), returns: round2(a.returns),
       vat: round2(a.vat), total: round2(a.total), cost: round2(a.cost), margin: round2(a.margin),
     }))
-  }, [lines, mode, itemById])
+  }, [rpc, lines, mode, itemById])
 
   const sum = useMemo(() => rows.reduce((s, r) => ({
     revenue: s.revenue + r.revenue, returns: s.returns + r.returns, vat: s.vat + r.vat, total: s.total + r.total, cost: s.cost + r.cost, margin: s.margin + r.margin,
   }), { revenue: 0, returns: 0, vat: 0, total: 0, cost: 0, margin: 0 }), [rows])
-  const saleCount = useMemo(() => new Set(lines.filter(l => l.row_kind !== 'return' && l.sale_id).map(l => l.sale_id)).size, [lines])
+  const saleCount = useMemo(() => (rpc ? rpc.salesCount : new Set(lines.filter(l => l.row_kind !== 'return' && l.sale_id).map(l => l.sale_id)).size), [rpc, lines])
 
   const keyLabel = mode === 'product' ? t('production.common.item') : mode === 'customer' ? t('prodSales.common.customer') : t('production.common.date')
 
