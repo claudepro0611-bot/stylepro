@@ -10,7 +10,7 @@ import {
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
   Receipt, Warehouse, Store, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered, Truck, ArrowLeftRight, PackagePlus,
   Factory, Recycle, BookOpen, HandCoins, Banknote, Milk, Split, FileBarChart, PackageOpen, Tags, Undo2,
-  Landmark, ReceiptText, ArrowRightLeft, Boxes,
+  Landmark, ReceiptText, ArrowRightLeft, Boxes, ShieldCheck, CalendarCheck, History,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,8 @@ export interface NavLeaf {
   featureKey?: string
   /** Only owner/admin (all-branch roles) see this item; no PermissionKey. */
   allBranchRolesOnly?: boolean
+  /** Only the owner sees this item (production controls); no PermissionKey. */
+  ownerOnly?: boolean
   /** Highlight only on this exact path (siblings live under it, e.g. /taminot/*). */
   exact?: boolean
   /** Shared module the retail nav already lists elsewhere: dropped from the retail production add-on. */
@@ -100,6 +102,10 @@ const PRODUCTION_GROUPS: NavEntry[] = [
       { href: '/zavod-kassa-otkazmalar', labelKey: 'prodCash.nav.transfers', icon: ArrowRightLeft, permKey: 'prod_cash' },
       { href: '/xarajatlar', labelKey: 'sidebar.expenses', icon: Receipt, permKey: 'xarajatlar', featureKey: 'expenses', retailHasOwn: true },
       { href: '/valyuta-kurslari', labelKey: 'sidebar.exchangeRates', icon: TrendingUp, permKey: 'sozlamalar', retailHasOwn: true },
+      // Controls & audit (migration 20261110000017); role-gated, see proxy.ts.
+      { href: '/zavod-nazorat', labelKey: 'prodControls.nav.settings', icon: ShieldCheck, ownerOnly: true },
+      { href: '/zavod-davr-yopish', labelKey: 'prodControls.nav.period', icon: CalendarCheck, ownerOnly: true },
+      { href: '/zavod-audit', labelKey: 'prodControls.nav.audit', icon: History, allBranchRolesOnly: true },
     ],
   },
   {
@@ -259,6 +265,7 @@ function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: bo
   return items.reduce<NavEntry[]>((acc, item) => {
     if (item.featureKey && !features[item.featureKey]) return acc
     if (item.allBranchRolesOnly && !isAllBranchUser) return acc
+    if (item.ownerOnly && !isOwner) return acc
     if (!isOwner && item.permKey && !permissions[item.permKey]) return acc
     if (item.children) {
       // Child-level featureKey applies to owners too (module disabled for the
@@ -266,6 +273,7 @@ function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: bo
       const children = item.children.filter(c =>
         (!c.featureKey || features[c.featureKey]) &&
         (!c.allBranchRolesOnly || isAllBranchUser) &&
+        (!c.ownerOnly || isOwner) &&
         (isOwner || !c.permKey || permissions[c.permKey]),
       )
       if (item.noLink && children.length === 0) return acc

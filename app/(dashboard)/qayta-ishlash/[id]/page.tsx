@@ -10,6 +10,7 @@ import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BackLink, DocStatusBadge, InfoField, TotalsBox, prodCardCls } from '@/components/production/ProdKit'
+import { DocOverrides, ManualPickBadge, pickDeviationOf } from '@/components/production/ControlKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { DocLotsSection } from '@/components/production/DocLots'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
@@ -66,6 +67,7 @@ export default function ProcessingViewPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('production.processings.docTitle')} #{doc.number}</h1>
           <DocStatusBadge status={doc.status} />
+          <ManualPickBadge show={pickDeviationOf(doc)} />
         </div>
         {canCancel && doc.status === 'posted' && (
           <Button variant="outline" onClick={() => cancel(doc.id)} loading={busyId === doc.id}>
@@ -115,6 +117,7 @@ export default function ProcessingViewPage() {
         </div>
       </div>
 
+      <DocOverrides docId={doc.id} reloadKey={doc.status} />
       <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={doc.status} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">

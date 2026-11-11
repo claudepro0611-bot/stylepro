@@ -11,6 +11,7 @@ import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BackLink, DocStatusBadge, InfoField, TotalsBox, prodCardCls } from '@/components/production/ProdKit'
+import { DocOverrides } from '@/components/production/ControlKit'
 import { useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useProdSuppliers } from '@/components/production/SupplierKit'
@@ -144,6 +145,8 @@ export default function OpeningViewPage() {
           </table>
         </div>
       </div>
+
+      <DocOverrides docId={doc.id} reloadKey={doc.status} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         {doc.note ? (

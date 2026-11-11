@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { NoteField, Segmented, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
+import { DocDateInput, useApprovalRetry } from '@/components/production/ControlKit'
+import { prodErrorText } from '@/lib/production-controls'
 import { AccountSelect, useAccountChoice, useCashAccounts, useCashErrorText } from '@/components/production/CashKit'
 import {
   PROD_PAYMENT_METHODS, canCancelDocuments, parseDecimal, paymentMethodKey, prodErrorKey, round2,
@@ -295,6 +297,7 @@ export function CustomerPaymentDialog({ open, onOpenChange, customers, customerI
   const { available: cashAvailable, accounts, reload: reloadAccounts } = useCashAccounts()
   const [accountId, setAccountId] = useAccountChoice(open, accounts, method)
   const errorText = useCashErrorText(accounts)
+  const approval = useApprovalRetry()
 
   useEffect(() => { if (open && cashAvailable) reloadAccounts() }, [open, cashAvailable, reloadAccounts])
 
@@ -317,14 +320,16 @@ export function CustomerPaymentDialog({ open, onOpenChange, customers, customerI
   async function save() {
     if (!customerId || value <= 0) { toast.error(t('productionErrors.invalid_input')); return }
     setSaving(true)
-    const { error } = await createClient().rpc('prod_create_customer_payment', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_customer_payment', {
       p_data: {
+        ...ctl,
         customer_id: customerId, amount: value, method, pay_date: date || localYmd(), note: note.trim() || null,
         ...(cashAvailable && accountId ? { account_id: accountId } : {}),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(errorText(error)); return }
+    if (!res) return
+    if (res.error) { toast.error(errorText(res.error)); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }
@@ -352,7 +357,7 @@ export function CustomerPaymentDialog({ open, onOpenChange, customers, customerI
             </label>
             <label className="block">
               <span className={prodLabelCls}>{t('production.common.date')}</span>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+              <DocDateInput value={date} onChange={setDate} />
             </label>
           </div>
           <div>
@@ -377,6 +382,7 @@ export function CustomerPaymentDialog({ open, onOpenChange, customers, customerI
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('production.common.cancel')}</Button>
           <Button onClick={save} disabled={saving || !customerId || value <= 0} loading={saving}>{t('production.common.save')}</Button>
         </DialogFooter>
+        {approval.dialog}
       </DialogContent>
     </Dialog>
   )
@@ -393,7 +399,7 @@ export function useCancelCustomerPayment(onDone: () => void) {
     setBusyId(id)
     const { error } = await createClient().rpc('prod_cancel_customer_payment', { p_id: id })
     setBusyId(null)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (error) { toast.error(prodErrorText(t, error)); return }
     toast.success(t('prodSales.payments.cancelled'))
     onDone()
   }

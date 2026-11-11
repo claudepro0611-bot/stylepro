@@ -14,11 +14,12 @@ import {
   BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, useRememberedDefault,
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
+import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
 import {
   activePicks, formatQty, lineAllocation, lineCost, localDateTimeToIso, makeLinePicks, nowHm, parseDecimal, picksPayload,
-  prodErrorKey, round2, round3, unitKey,
+  round2, round3, unitKey,
   type LinePicks,
 } from '@/lib/production'
 
@@ -26,6 +27,8 @@ interface OutputLine { itemId: string; qty: string; price: string }
 
 export default function NewProcessingPage() {
   const { t } = useLanguage()
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { items, warehouses, itemById } = useProdRefs()
@@ -108,8 +111,9 @@ export default function NewProcessingPage() {
   async function save() {
     if (!valid) { toast.error(t('productionErrors.invalid_input')); return }
     setSaving(true)
-    const { data, error } = await createClient().rpc('prod_create_processing', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_processing', {
       p_data: {
+        ...ctl,
         doc_date: localDateTimeToIso(date, time),
         warehouse_id: warehouseId,
         output_warehouse_id: outputWarehouseId,
@@ -119,9 +123,11 @@ export default function NewProcessingPage() {
         note: note.trim() || null,
         outputs: computed.map(c => ({ item_id: c.itemId, qty: round3(c.qtyNum), price: round2(c.priceNum) })),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!res) return
+    const { data, error } = res
+    if (error) { toast.error(errorText(error)); return }
     remember0(warehouseId)
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
@@ -137,7 +143,7 @@ export default function NewProcessingPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <label className="block">
             <span className={prodLabelCls}>{t('production.common.date')}</span>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+            <DocDateInput value={date} onChange={setDate} />
           </label>
           <label className="block">
             <span className={prodLabelCls}>{t('production.common.time')}</span>
@@ -305,6 +311,7 @@ export default function NewProcessingPage() {
       </div>
 
       <FormFooter onCancel={() => router.push('/qayta-ishlash')} onSave={save} saving={saving} disabled={!valid} />
+      {approval.dialog}
     </div>
   )
 }

@@ -4,7 +4,7 @@
 // spending moves. Writes go through supply_save_agent / supply_add_move only.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Banknote, Receipt, Search } from 'lucide-react'
+import { Ban, Banknote, Receipt, Search } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase/helpers'
@@ -24,6 +24,8 @@ import {
 } from '@/components/production/ProdKit'
 import { parseDecimal, round2 } from '@/lib/production'
 import { AccountName, AccountSelect, useAccountChoice, useCashAccounts, useCashErrorText } from '@/components/production/CashKit'
+import { DocDateInput, useApprovalRetry, useRole } from '@/components/production/ControlKit'
+import { isOwnerAdminRole } from '@/lib/production-controls'
 import type { TranslationKey } from '@/lib/i18n/translations'
 
 export type SupplyMoveKind = 'issue' | 'return' | 'expense'
@@ -93,7 +95,13 @@ interface MoveRow {
   move_date: string
   note: string | null
   created_by_name: string | null
+  /** Controls (migration 20261110000017); undefined before it (= posted). */
+  status?: string
+  cancel_note?: string | null
 }
+
+/** Cancelled moves (supply_cancel_move) stay listed, struck through, outside every total. */
+const isPostedMove = (r: Pick<MoveRow, 'status'>) => r.status !== 'cancelled'
 
 const PAGE_SIZE = 25
 
@@ -113,6 +121,9 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [cancelTarget, setCancelTarget] = useState<MoveRow | null>(null)
+  // supply_cancel_move: owner / admin only (the RPC re-checks); spending has no cancel.
+  const canCancelMoves = isOwnerAdminRole(useRole()) && mode === 'cash'
 
   const agentById = useMemo(() => new Map(agents.map(a => [a.id, a])), [agents])
   const categoryById = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories])
@@ -153,9 +164,10 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
   }, [rows, search, agentById])
 
   const totals = useMemo(() => {
-    const issued = filtered.filter(r => r.kind === 'issue').reduce((s, r) => s + Number(r.amount), 0)
-    const returned = filtered.filter(r => r.kind === 'return').reduce((s, r) => s + Number(r.amount), 0)
-    const spent = filtered.filter(r => r.kind === 'expense').reduce((s, r) => s + Number(r.amount), 0)
+    const posted = filtered.filter(isPostedMove)
+    const issued = posted.filter(r => r.kind === 'issue').reduce((s, r) => s + Number(r.amount), 0)
+    const returned = posted.filter(r => r.kind === 'return').reduce((s, r) => s + Number(r.amount), 0)
+    const spent = posted.filter(r => r.kind === 'expense').reduce((s, r) => s + Number(r.amount), 0)
     return { issued, returned, spent, net: issued - returned }
   }, [filtered])
 
@@ -177,7 +189,7 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
     setSearch('')
   }
 
-  const colCount = 3 + columns.filter(c => isVisible(c.key)).length
+  const colCount = 3 + columns.filter(c => isVisible(c.key)).length + (canCancelMoves ? 1 : 0)
 
   return (
     <div className="space-y-5">
@@ -213,11 +225,16 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
               {isVisible('purpose') && <th className={thCls}>{t('production.supply.purpose')}</th>}
               {isVisible('note') && <th className={thCls}>{t('production.common.note')}</th>}
               {isVisible('author') && <th className={thCls}>{t('production.common.author')}</th>}
+              {canCancelMoves && <th className={cn(thCls, 'w-10')} />}
             </tr>
           </thead>
           <tbody>
             {paginated.map(r => (
-              <tr key={r.id} className={trCls}>
+              <tr
+                key={r.id}
+                className={cn(trCls, !isPostedMove(r) && 'line-through decoration-gray-400 opacity-60')}
+                title={isPostedMove(r) ? undefined : [t('prodControls.supply.cancelled'), r.cancel_note].filter(Boolean).join(': ')}
+              >
                 <td className={cn(tdCls, 'whitespace-nowrap text-gray-500 dark:text-gray-400')}>{formatDate(r.move_date)}</td>
                 <td className={cn(tdCls, 'font-medium text-gray-900 dark:text-gray-100')}>{agentById.get(r.agent_id)?.name ?? '—'}</td>
                 {mode === 'cash' && isVisible('kind') && (
@@ -237,6 +254,21 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
                 {isVisible('purpose') && <td className={cn(tdCls, 'max-w-[220px] truncate text-gray-500 dark:text-gray-400')}>{r.purpose || '—'}</td>}
                 {isVisible('note') && <td className={cn(tdCls, 'max-w-[220px] truncate text-gray-500 dark:text-gray-400')}>{r.note ?? ''}</td>}
                 {isVisible('author') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{r.created_by_name ?? '—'}</td>}
+                {canCancelMoves && (
+                  <td className={cn(tdCls, 'text-right')}>
+                    {isPostedMove(r) && r.status !== undefined && (
+                      <button
+                        type="button"
+                        onClick={() => setCancelTarget(r)}
+                        aria-label={t('prodControls.supply.cancel')}
+                        title={t('prodControls.supply.cancel')}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                      >
+                        <Ban className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -273,7 +305,65 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
         categories={categories}
         onSaved={() => { setDialogOpen(false); load(); reloadAgents(); reloadAccounts() }}
       />
+      <SupplyCancelDialog
+        move={cancelTarget}
+        agentName={cancelTarget ? agentById.get(cancelTarget.agent_id)?.name ?? '' : ''}
+        onClose={() => setCancelTarget(null)}
+        onDone={() => { setCancelTarget(null); load(); reloadAgents(); reloadAccounts() }}
+      />
     </div>
+  )
+}
+
+/** supply_cancel_move (migration 20261110000017): reverses the move and its cash movement. */
+function SupplyCancelDialog({ move, agentName, onClose, onDone }: {
+  move: MoveRow | null
+  agentName: string
+  onClose: () => void
+  onDone: () => void
+}) {
+  const { t } = useLanguage()
+  const { formatPrice } = useCurrency()
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const errorText = useCashErrorText([])
+
+  useEffect(() => { if (move) setNote('') }, [move])
+
+  async function confirm() {
+    if (!move) return
+    setBusy(true)
+    const { error } = await createClient().rpc('supply_cancel_move', { p_id: move.id, p_note: note.trim() || null })
+    setBusy(false)
+    if (error) { toast.error(errorText(error)); return }
+    toast.success(t('prodControls.supply.cancelSuccess'))
+    onDone()
+  }
+
+  return (
+    <Dialog open={move !== null} onOpenChange={o => { if (!o && !busy) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t('prodControls.supply.cancelTitle')}</DialogTitle>
+        </DialogHeader>
+        {move && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm">
+              <span className="text-gray-500 dark:text-gray-400">{formatDate(move.move_date)} · {agentName || '—'} · {t(KIND_KEY[move.kind as SupplyMoveKind] ?? KIND_KEY.issue)}</span>
+              <span className="tabular-nums font-semibold text-gray-900 dark:text-gray-100">{formatPrice(Number(move.amount))}</span>
+            </div>
+            <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('prodControls.supply.cancelHint')}</p>
+            <NoteField value={note} onChange={setNote} label={t('prodControls.supply.cancelNote')} />
+          </div>
+        )}
+        <DialogFooter className="mt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>{t('production.common.cancel')}</Button>
+          <Button variant="destructive" onClick={confirm} disabled={busy} loading={busy}>
+            <Ban className="h-4 w-4" /> {t('prodControls.supply.cancel')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -300,6 +390,7 @@ function SupplyMoveDialog({ open, onOpenChange, mode, agents, categories, onSave
   const { available: cashAvailable, accounts, reload: reloadAccounts } = useCashAccounts()
   const [accountId, setAccountId] = useAccountChoice(open, accounts, 'cash')
   const errorText = useCashErrorText(accounts)
+  const approval = useApprovalRetry()
   const usesAccount = !!cashAvailable && kind !== 'expense'
 
   useEffect(() => { if (open && cashAvailable && mode === 'cash') reloadAccounts() }, [open, cashAvailable, mode, reloadAccounts])
@@ -324,8 +415,9 @@ function SupplyMoveDialog({ open, onOpenChange, mode, agents, categories, onSave
     if (!agentId || value <= 0) { toast.error(t('productionErrors.invalid_input')); return }
     if (overBalance) { toast.error(t('productionErrors.negative_balance')); return }
     setSaving(true)
-    const { error } = await createClient().rpc('supply_add_move', {
+    const res = await approval.run(ctl => createClient().rpc('supply_add_move', {
       p_data: {
+        ...ctl,
         agent_id: agentId,
         kind,
         amount: value,
@@ -335,9 +427,10 @@ function SupplyMoveDialog({ open, onOpenChange, mode, agents, categories, onSave
         note: note.trim() || null,
         ...(usesAccount && accountId ? { account_id: accountId } : {}),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(errorText(error)); return }
+    if (!res) return
+    if (res.error) { toast.error(errorText(res.error)); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }
@@ -384,7 +477,7 @@ function SupplyMoveDialog({ open, onOpenChange, mode, agents, categories, onSave
             </label>
             <label className="block">
               <span className={prodLabelCls}>{t('production.common.date')}</span>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+              <DocDateInput value={date} onChange={setDate} />
             </label>
           </div>
           {overBalance && <p className="text-[12px] text-red-600 dark:text-red-400">{t('productionErrors.negative_balance')}</p>}
@@ -410,6 +503,7 @@ function SupplyMoveDialog({ open, onOpenChange, mode, agents, categories, onSave
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('production.common.cancel')}</Button>
           <Button onClick={save} disabled={saving || !agentId || value <= 0 || overBalance} loading={saving}>{t('production.common.save')}</Button>
         </DialogFooter>
+        {approval.dialog}
       </DialogContent>
     </Dialog>
   )

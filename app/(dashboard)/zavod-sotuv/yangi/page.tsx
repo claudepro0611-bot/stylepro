@@ -22,6 +22,7 @@ import {
   BackLink, DisabledSelect, FieldError, FormFooter, MoreFields, NoteField, PageHeader, Segmented, TotalsBox,
   prodCardCls, prodFieldCls, prodLabelCls, useRememberedDefault,
 } from '@/components/production/ProdKit'
+import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
@@ -31,7 +32,7 @@ import {
 } from '@/components/production/SalesKit'
 import {
   activePicks, expiryWarnDaysOf, formatQty, isLotFree, lineAllocation, lineCost, localDateTimeToIso, makeLinePicks, nowHm,
-  picksPayload, prodErrorKey, round2, round3, toInputString, unitKey, warehousesFor,
+  picksPayload, round2, round3, toInputString, unitKey, warehousesFor,
   type EntryUnit, type LinePicks,
 } from '@/lib/production'
 import {
@@ -58,6 +59,8 @@ const numIn = (v: string) => {
 
 export default function NewSalePage() {
   const { t } = useLanguage()
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { smart } = useQtyFormat()
@@ -180,8 +183,9 @@ export default function NewSalePage() {
       return
     }
     setSaving(true)
-    const { data, error } = await createClient().rpc('prod_create_sale', {
+    const rpcRes = await approval.run(ctl => createClient().rpc('prod_create_sale', {
       p_data: {
+        ...ctl,
         doc_date: localDateTimeToIso(date, time),
         customer_id: customerId,
         warehouse_id: sourceId,
@@ -200,9 +204,11 @@ export default function NewSalePage() {
           lots: picksPayload(c.picks),
         })),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!rpcRes) return
+    const { data, error } = rpcRes
+    if (error) { toast.error(errorText(error)); return }
     rememberWarehouse(sourceId)
     const res = data as { id?: string; credit_warning?: unknown } | null
     const cw = parseCreditWarning(res?.credit_warning)
@@ -245,7 +251,7 @@ export default function NewSalePage() {
         </div>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.date')}</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+          <DocDateInput value={date} onChange={setDate} />
           {due && <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">{t('prodInventory.ageing.dueDate')}: {formatDate(due)}</span>}
         </label>
         <label className="block">
@@ -459,6 +465,7 @@ export default function NewSalePage() {
         disabled={!valid}
         total={{ label: t('prodSales.common.totalWithVat'), value: formatPrice(totals.total) }}
       />
+      {approval.dialog}
     </div>
   )
 }

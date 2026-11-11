@@ -22,6 +22,7 @@ import {
   BackLink, NoteField, PageHeader, TotalsBox, prodCardCls, prodFieldCls, prodLabelCls, secondaryBtnCls,
 } from '@/components/production/ProdKit'
 import { CountStatusBadge } from '@/components/production/InventoryKit'
+import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
 import { PrintButton, PrintFields, PrintSheet, PrintTable } from '@/components/production/PrintKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import {
@@ -45,6 +46,8 @@ const pad = (n: number) => String(n).padStart(2, '0')
 
 export function StockCountEditor({ draft }: { draft?: CountDraft }) {
   const { t } = useLanguage()
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { items, warehouses, itemById, warehouseById } = useProdRefs()
@@ -171,10 +174,13 @@ export function StockCountEditor({ draft }: { draft?: CountDraft }) {
     setBusy('post')
     const id = await persist()
     if (!id) { setBusy(null); return }
-    const { error } = await createClient().rpc('prod_post_stock_count', { p_id: id })
+    // Override keys go in p_ctl (migration 20261110000017); the plain { p_id } call keeps working before it.
+    const res = await approval.run(ctl => ctl
+      ? createClient().rpc('prod_post_stock_count', { p_id: id, p_ctl: { ...ctl } })
+      : createClient().rpc('prod_post_stock_count', { p_id: id }))
     setBusy(null)
-    if (error) {
-      toast.error(t(prodErrorKey(error)))
+    if (!res || res.error) {
+      if (res?.error) toast.error(errorText(res.error))
       if (!draft) router.replace(`/zavod-inventarizatsiya/${id}`)
       return
     }
@@ -217,7 +223,7 @@ export function StockCountEditor({ draft }: { draft?: CountDraft }) {
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-1 md:grid-cols-3 gap-4')}>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.date')}</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+          <DocDateInput value={date} onChange={setDate} />
         </label>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.time')}</span>
@@ -367,6 +373,7 @@ export function StockCountEditor({ draft }: { draft?: CountDraft }) {
         <Button variant="outline" onClick={saveDraft} loading={busy === 'save'} disabled={!!busy || !canSave}>{t('prodInventory.counts.saveDraft')}</Button>
         <Button onClick={post} loading={busy === 'post'} disabled={!!busy || !canSave}>{t('prodInventory.counts.post')}</Button>
       </div>
+      {approval.dialog}
     </div>
     <PrintSheet
       title={t('prodInventory.counts.printTitle')}

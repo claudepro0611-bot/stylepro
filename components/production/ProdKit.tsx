@@ -289,7 +289,7 @@ export function ItemTypeBadge({ type }: { type: string }) {
 
 /** Monochrome segmented control (Floxen active state = elevation, not color). */
 export function Segmented<T extends string>({ options, value, onChange, className }: {
-  options: { value: T; label: string }[]
+  options: { value: T; label: string; disabled?: boolean; title?: string }[]
   value: T
   onChange: (value: T) => void
   className?: string
@@ -301,8 +301,10 @@ export function Segmented<T extends string>({ options, value, onChange, classNam
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
+          disabled={o.disabled}
+          title={o.title}
           className={cn(
-            'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+            'rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
             value === o.value
               ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100'
               : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100',

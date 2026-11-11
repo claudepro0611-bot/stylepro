@@ -16,7 +16,8 @@ import { useSession } from '@/lib/session/SessionContext'
 import { withDefaultPermissions, type PermissionKey, type Permissions } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { Segmented, prodCardCls, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
-import { canCancelDocuments, formatQty, prodErrorKey } from '@/lib/production'
+import { canCancelDocuments, formatQty } from '@/lib/production'
+import { prodErrorText } from '@/lib/production-controls'
 import {
   DEFAULT_MILK_SETTINGS, MILK_ANTIBIOTIC, antibioticKey, fetchMilkSettings, formatDensity, formatPct, milkStatusKey,
   parseDensity, parseOptional, pricingModeKey, previewAccepted, previewConditional, suggestDecision, thresholdChecks,
@@ -366,7 +367,7 @@ export function useCancelMilkIntake(onDone: () => void) {
     setBusyId(id)
     const { error } = await createClient().rpc('prod_cancel_milk_intake', { p_id: id })
     setBusyId(null)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (error) { toast.error(prodErrorText(t, error)); return }
     toast.success(t('production.milk.cancelled'))
     onDone()
   }

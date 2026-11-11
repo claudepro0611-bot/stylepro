@@ -11,6 +11,7 @@ import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BackLink, DocStatusBadge, InfoField, TotalsBox, prodCardCls, secondaryBtnCls } from '@/components/production/ProdKit'
+import { DocOverrides } from '@/components/production/ControlKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { DocLotsSection } from '@/components/production/DocLots'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
@@ -174,6 +175,7 @@ export default function ReceiptViewPage() {
 
       {corrections && <PriceCorrectionsSection corrections={corrections} itemById={itemById} onChanged={load} />}
 
+      <DocOverrides docId={doc.id} reloadKey={doc.status} />
       <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={`${doc.status}:${corrections?.length ?? 0}`} />
 
       <PriceCorrectionDialog

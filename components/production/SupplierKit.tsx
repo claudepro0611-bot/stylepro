@@ -19,6 +19,8 @@ import { Switch } from '@/components/ui/switch'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { NoteField, Segmented, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
 import { AccountSelect, useAccountChoice, useCashAccounts, useCashErrorText } from '@/components/production/CashKit'
+import { DocDateInput, useApprovalRetry } from '@/components/production/ControlKit'
+import { isOwnerAdminRole, prodErrorText } from '@/lib/production-controls'
 import {
   PROD_PAYMENT_METHODS, canCancelDocuments, fetchProdSuppliers, parseDecimal, paymentMethodKey, prodErrorKey, round2,
   type ProdPaymentMethod, type ProdSupplier,
@@ -106,7 +108,7 @@ export function useCancelSupplierPayment(onDone: () => void) {
     setBusyId(id)
     const { error } = await createClient().rpc('prod_cancel_supplier_payment', { p_id: id })
     setBusyId(null)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (error) { toast.error(prodErrorText(t, error)); return }
     toast.success(t('production.suppliers.paymentCancelled'))
     onDone()
   }
@@ -133,6 +135,9 @@ export function SupplierFormDialog({ open, onOpenChange, supplier, initialName, 
   const [terms, setTerms] = useState('')
   // payment_terms_days exists after migration 20261110000014.
   const [termsAvailable, setTermsAvailable] = useState(false)
+  // Only owner / admin may set or change the milk price (migration 20261110000017:
+  // forbidden 'supplier_price_change'); others keep the saved value.
+  const canEditMilkPrice = isOwnerAdminRole(useSession().profile?.role)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -198,7 +203,7 @@ export function SupplierFormDialog({ open, onOpenChange, supplier, initialName, 
           </label>
           <label className="block">
             <span className={prodLabelCls}>{t('production.suppliers.milkPrice')}</span>
-            <input inputMode="decimal" value={milkPrice} onChange={e => setMilkPrice(e.target.value)} placeholder="0" className={cn(prodFieldCls, 'tabular-nums')} />
+            <input inputMode="decimal" value={milkPrice} onChange={e => setMilkPrice(e.target.value)} disabled={!canEditMilkPrice} placeholder="0" className={cn(prodFieldCls, 'tabular-nums')} />
             <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">{t('production.suppliers.milkPriceHint')}</span>
           </label>
           {termsAvailable && (
@@ -244,6 +249,7 @@ export function SupplierPaymentDialog({ open, onOpenChange, suppliers, supplierI
   const { available: cashAvailable, accounts, reload: reloadAccounts } = useCashAccounts()
   const [accountId, setAccountId] = useAccountChoice(open, accounts, method)
   const errorText = useCashErrorText(accounts)
+  const approval = useApprovalRetry()
 
   useEffect(() => { if (open && cashAvailable) reloadAccounts() }, [open, cashAvailable, reloadAccounts])
 
@@ -268,8 +274,9 @@ export function SupplierPaymentDialog({ open, onOpenChange, suppliers, supplierI
   async function save() {
     if (!supplierId || value <= 0) { toast.error(t('productionErrors.invalid_input')); return }
     setSaving(true)
-    const { error } = await createClient().rpc('prod_create_supplier_payment', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_supplier_payment', {
       p_data: {
+        ...ctl,
         supplier_id: supplierId,
         amount: value,
         method,
@@ -277,9 +284,10 @@ export function SupplierPaymentDialog({ open, onOpenChange, suppliers, supplierI
         note: note.trim() || null,
         ...(cashAvailable && accountId ? { account_id: accountId } : {}),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(errorText(error)); return }
+    if (!res) return
+    if (res.error) { toast.error(errorText(res.error)); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }
@@ -307,7 +315,7 @@ export function SupplierPaymentDialog({ open, onOpenChange, suppliers, supplierI
             </label>
             <label className="block">
               <span className={prodLabelCls}>{t('production.common.date')}</span>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+              <DocDateInput value={date} onChange={setDate} />
             </label>
           </div>
           <div>
@@ -332,6 +340,7 @@ export function SupplierPaymentDialog({ open, onOpenChange, suppliers, supplierI
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('production.common.cancel')}</Button>
           <Button onClick={save} disabled={saving || !supplierId || value <= 0} loading={saving}>{t('production.common.save')}</Button>
         </DialogFooter>
+        {approval.dialog}
       </DialogContent>
     </Dialog>
   )

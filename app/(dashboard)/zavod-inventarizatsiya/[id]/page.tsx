@@ -15,6 +15,7 @@ import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BackLink, InfoField, TotalsBox, prodCardCls } from '@/components/production/ProdKit'
+import { DocOverrides } from '@/components/production/ControlKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { DocLotsSection } from '@/components/production/DocLots'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
@@ -154,6 +155,7 @@ export default function StockCountViewPage() {
         </div>
       </div>
 
+      <DocOverrides docId={doc.id} reloadKey={doc.status} />
       <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={doc.status} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">

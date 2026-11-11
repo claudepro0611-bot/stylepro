@@ -293,9 +293,19 @@ export function ProductionDashboard() {
           .gte('doc_date', fromIso).lt('doc_date', toIso).order('doc_date').order('id').range(from, to))
         : EMPTY,
       canSupply
-        ? fetchAllRows<{ expense_category_id: string | null; amount: number }>((from, to) => supabase.from('supply_cash_moves')
-          .select('expense_category_id, amount').eq('kind', 'expense')
-          .gte('move_date', range.from).lte('move_date', range.to).order('move_date').order('id').range(from, to))
+        ? (async () => {
+          // Posted moves only (status: migration 20261110000017); retried without
+          // the filter while the column does not exist yet.
+          const read = (postedOnly: boolean) => fetchAllRows<{ expense_category_id: string | null; amount: number }>((from, to) => {
+            let q = supabase.from('supply_cash_moves')
+              .select('expense_category_id, amount').eq('kind', 'expense')
+              .gte('move_date', range.from).lte('move_date', range.to)
+            if (postedOnly) q = q.eq('status', 'posted')
+            return q.order('move_date').order('id').range(from, to)
+          })
+          const res = await read(true)
+          return res.error ? read(false) : res
+        })()
         : EMPTY,
       supabase.from('expense_categories').select('id, name'),
     ]).then(([mv, co, sx, cats]) => {

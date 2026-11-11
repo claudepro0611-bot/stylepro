@@ -21,6 +21,8 @@ import {
   BackLink, FormFooter, MoreFields, NoteField, PageHeader, Segmented, TotalsBox,
   prodCardCls, prodFieldCls, prodLabelCls, type TotalRow,
 } from '@/components/production/ProdKit'
+import { ControlHint, DocDateInput, useApprovalRetry, useControls, useProdErrorText } from '@/components/production/ControlKit'
+import { fillText } from '@/lib/production-controls'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
 import { useMilkSettings } from '@/components/production/MilkKit'
@@ -28,7 +30,7 @@ import { BigFigure, FatBalance, NumField, SepSection, ValueChips, allocationHint
 import {
   CREAM_NAME_RE, SEPARATION_CREAM_FAT_CHIPS, SEPARATION_DEFAULT_SKIM_FAT, SKIM_NAME_RE,
   activePicks, computeSeparation, fetchProdStockFat, formatQty, lineAllocation, lineCost, localDateTimeToIso, makeLinePicks,
-  milkForCream, nowHm, parseDecimal, picksPayload, prodErrorKey,
+  milkForCream, nowHm, parseDecimal, picksPayload,
   round2, round3, toInputString, toSeparationAllocation, warehousesFor,
   type LinePicks, type ProdItem, type SeparationAllocation,
 } from '@/lib/production'
@@ -41,6 +43,9 @@ const kgItem = (i: ProdItem) => i.isActive && i.unit === 'kg'
 
 export default function NewSeparationPage() {
   const { t } = useLanguage()
+  const approval = useApprovalRetry()
+  const controls = useControls()
+  const errorText = useProdErrorText()
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { items, warehouses } = useProdRefs()
@@ -171,6 +176,18 @@ export default function NewSeparationPage() {
   })
   const calcReady = r.fatsOk && milkQty > 0
 
+  // Controls (migration 20261110000017): separation_loss / separation_fat as
+  // the server checks them (fat in = the consumed lots' fat when known).
+  const lossMaxPct = controls.settings.separationLossMaxPct
+  const fatTolPct = controls.settings.separationFatTolerancePct
+  const lossSharePct = milkQty > 0 ? (Math.max(r.lossActual, 0) / milkQty) * 100 : 0
+  const lossBad = lossSharePct > lossMaxPct
+  const fatInKg = (milkQty * (milkAlloc?.fatPct ?? m)) / 100
+  const fatOutKg = (r.cream * c) / 100 + (r.skim * s) / 100
+  const fatDiffPct = fatInKg > 0 ? ((fatOutKg - fatInKg) / fatInKg) * 100 : 0
+  const fatBad = fatInKg > 0 && milkQty > 0 && (fatOutKg > fatInKg * (1 + fatTolPct / 100)
+    || fatOutKg < fatInKg * (1 - fatTolPct / 100 - Math.max(r.lossActual, 0) / milkQty))
+
   // Every reason the document cannot be saved yet, in reading order.
   const issues: TranslationKey[] = []
   if (!warehouseId || !outputWarehouseId) issues.push('production.separation.issues.warehouses_missing')
@@ -204,8 +221,9 @@ export default function NewSeparationPage() {
   async function save() {
     if (!valid) { toast.error(t(issues[0] ?? 'productionErrors.invalid_input')); return }
     setSaving(true)
-    const { data, error } = await createClient().rpc('prod_create_separation', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_separation', {
       p_data: {
+        ...ctl,
         doc_date: localDateTimeToIso(date, time),
         warehouse_id: warehouseId,
         output_warehouse_id: outputWarehouseId,
@@ -226,9 +244,11 @@ export default function NewSeparationPage() {
         skim_ref_price: method === 'value' ? priceOrNull(skimRefText) : null,
         note: note.trim() || null,
       },
-    })
+    }), { loss: round2(lossSharePct) })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!res) return
+    const { data, error } = res
+    if (error) { toast.error(errorText(error)); return }
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/separatsiya/${id}` : '/separatsiya')
@@ -250,7 +270,7 @@ export default function NewSeparationPage() {
       <div className={cn(prodCardCls, 'p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.date')}</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+          <DocDateInput value={date} onChange={setDate} />
         </label>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.time')}</span>
@@ -478,6 +498,18 @@ export default function NewSeparationPage() {
                   <BigFigure muted label={t('production.separation.lossLabel')} qty={Math.max(r.lossActual, 0)} unit={kg} sub={milkQty > 0 ? `${formatPct((Math.max(r.lossActual, 0) / milkQty) * 100)}%` : undefined} />
                 </div>
                 <FatBalance r={r} />
+                {controls.available && (
+                  <div className="space-y-2">
+                    <ControlHint tone={lossBad ? 'error' : 'ok'}>
+                      {fillText(t(lossBad ? 'prodControls.hints.separationLossBad' : 'prodControls.hints.separationLoss'), { loss: formatPct(lossSharePct), max: formatPct(lossMaxPct) })}
+                    </ControlHint>
+                    {fatInKg > 0 && (
+                      <ControlHint tone={fatBad ? 'error' : 'ok'}>
+                        {fillText(t(fatBad ? 'prodControls.hints.separationFatBad' : 'prodControls.hints.separationFat'), { diff: `${fatDiffPct > 0 ? '+' : ''}${formatPct(fatDiffPct)}`, tol: formatPct(fatTolPct) })}
+                      </ControlHint>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <p className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
@@ -529,6 +561,7 @@ export default function NewSeparationPage() {
           <FormFooter inline onCancel={() => router.push('/separatsiya')} onSave={save} saving={saving} disabled={!valid} />
         </div>
       </div>
+      {approval.dialog}
     </div>
   )
 }

@@ -25,7 +25,8 @@ import {
   AntibioticBadge, EMPTY_LAB, LabFields, MilkStatusBadge, NetReadout, PricePreviewBox, ThresholdChecks, labPayload, labValues,
   useCancelMilkIntake, useHasPermission, useMilkSettings, type LabDraft,
 } from '@/components/production/MilkKit'
-import { formatQty, prodErrorKey } from '@/lib/production'
+import { ControlHint, DocOverrides, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { formatQty } from '@/lib/production'
 import {
   antibioticKey, focusNextField, formatDensity, formatPct, isStockStatus, milkStatusKey, numInput, parseOverride, pricingModeKey, previewConditional,
   type LabValues, type MilkAntibiotic, type MilkDecision, type MilkIntakeRow,
@@ -96,6 +97,8 @@ export default function MilkIntakeViewPage() {
   useEffect(() => { load() }, [load])
 
   const { canCancel, cancel, busyId } = useCancelMilkIntake(load)
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
 
   if (loading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
@@ -126,11 +129,14 @@ export default function MilkIntakeViewPage() {
     if (decision === 'rejected' && !decisionNote.trim()) { toast.error(t('production.milk.reasonRequired')); return }
     setSaving(decision)
     const payload = labPayload(lab, decision, decision === 'conditional' ? overrideNum : null, decision === 'accepted' ? '' : decisionNote)
-    const { error } = amending
-      ? await createClient().rpc('prod_amend_milk_lab', { p_intake_id: doc.id, p_lab: payload })
-      : await createClient().rpc('prod_record_milk_lab', { p_id: doc.id, p_data: payload })
+    // Override keys go inside the lab object (migration 20261110000017).
+    const res = await approval.run(ctl => amending
+      ? createClient().rpc('prod_amend_milk_lab', { p_intake_id: doc.id, p_lab: { ...payload, ...ctl } })
+      : createClient().rpc('prod_record_milk_lab', { p_id: doc.id, p_data: { ...payload, ...ctl } }))
     setSaving(null)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!res) return
+    const { error } = res
+    if (error) { toast.error(errorText(error)); return }
     toast.success(t(amending ? 'prodInventory.lab.amended' : 'production.milk.decided'))
     setDialog(null)
     load()
@@ -264,7 +270,7 @@ export default function MilkIntakeViewPage() {
                 <ThresholdChecks values={values} settings={settings} />
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <Button onClick={() => decide('accepted')} loading={saving === 'accepted'} disabled={!!saving}>
+                <Button onClick={() => decide('accepted')} loading={saving === 'accepted'} disabled={!!saving || lab.antibiotic === 'positive'}>
                   <Check className="h-4 w-4" /> {t('production.milk.accept')}
                 </Button>
                 <Button variant="outline" onClick={() => openDialog('conditional')} disabled={!!saving}>
@@ -274,6 +280,7 @@ export default function MilkIntakeViewPage() {
                   <X className="h-4 w-4" /> {t('production.milk.reject')}
                 </Button>
               </div>
+              {lab.antibiotic === 'positive' && <ControlHint>{t('prodControls.hints.antibioticAccept')}</ControlHint>}
             </div>
             <PricePreviewBox
               netKg={netKg}
@@ -359,6 +366,8 @@ export default function MilkIntakeViewPage() {
         />
       )}
 
+      <DocOverrides docId={doc.id} reloadKey={doc} />
+
       <Dialog open={dialog !== null} onOpenChange={open => { if (!open) setDialog(null) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -408,8 +417,10 @@ export default function MilkIntakeViewPage() {
               {t('production.milk.confirm')}
             </Button>
           </DialogFooter>
+          {dialog !== null && approval.dialog}
         </DialogContent>
       </Dialog>
+      {dialog === null && approval.dialog}
     </div>
     <PrintSheet title={t('prodReports.print.weighTicket')} number={doc.number} date={doc.intake_date}>
       <PrintFields rows={[

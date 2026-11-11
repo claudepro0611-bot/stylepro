@@ -20,11 +20,12 @@ import { Switch } from '@/components/ui/switch'
 import {
   BackLink, FormFooter, NoteField, PageHeader, TotalsBox, prodCardCls, prodFieldCls, prodLabelCls, secondaryBtnCls,
 } from '@/components/production/ProdKit'
+import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { NotAvailableNote } from '@/components/production/InventoryKit'
 import { useSalesAvailable, useSeesMargin } from '@/components/production/SalesKit'
 import {
-  formatQty, localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round2, round3, toInputString, unitKey, warehousesFor,
+  formatQty, localDateTimeToIso, nowHm, parseDecimal, round2, round3, toInputString, unitKey, warehousesFor,
 } from '@/lib/production'
 import {
   SALE_COLS, SALE_ITEM_COLS, fetchReturnedBySaleItem, returnLineAmounts,
@@ -36,6 +37,8 @@ interface LineState { value: string; restock: boolean }
 export default function NewSaleReturnPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useLanguage()
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const available = useSalesAvailable()
@@ -124,8 +127,9 @@ export default function NewSaleReturnPage() {
   async function save() {
     if (!valid || !sale) { toast.error(t(computed.some(c => c.over) ? 'prodSales.returns.overError' : 'productionErrors.invalid_input')); return }
     setSaving(true)
-    const { data, error } = await createClient().rpc('prod_create_sale_return', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_sale_return', {
       p_data: {
+        ...ctl,
         doc_date: localDateTimeToIso(date, time),
         sale_id: sale.id,
         warehouse_id: warehouseId,
@@ -133,9 +137,11 @@ export default function NewSaleReturnPage() {
         note: note.trim() || null,
         items: picked.map(c => ({ sale_item_id: c.line.id, qty: c.qty, restock: c.restock })),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!res) return
+    const { data, error } = res
+    if (error) { toast.error(errorText(error)); return }
     const rid = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(rid ? `/zavod-qaytarishlar/${rid}` : `/zavod-sotuv/${sale.id}`)
@@ -165,7 +171,7 @@ export default function NewSaleReturnPage() {
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.date')}</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+          <DocDateInput value={date} onChange={setDate} />
         </label>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.time')}</span>
@@ -265,6 +271,7 @@ export default function NewSaleReturnPage() {
       </div>
 
       <FormFooter onCancel={() => router.push(`/zavod-sotuv/${sale.id}`)} onSave={save} saving={saving} disabled={!valid} />
+      {approval.dialog}
     </div>
   )
 }

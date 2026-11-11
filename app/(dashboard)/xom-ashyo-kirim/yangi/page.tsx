@@ -16,15 +16,19 @@ import {
   BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox,
   prodCardCls, prodFieldCls, prodLabelCls, useRememberedDefault,
 } from '@/components/production/ProdKit'
+import { ControlHint, DocDateInput, useApprovalRetry, useControls, useProdErrorText } from '@/components/production/ControlKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { SupplierFormDialog, useProdSuppliers } from '@/components/production/SupplierKit'
-import { formatQty, localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round2, round3, unitKey } from '@/lib/production'
+import { formatQty, localDateTimeToIso, nowHm, parseDecimal, round2, round3, unitKey } from '@/lib/production'
 
 /** expiry: optional "YYYY-MM-DD"; empty = the item's shelf life (server side). */
 interface Line { itemId: string; qty: string; price: string; expiry: string }
 
 export default function NewReceiptPage() {
   const { t } = useLanguage()
+  const approval = useApprovalRetry()
+  const controls = useControls()
+  const errorText = useProdErrorText()
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { items, warehouses, itemById } = useProdRefs()
@@ -78,6 +82,11 @@ export default function NewReceiptPage() {
   const totalQtyLines = computed.length
 
   const valid = !!warehouseId && computed.length > 0 && computed.every(c => c.qtyNum > 0)
+  // Controls (migration 20261110000017): raw-item lines with price 0 or a raw
+  // receipt without a supplier need owner / admin approval (warned, not blocked).
+  const hasRaw = computed.some(c => itemById.get(c.itemId)?.itemType === 'raw')
+  const rawZeroPrice = computed.some(c => itemById.get(c.itemId)?.itemType === 'raw' && c.qtyNum > 0 && !(c.priceNum > 0))
+  const rawNoSupplier = hasRaw && !supplierId
 
   function setLine(itemId: string, patch: Partial<Line>) {
     setLines(prev => prev.map(l => (l.itemId === itemId ? { ...l, ...patch } : l)))
@@ -86,8 +95,9 @@ export default function NewReceiptPage() {
   async function save() {
     if (!valid) { toast.error(t('productionErrors.invalid_input')); return }
     setSaving(true)
-    const { data, error } = await createClient().rpc('prod_create_receipt', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_receipt', {
       p_data: {
+        ...ctl,
         doc_date: localDateTimeToIso(date, time),
         warehouse_id: warehouseId,
         supplier_id: supplierId || null,
@@ -100,9 +110,11 @@ export default function NewReceiptPage() {
           ...(lotsAvailable && c.expiry ? { expiry_date: c.expiry } : {}),
         })),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!res) return
+    const { data, error } = res
+    if (error) { toast.error(errorText(error)); return }
     rememberWarehouse(warehouseId)
     rememberSupplier(supplierId)
     const id = (data as { id?: string } | null)?.id
@@ -118,7 +130,7 @@ export default function NewReceiptPage() {
       <div className={cn(prodCardCls, 'p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.date')}</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+          <DocDateInput value={date} onChange={setDate} />
         </label>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.time')}</span>
@@ -206,6 +218,7 @@ export default function NewReceiptPage() {
                             type="date"
                             value={c.expiry}
                             onChange={e => setLine(c.itemId, { expiry: e.target.value })}
+                            min={date || undefined}
                             title={t('production.receipts.expiryHint')}
                             className={cn(prodFieldCls, 'h-8 tabular-nums')}
                           />
@@ -234,6 +247,13 @@ export default function NewReceiptPage() {
         )}
       </div>
 
+      {controls.available && (rawZeroPrice || rawNoSupplier) && (
+        <div className="space-y-2">
+          {rawNoSupplier && <ControlHint>{t('prodControls.hints.receiptNoSupplier')}</ControlHint>}
+          {rawZeroPrice && <ControlHint>{t('prodControls.hints.receiptZeroPrice')}</ControlHint>}
+        </div>
+      )}
+
       <div className="lg:ml-auto lg:w-full lg:max-w-md">
         <TotalsBox rows={[
           { label: t('production.receipts.lines'), value: String(totalQtyLines) },
@@ -259,6 +279,7 @@ export default function NewReceiptPage() {
           if (newId) setSupplierId(newId)
         }}
       />
+      {approval.dialog}
     </div>
   )
 }

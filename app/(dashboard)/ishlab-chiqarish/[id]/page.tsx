@@ -11,6 +11,7 @@ import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BackLink, DocStatusBadge, InfoField, TotalsBox, prodCardCls, type TotalRow } from '@/components/production/ProdKit'
+import { DocOverrides, ManualPickBadge, pickDeviationOf } from '@/components/production/ControlKit'
 import { useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { DocLotsSection } from '@/components/production/DocLots'
@@ -88,6 +89,7 @@ export default function ProductionViewPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('production.productions.docTitle')} #{doc.number}</h1>
           <DocStatusBadge status={doc.status} />
+          <ManualPickBadge show={pickDeviationOf(doc)} />
           {doc.recipe_version !== null && (doc.recipe_id ? (
             <Link href={`/zavod-retseptlar/${doc.recipe_id}?v=${doc.recipe_version}`} className="inline-flex rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
               {t('production.productions.recipe')} v{doc.recipe_version}
@@ -173,6 +175,7 @@ export default function ProductionViewPage() {
         </div>
       </div>
 
+      <DocOverrides docId={doc.id} reloadKey={doc.status} />
       <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={doc.status} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">

@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { NoteField, Segmented, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
 import { PrintFields, PrintSheet } from '@/components/production/PrintKit'
+import { DocDateInput, useApprovalRetry } from '@/components/production/ControlKit'
+import { prodErrorText } from '@/lib/production-controls'
 import {
   PROD_PAYMENT_METHODS, canCancelDocuments, localDateTimeToIso, nowHm, parseDecimal, paymentMethodKey, prodErrorKey, round2,
   type ProdPaymentMethod, type ProdRpcError,
@@ -42,7 +44,7 @@ export function useCashErrorText(accounts: CashAccount[]) {
   const { formatPrice } = useCurrency()
   return (error: ProdRpcError) => {
     const key = prodErrorKey(error)
-    if (key !== 'prodCash.errors.insufficient_funds' || !error || typeof error === 'string') return t(key)
+    if (key !== 'prodCash.errors.insufficient_funds' || !error || typeof error === 'string') return prodErrorText(t, error)
     const a = accounts.find(x => x.id === error.details)
     return a ? `${t(key)}: ${a.name} · ${t('prodCash.common.balance')} ${formatPrice(a.balance)}` : t(key)
   }
@@ -377,13 +379,15 @@ export function CashOrderDialog({ open, onOpenChange, accounts, categories, init
   const account = accounts.find(a => a.id === accountId)
   const short = direction === 'out' && !!account && value > account.balance
   const errorText = useCashErrorText(accounts)
+  const approval = useApprovalRetry()
 
   async function save() {
     if (!accountId || value <= 0) { toast.error(t('productionErrors.invalid_input')); return }
     if (short) { toast.error(t('prodCash.errors.insufficient_funds')); return }
     setSaving(true)
-    const { error } = await createClient().rpc('prod_create_cash_order', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_cash_order', {
       p_data: {
+        ...ctl,
         direction,
         account_id: accountId,
         amount: value,
@@ -394,9 +398,10 @@ export function CashOrderDialog({ open, onOpenChange, accounts, categories, init
         purpose: purpose.trim() || null,
         note: note.trim() || null,
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(errorText(error)); return }
+    if (!res) return
+    if (res.error) { toast.error(errorText(res.error)); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }
@@ -424,7 +429,7 @@ export function CashOrderDialog({ open, onOpenChange, accounts, categories, init
             </label>
             <label className="block">
               <span className={prodLabelCls}>{t('production.common.date')}</span>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+              <DocDateInput value={date} onChange={setDate} />
             </label>
           </div>
           {direction === 'out' && (
@@ -450,6 +455,7 @@ export function CashOrderDialog({ open, onOpenChange, accounts, categories, init
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('production.common.cancel')}</Button>
           <Button onClick={save} disabled={saving || !accountId || value <= 0 || short} loading={saving}>{t('production.common.save')}</Button>
         </DialogFooter>
+        {approval.dialog}
       </DialogContent>
     </Dialog>
   )
@@ -484,17 +490,19 @@ export function CashTransferDialog({ open, onOpenChange, accounts, onSaved }: {
   const short = !!from && value > from.balance
   const same = !!fromId && fromId === toId
   const errorText = useCashErrorText(accounts)
+  const approval = useApprovalRetry()
 
   async function save() {
     if (!fromId || !toId || value <= 0) { toast.error(t('productionErrors.invalid_input')); return }
     if (same) { toast.error(t('prodCash.transfers.sameAccount')); return }
     if (short) { toast.error(t('prodCash.errors.insufficient_funds')); return }
     setSaving(true)
-    const { error } = await createClient().rpc('prod_create_cash_transfer', {
-      p_data: { from_account_id: fromId, to_account_id: toId, amount: value, doc_date: localDateTimeToIso(date || localYmd(), nowHm()), note: note.trim() || null },
-    })
+    const res = await approval.run(ctl => createClient().rpc('prod_create_cash_transfer', {
+      p_data: { ...ctl, from_account_id: fromId, to_account_id: toId, amount: value, doc_date: localDateTimeToIso(date || localYmd(), nowHm()), note: note.trim() || null },
+    }))
     setSaving(false)
-    if (error) { toast.error(errorText(error)); return }
+    if (!res) return
+    if (res.error) { toast.error(errorText(res.error)); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }
@@ -515,7 +523,7 @@ export function CashTransferDialog({ open, onOpenChange, accounts, onSaved }: {
             </label>
             <label className="block">
               <span className={prodLabelCls}>{t('production.common.date')}</span>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+              <DocDateInput value={date} onChange={setDate} />
             </label>
           </div>
           {same && <p className="text-[12px] text-red-600 dark:text-red-400">{t('prodCash.transfers.sameAccount')}</p>}
@@ -525,6 +533,7 @@ export function CashTransferDialog({ open, onOpenChange, accounts, onSaved }: {
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('production.common.cancel')}</Button>
           <Button onClick={save} disabled={saving || !fromId || !toId || same || value <= 0 || short} loading={saving}>{t('production.common.save')}</Button>
         </DialogFooter>
+        {approval.dialog}
       </DialogContent>
     </Dialog>
   )
@@ -541,7 +550,7 @@ export function useCancelCashDoc(type: 'cash_order' | 'cash_transfer', onDone: (
     setBusyId(id)
     const { error } = await createClient().rpc('prod_cancel_cash_doc', { p_type: type, p_id: id })
     setBusyId(null)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (error) { toast.error(prodErrorText(t, error)); return }
     toast.success(t(type === 'cash_order' ? 'prodCash.orders.cancelled' : 'prodCash.transfers.cancelled'))
     onDone()
   }

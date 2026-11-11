@@ -105,10 +105,14 @@ export function parseDecimal(value: string): number {
 const ERROR_CODES = [
   'forbidden', 'wrong_business_type', 'not_found', 'insufficient_stock', 'invalid_input',
   'duplicate_name', 'duplicate', 'already_cancelled', 'negative_balance', 'business_type_immutable',
+  // Controls (migration 20261110000017).
+  'needs_approval', 'period_closed', 'self_cancel',
 ] as const
 
 /** invalid_input DETAILs with their own message (migration 20261110000014). */
-const INVALID_INPUT_DETAILS = ['lot_on_hold', 'warehouse_has_stock', 'has_price_correction', 'not_latest', 'lot_used', 'has_returns', 'credit_limit', 'no_price', 'over_return', 'unit_changed'] as const
+const INVALID_INPUT_DETAILS = ['lot_on_hold', 'warehouse_has_stock', 'has_price_correction', 'not_latest', 'lot_used', 'has_returns', 'credit_limit', 'no_price', 'over_return', 'unit_changed',
+  // Controls (migration 20261110000017).
+  'future_date', 'expiry_in_past', 'override_note', 'already_closed', 'not_closed'] as const
 const DUPLICATE_DETAILS = ['name', 'sku', 'barcode', 'inn'] as const
 
 /** A PostgREST error ({ message, details }) or just its message. */
@@ -131,6 +135,10 @@ export function prodErrorKey(err: ProdRpcError): TranslationKey {
   if (details === 'account_has_balance' || /account_has_balance/.test(msg)) return 'prodCash.errors.account_has_balance'
   if (details === 'account_has_movements') return 'prodCash.errors.account_has_movements'
   const code = ERROR_CODES.find(c => msg === c) ?? ERROR_CODES.find(c => msg.includes(c))
+  // Controls (migration 20261110000017): non-overridable forbidden rules and the reopen note.
+  if (code === 'forbidden' && details === 'antibiotic') return 'productionErrors.antibiotic'
+  if (code === 'forbidden' && details === 'supplier_price_change') return 'productionErrors.supplier_price_change'
+  if (code === 'invalid_input' && details === 'note') return 'productionErrors.reopen_note'
   if (code === 'duplicate') {
     const d = DUPLICATE_DETAILS.find(x => details === x)
     return d === 'sku' ? 'productionErrors.duplicate_sku' : d === 'barcode' ? 'productionErrors.duplicate_barcode'

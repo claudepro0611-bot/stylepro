@@ -5,7 +5,8 @@ import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useSession } from '@/lib/session/SessionContext'
-import { canCancelDocuments, prodErrorKey, type ProdDocType } from '@/lib/production'
+import { canCancelDocuments, type ProdDocType } from '@/lib/production'
+import { prodErrorText } from '@/lib/production-controls'
 
 /**
  * Cancel ("Bekor qilish") a posted document via prod_cancel_document, which
@@ -22,7 +23,8 @@ export function useCancelDoc(docType: ProdDocType, onDone: () => void) {
     setBusyId(id)
     const { error } = await createClient().rpc('prod_cancel_document', { p_doc_type: docType, p_id: id })
     setBusyId(null)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    // period_closed (with the lock date) / self_cancel come back readable (migration 20261110000017).
+    if (error) { toast.error(prodErrorText(t, error)); return }
     toast.success(t('production.common.cancelSuccess'))
     onDone()
   }

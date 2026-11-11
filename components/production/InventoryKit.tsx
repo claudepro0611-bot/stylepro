@@ -21,6 +21,7 @@ import { DocStatusBadge, NoteField, Segmented, prodCardCls, prodFieldCls, prodLa
 import { LotHoldPill } from '@/components/production/LotPicker'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { useHasPermission } from '@/components/production/MilkKit'
+import { useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
 import {
   LOT_HOLD_STATUSES, formatQty, prodErrorKey, unitKey,
   type LotHoldStatus, type ProdItem, type ProdUnit,
@@ -190,6 +191,8 @@ export function PriceCorrectionDialog({ open, onOpenChange, receipt, line, corre
   const [note, setNote] = useState('')
   const [lots, setLots] = useState<RevaluedLot[] | null | undefined>(undefined)
   const [saving, setSaving] = useState(false)
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
 
   const oldPrice = line ? effectiveLinePrice(line.id, line.price, corrections) : 0
   const lineCorrectionIds = useMemo(
@@ -216,11 +219,12 @@ export function PriceCorrectionDialog({ open, onOpenChange, receipt, line, corre
   async function save() {
     if (!line || !valid) { toast.error(t('prodInventory.corrections.samePrice')); return }
     setSaving(true)
-    const { error } = await createClient().rpc('prod_create_price_correction', {
-      p_data: { receipt_id: receipt.id, receipt_item_id: line.id, new_price: newPrice, note: note.trim() || null },
-    })
+    const res = await approval.run(ctl => createClient().rpc('prod_create_price_correction', {
+      p_data: { ...ctl, receipt_id: receipt.id, receipt_item_id: line.id, new_price: newPrice, note: note.trim() || null },
+    }))
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!res) return
+    if (res.error) { toast.error(errorText(res.error)); return }
     toast.success(t('prodInventory.corrections.saved'))
     onSaved()
   }
@@ -295,6 +299,7 @@ export function PriceCorrectionDialog({ open, onOpenChange, receipt, line, corre
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('production.common.cancel')}</Button>
           <Button onClick={save} loading={saving} disabled={saving || !valid}>{t('production.common.save')}</Button>
         </DialogFooter>
+        {approval.dialog}
       </DialogContent>
     </Dialog>
   )

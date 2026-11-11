@@ -17,6 +17,7 @@ import {
   ColumnSettings, DocActions, DocStatusBadge, FilterBar, PageHeader, TableCard, useHiddenColumns,
   prodFieldCls, tdCls, thCls, thRightCls, trCls,
 } from '@/components/production/ProdKit'
+import { ManualPickBadge, usePickDeviations } from '@/components/production/ControlKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { formatQty, rangeToIsoBounds, unitKey, warehousePairLabel } from '@/lib/production'
@@ -47,6 +48,7 @@ export default function ProductionListPage() {
   const { warehouses, itemById, warehouseById } = useProdRefs()
 
   const [rows, setRows] = useState<Row[]>([])
+  const pickDeviations = usePickDeviations('prod_productions', useMemo(() => rows.map(r => r.id), [rows]))
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState<DateRangeValue | null>(monthToDate)
   const [warehouseId, setWarehouseId] = useState('')
@@ -178,7 +180,7 @@ export default function ProductionListPage() {
                   {isVisible('totalCost') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100')}>{formatPrice(Number(r.total_cost))}</td>}
                   {isVisible('unitCost') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400')}>{formatPrice(Number(r.unit_cost))}</td>}
                   {isVisible('warehouse') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{warehousePairLabel(warehouseById.get(r.warehouse_id)?.name ?? '—', r.output_warehouse_id ? warehouseById.get(r.output_warehouse_id)?.name : null)}</td>}
-                  {isVisible('status') && <td className={tdCls}><DocStatusBadge status={r.status} /></td>}
+                  {isVisible('status') && <td className={tdCls}><span className="inline-flex flex-wrap items-center gap-1"><DocStatusBadge status={r.status} /><ManualPickBadge show={pickDeviations.has(r.id)} /></span></td>}
                   {isVisible('author') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{r.created_by_name ?? '—'}</td>}
                   <td className={tdCls}>
                     <DocActions

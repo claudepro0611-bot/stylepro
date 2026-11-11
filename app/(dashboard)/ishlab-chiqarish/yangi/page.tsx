@@ -19,9 +19,11 @@ import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
 import { useMilkSettings } from '@/components/production/MilkKit'
+import { ControlHint, DocDateInput, useApprovalRetry, useControls, useProdErrorText } from '@/components/production/ControlKit'
+import { fillText } from '@/lib/production-controls'
 import {
   CREAM_NAME_RE, activePicks, allocateFefo, fetchActiveRecipe, formatQty, fromBaseQty, lineAllocation, lineCost, localDateTimeToIso,
-  makeLinePicks, nowHm, parseDecimal, picksPayload, prodErrorKey, round2, round3, round4,
+  makeLinePicks, nowHm, parseDecimal, picksPayload, round2, round3, round4,
   smartUnit, sumByUnitGroup, toInputString, unitKey, warehousesFor, yieldPercent, yieldWeightOf,
   type EntryUnit, type LinePicks, type ProdItem, type ProdRecipe,
 } from '@/lib/production'
@@ -55,6 +57,9 @@ export default function NewProductionPage() {
   const { smart, inUnit, groups } = useQtyFormat()
   const { items, warehouses, itemById } = useProdRefs()
   const { settings: milkSettings } = useMilkSettings()
+  const controls = useControls()
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
 
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
@@ -138,6 +143,32 @@ export default function NewProductionPage() {
   // Cream made from milk belongs in a Separatsiya document (cream + skim together).
   const creamFromMilk = !!outputItem && CREAM_NAME_RE.test(outputItem.name) && computed.some(c =>
     (!!milkSettings.milkItemId && c.itemId === milkSettings.milkItemId) || /(^|\s)sut(\s|$)|молок|milk/i.test(c.item?.name ?? ''))
+  // Controls (migration 20261110000017): the server's production_yield check,
+  // mirrored for a live hint: every recipe line vs its scaled norm, extra
+  // components, and the output vs the recipe output scaled by the inputs.
+  const tolPct = controls.settings.productionTolerancePct
+  const deviation = (() => {
+    if (!recipe || !(recipe.outputQty > 0) || !(outQty > 0)) return null
+    const factBy = new Map(computed.map(c => [c.itemId, c.fact]))
+    let maxDev = 0
+    let inSum = 0
+    let rlSum = 0
+    for (const rl of recipe.lines) {
+      const plan = (rl.qty * outQty) / recipe.outputQty
+      const actual = factBy.get(rl.itemId) ?? 0
+      inSum += actual
+      rlSum += rl.qty
+      if (plan > 0) maxDev = Math.max(maxDev, Math.abs(actual - plan) / plan)
+    }
+    if (rlSum > 0) {
+      const expected = (recipe.outputQty * inSum) / rlSum
+      maxDev = expected > 0 ? Math.max(maxDev, Math.abs(outQty - expected) / expected) : Math.max(maxDev, 1)
+    }
+    const extra = computed.some(c => !recipe.lines.some(rl => rl.itemId === c.itemId))
+    const devPct = round2(maxDev * 100)
+    return { devPct, extra, bad: extra || devPct > tolPct }
+  })()
+
   const canReset = !!recipe && (computed.some(c => c.edited) || recipe.lines.some(rl => !lines.some(l => l.itemId === rl.itemId)))
 
   const valid = !!warehouseId && !!outputWarehouseId && !!outputItemId && round3(outQty) > 0 && computed.length > 0
@@ -179,8 +210,9 @@ export default function NewProductionPage() {
   async function save() {
     if (!valid) { toast.error(t('productionErrors.invalid_input')); return }
     setSaving(true)
-    const { data, error } = await createClient().rpc('prod_create_production', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_production', {
       p_data: {
+        ...ctl,
         doc_date: localDateTimeToIso(date, time),
         warehouse_id: warehouseId,
         output_warehouse_id: outputWarehouseId,
@@ -195,9 +227,11 @@ export default function NewProductionPage() {
           lots: picksPayload(c.picks),
         })),
       },
-    })
+    }), deviation ? { dev: deviation.devPct } : undefined)
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!res) return
+    const { data, error } = res
+    if (error) { toast.error(errorText(error)); return }
     rememberRaw(warehouseId)
     rememberOut(outputWarehouseId)
     const id = (data as { id?: string } | null)?.id
@@ -231,7 +265,7 @@ export default function NewProductionPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <label className="block">
             <span className={prodLabelCls}>{t('production.common.date')}</span>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+            <DocDateInput value={date} onChange={setDate} />
           </label>
           <label className="block">
             <span className={prodLabelCls}>{t('production.common.time')}</span>
@@ -445,6 +479,18 @@ export default function NewProductionPage() {
         )}
       </div>
 
+      {controls.available && outputItemId && !recipeLoading && (
+        !recipe ? (
+          <ControlHint>{t('prodControls.hints.productionNoRecipe')}</ControlHint>
+        ) : deviation && (
+          <ControlHint tone={deviation.bad ? 'error' : 'ok'}>
+            {deviation.extra && deviation.devPct <= tolPct
+              ? t('prodControls.hints.productionExtra')
+              : fillText(t(deviation.bad ? 'prodControls.hints.productionDevBad' : 'prodControls.hints.productionDev'), { dev: deviation.devPct, tol: tolPct })}
+          </ControlHint>
+        )
+      )}
+
       <div className="lg:ml-auto lg:max-w-md">
         <TotalsBox rows={totalRows} />
       </div>
@@ -456,6 +502,7 @@ export default function NewProductionPage() {
         disabled={!valid}
         total={{ label: t('production.productions.totalCost'), value: formatPrice(totalCost) }}
       />
+      {approval.dialog}
     </div>
   )
 }

@@ -24,6 +24,7 @@ import {
   ColumnSettings, DocActions, DocStatusBadge, FilterBar, PageHeader, TableCard, useHiddenColumns,
   prodFieldCls, tdCls, thCls, thRightCls, trCls,
 } from '@/components/production/ProdKit'
+import { ManualPickBadge, usePickDeviations } from '@/components/production/ControlKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { ExportButton } from '@/components/production/ReportKit'
@@ -45,6 +46,7 @@ export default function SalesListPage() {
   const { customers } = useProdCustomers()
 
   const [rows, setRows] = useState<SaleRow[]>([])
+  const pickDeviations = usePickDeviations('prod_sales', useMemo(() => rows.map(r => r.id), [rows]))
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState<DateRangeValue | null>(monthToDate)
   const [customerId, setCustomerId] = useState('')
@@ -222,7 +224,7 @@ export default function SalesListPage() {
                         </td>
                       )}
                       {show('vehicle') && <td className={cn(tdCls, 'whitespace-nowrap text-gray-500 dark:text-gray-400')}>{r.vehicle_no || '—'}</td>}
-                      {show('status') && <td className={tdCls}><DocStatusBadge status={r.status} /></td>}
+                      {show('status') && <td className={tdCls}><span className="inline-flex flex-wrap items-center gap-1"><DocStatusBadge status={r.status} /><ManualPickBadge show={pickDeviations.has(r.id)} /></span></td>}
                       {show('author') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{r.created_by_name ?? '—'}</td>}
                       <td className={tdCls}>
                         <DocActions viewHref={`/zavod-sotuv/${r.id}`} canCancel={canCancel} posted={r.status === 'posted'} busy={busyId === r.id} onCancel={() => cancel(r.id)} />

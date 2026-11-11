@@ -24,7 +24,8 @@ import {
   EMPTY_LAB, LabFields, MilkSetupBanner, NetReadout, PricePreviewBox, ThresholdChecks, labPayload, labValues,
   useHasPermission, useMilkSettings, type LabDraft,
 } from '@/components/production/MilkKit'
-import { formatQty, localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round3, warehousesFor } from '@/lib/production'
+import { ControlHint, DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { formatQty, localDateTimeToIso, nowHm, parseDecimal, round3, warehousesFor } from '@/lib/production'
 import {
   focusNextField, isMilkItemCandidate, litresOf, numInput, parseDensity, parseOverride, suggestDecision, thresholdChecks, type MilkDecision,
 } from '@/lib/milk'
@@ -35,6 +36,8 @@ const bigFieldCls = cn(prodFieldCls, 'h-12 text-lg font-medium text-right tabula
 
 export default function NewMilkIntakePage() {
   const { t } = useLanguage()
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const { items, warehouses } = useProdRefs()
@@ -110,7 +113,10 @@ export default function NewMilkIntakePage() {
 
   const values = labValues(lab)
   const suggestion = suggestDecision(thresholdChecks(values, settings))
-  const effectiveDecision: MilkDecision = decision ?? suggestion
+  // Antibiotic positive can never be accepted (server: forbidden 'antibiotic').
+  const antibioticPositive = lab.antibiotic === 'positive'
+  const chosenDecision: MilkDecision = decision ?? suggestion
+  const effectiveDecision: MilkDecision = antibioticPositive && chosenDecision === 'accepted' ? 'rejected' : chosenDecision
   const overrideNum = parseOverride(overridePrice)
 
   const weighingValid = !!supplierId && !!warehouseId && !!itemId && netKg > 0 && !tareExceeds
@@ -148,8 +154,9 @@ export default function NewMilkIntakePage() {
     const weights = scaleMode === 'truck'
       ? { gross_kg: round3(grossNum), tare_kg: round3(tareNum) }
       : { net_kg: netKg }
-    const { data, error } = await createClient().rpc('prod_create_milk_intake', {
+    const rpcRes = await approval.run(ctl => createClient().rpc('prod_create_milk_intake', {
       p_data: {
+        ...ctl,
         intake_date: localDateTimeToIso(date, time),
         supplier_id: supplierId,
         warehouse_id: warehouseId,
@@ -161,9 +168,11 @@ export default function NewMilkIntakePage() {
         note: note.trim() || null,
         ...(labNow && canLab ? { lab: labPayload(lab, effectiveDecision, overrideNum, decisionNote) } : {}),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!rpcRes) return
+    const { data, error } = rpcRes
+    if (error) { toast.error(errorText(error)); return }
     const res = data as { id?: string; number?: number } | null
     toast.success(res?.number ? `${t('production.common.saved')}: #${res.number}` : t('production.common.saved'))
     if (andNew) {
@@ -205,7 +214,7 @@ export default function NewMilkIntakePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
             <label className="block">
               <span className={prodLabelCls}>{t('production.common.date')}</span>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+              <DocDateInput value={date} onChange={setDate} />
             </label>
             <label className="block">
               <span className={prodLabelCls}>{t('production.common.time')}</span>
@@ -330,13 +339,14 @@ export default function NewMilkIntakePage() {
                     <p className={prodLabelCls}>{t('production.milk.decision')}</p>
                     <Segmented
                       options={[
-                        { value: 'accepted' as MilkDecision, label: t('production.milk.accept') },
+                        { value: 'accepted' as MilkDecision, label: t('production.milk.accept'), disabled: antibioticPositive, title: antibioticPositive ? t('prodControls.hints.antibioticAccept') : undefined },
                         { value: 'conditional' as MilkDecision, label: t('production.milk.conditionalAccept') },
                         { value: 'rejected' as MilkDecision, label: t('production.milk.reject') },
                       ]}
                       value={effectiveDecision}
                       onChange={setDecision}
                     />
+                    {antibioticPositive && <ControlHint className="mt-2">{t('prodControls.hints.antibioticAccept')}</ControlHint>}
                   </div>
                   {effectiveDecision === 'conditional' && (
                     <label className="block max-w-xs">
@@ -386,6 +396,7 @@ export default function NewMilkIntakePage() {
           if (newId) setSupplierId(newId)
         }}
       />
+      {approval.dialog}
     </div>
   )
 }

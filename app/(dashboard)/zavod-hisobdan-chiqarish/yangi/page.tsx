@@ -18,12 +18,13 @@ import {
   BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, useRememberedDefault,
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
+import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
 import { NotAvailableNote, useInventoryDocs } from '@/components/production/InventoryKit'
 import {
-  activePicks, expiryWarnDaysOf, formatQty, lineAllocation, lineCost, localDateTimeToIso, makeLinePicks, nowHm, picksPayload, prodErrorKey,
+  activePicks, expiryWarnDaysOf, formatQty, lineAllocation, lineCost, localDateTimeToIso, makeLinePicks, nowHm, picksPayload,
   round2, round3, sumByUnitGroup, unitKey,
   type EntryUnit, type LinePicks,
 } from '@/lib/production'
@@ -38,6 +39,8 @@ interface Line {
 
 export default function NewWriteoffPage() {
   const { t } = useLanguage()
+  const approval = useApprovalRetry()
+  const errorText = useProdErrorText()
   const { formatPrice } = useCurrency()
   const router = useRouter()
   const available = useInventoryDocs()
@@ -95,17 +98,20 @@ export default function NewWriteoffPage() {
   async function save() {
     if (!valid) { toast.error(t('productionErrors.invalid_input')); return }
     setSaving(true)
-    const { data, error } = await createClient().rpc('prod_create_writeoff', {
+    const res = await approval.run(ctl => createClient().rpc('prod_create_writeoff', {
       p_data: {
+        ...ctl,
         doc_date: localDateTimeToIso(date, time),
         warehouse_id: sourceId,
         reason,
         note: note.trim() || null,
         items: computed.map(c => ({ item_id: c.itemId, qty: c.qty, lots: picksPayload(c.picks) })),
       },
-    })
+    }))
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error))); return }
+    if (!res) return
+    const { data, error } = res
+    if (error) { toast.error(errorText(error)); return }
     remember0(warehouseId)
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
@@ -129,7 +135,7 @@ export default function NewWriteoffPage() {
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.date')}</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
+          <DocDateInput value={date} onChange={setDate} />
         </label>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.time')}</span>
@@ -250,6 +256,7 @@ export default function NewWriteoffPage() {
       </div>
 
       <FormFooter onCancel={() => router.push('/zavod-hisobdan-chiqarish')} onSave={save} saving={saving} disabled={!valid || available !== true} total={{ label: t('prodInventory.writeoffs.totalCost'), value: formatPrice(total) }} />
+      {approval.dialog}
     </div>
   )
 }

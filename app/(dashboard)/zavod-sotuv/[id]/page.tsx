@@ -16,6 +16,7 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BackLink, DocStatusBadge, InfoField, MoreFields, TotalsBox, prodCardCls, secondaryBtnCls } from '@/components/production/ProdKit'
+import { DocOverrides, ManualPickBadge, usePickDeviations } from '@/components/production/ControlKit'
 import { useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { DocLotsSection } from '@/components/production/DocLots'
@@ -46,6 +47,7 @@ export default function SaleViewPage() {
   const { itemById, warehouseById } = useProdRefs()
 
   const [doc, setDoc] = useState<SaleRow | null>(null)
+  const pickDeviations = usePickDeviations('prod_sales', doc ? [doc.id] : [])
   const [lines, setLines] = useState<SaleItemRow[]>([])
   const [customer, setCustomer] = useState<CustomerInfo | null>(null)
   const [returns, setReturns] = useState<ReturnRow[]>([])
@@ -122,6 +124,7 @@ export default function SaleViewPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('prodSales.sales.docTitle')} #{doc.number}</h1>
           <DocStatusBadge status={doc.status} />
+          <ManualPickBadge show={pickDeviations.has(doc.id)} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => print('waybill')} className={secondaryBtnCls}>
@@ -212,6 +215,7 @@ export default function SaleViewPage() {
         </div>
       </div>
 
+      <DocOverrides docId={doc.id} reloadKey={doc.status} />
       <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={doc.status} />
 
       {returns.length > 0 && (

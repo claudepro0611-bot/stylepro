@@ -3180,6 +3180,8 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          // Controls (migration 20261110000017); undefined before it.
+          lot_pick_deviation?: boolean
         }
         Insert: {
           id?: string
@@ -3266,6 +3268,8 @@ export type Database = {
           recipe_id: string | null
           recipe_version: number | null
           output_warehouse_id: string | null
+          // Controls (migration 20261110000017); undefined before it.
+          lot_pick_deviation?: boolean
         }
         Insert: {
           id?: string
@@ -3437,6 +3441,8 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: string | null
           output_warehouse_id: string | null
+          // Controls (migration 20261110000017); undefined before it.
+          lot_pick_deviation?: boolean
         }
         Insert: {
           id?: string
@@ -3656,6 +3662,8 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          // Controls (migration 20261110000017); undefined before it.
+          lot_pick_deviation?: boolean
         }
         Insert: {
           id?: string
@@ -3962,6 +3970,8 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          // Controls (migration 20261110000017); undefined before it.
+          lot_pick_deviation?: boolean
         }
         Insert: {
           id?: string
@@ -4386,6 +4396,8 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          // Controls (migration 20261110000017); undefined before it.
+          lot_pick_deviation?: boolean
         }
         Insert: {
           id?: string
@@ -4505,6 +4517,11 @@ export type Database = {
           created_at: string
           // Cash & bank (migration 20261110000016); undefined before it.
           account_id?: string | null
+          // Controls (migration 20261110000017); undefined before it.
+          status?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancel_note?: string | null
         }
         Insert: {
           id?: string
@@ -4536,6 +4553,60 @@ export type Database = {
           created_at?: string
           account_id?: string | null
         }
+        Relationships: []
+      }
+      // Controls & audit (migration 20261110000017_production_controls.sql).
+      prod_control_settings: {
+        Row: {
+          company_id: string
+          production_tolerance_pct: number
+          separation_loss_max_pct: number
+          separation_fat_tolerance_pct: number
+          processing_min_recovery_pct: number
+          conditional_price_min_pct: number
+          backdate_days_staff: number
+          backdate_days_admin: number
+          future_days: number
+          lab_must_differ: boolean
+          self_cancel_allowed: boolean
+          supply_issue_daily_limit: number | null
+          payment_over_debt_allowed: boolean
+          manual_lot_pick_roles: string[]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: { company_id?: string }
+        Update: { company_id?: string }
+        Relationships: []
+      }
+      prod_period_locks: {
+        Row: {
+          company_id: string
+          locked_until: string | null
+          locked_by: string | null
+          locked_at: string | null
+        }
+        Insert: { company_id?: string; locked_until?: string | null; locked_by?: string | null; locked_at?: string | null }
+        Update: { company_id?: string; locked_until?: string | null; locked_by?: string | null; locked_at?: string | null }
+        Relationships: []
+      }
+      prod_audit_log: {
+        Row: {
+          id: string
+          company_id: string
+          at: string
+          user_id: string | null
+          user_name: string | null
+          entity: string
+          entity_id: string | null
+          action: string
+          old: Json | null
+          new: Json | null
+          rule: string | null
+          note: string | null
+        }
+        Insert: { id?: string; company_id?: string }
+        Update: { id?: string; company_id?: string }
         Relationships: []
       }
       // Cash & bank accounts (migration 20261110000016_production_cash.sql).
@@ -5307,7 +5378,8 @@ export type Database = {
       prod_cancel_milk_intake: { Args: { p_id: string }; Returns: undefined }
       prod_create_writeoff: { Args: { p_data: Json }; Returns: Json }
       prod_save_stock_count: { Args: { p_data: Json; p_id: string | null }; Returns: string }
-      prod_post_stock_count: { Args: { p_id: string }; Returns: Json }
+      // p_ctl: controls override (migration 20261110000017); omit it before that migration.
+      prod_post_stock_count: { Args: { p_id: string; p_ctl?: Json | null }; Returns: Json }
       prod_delete_stock_count_draft: { Args: { p_id: string }; Returns: undefined }
       prod_create_opening: { Args: { p_data: Json }; Returns: Json }
       // Wholesale sales (migration 20261110000015).
@@ -5325,6 +5397,11 @@ export type Database = {
       prod_create_price_correction: { Args: { p_data: Json }; Returns: Json }
       prod_set_lot_hold: { Args: { p_lot_id: string; p_reason: string | null; p_status: string }; Returns: undefined }
       prod_amend_milk_lab: { Args: { p_intake_id: string; p_lab: Json }; Returns: Json }
+      // Controls (migration 20261110000017).
+      prod_save_control_settings: { Args: { p_data: Json }; Returns: Json }
+      prod_close_period: { Args: { p_until: string }; Returns: Json }
+      prod_reopen_period: { Args: { p_until: string | null; p_note: string }; Returns: Json }
+      supply_cancel_move: { Args: { p_id: string; p_note: string | null }; Returns: undefined }
       prod_change_item_unit: { Args: { p_item_id: string; p_new_unit: string; p_factor: number; p_note: string | null }; Returns: string }
       branch_overview: {
         Args: never

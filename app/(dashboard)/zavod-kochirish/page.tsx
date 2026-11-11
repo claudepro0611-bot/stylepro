@@ -17,6 +17,7 @@ import {
   ColumnSettings, DocActions, DocStatusBadge, FilterBar, PageHeader, TableCard, useHiddenColumns,
   prodFieldCls, tdCls, thCls, thRightCls, trCls,
 } from '@/components/production/ProdKit'
+import { ManualPickBadge, usePickDeviations } from '@/components/production/ControlKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { rangeToIsoBounds } from '@/lib/production'
@@ -46,6 +47,7 @@ export default function TransferListPage() {
   const { warehouses, warehouseById } = useProdRefs()
 
   const [rows, setRows] = useState<Row[]>([])
+  const pickDeviations = usePickDeviations('prod_transfers', useMemo(() => rows.map(r => r.id), [rows]))
   const [lineCounts, setLineCounts] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState<DateRangeValue | null>(monthToDate)
@@ -180,7 +182,7 @@ export default function TransferListPage() {
                 {isVisible('to') && <td className={cn(tdCls, 'text-gray-900 dark:text-gray-100')}>{nameOf(r.to_warehouse_id)}</td>}
                 {isVisible('lines') && <td className={cn(tdCls, 'text-right tabular-nums text-gray-500 dark:text-gray-400')}>{lineCounts.get(r.id) ?? 0}</td>}
                 {isVisible('total') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100')}>{formatPrice(Number(r.total))}</td>}
-                {isVisible('status') && <td className={tdCls}><DocStatusBadge status={r.status} /></td>}
+                {isVisible('status') && <td className={tdCls}><span className="inline-flex flex-wrap items-center gap-1"><DocStatusBadge status={r.status} /><ManualPickBadge show={pickDeviations.has(r.id)} /></span></td>}
                 {isVisible('author') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{r.created_by_name ?? '—'}</td>}
                 <td className={tdCls}>
                   <DocActions

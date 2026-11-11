@@ -18,6 +18,12 @@ const BYPASS_PATHS = ['/api/telegram/webhook', '/api/cron']
 const ALL_BRANCH_ROLE_PATHS = ['/filiallar']
 const ALL_BRANCH_ROLES = ['owner', 'admin']
 
+// Production controls (migration 20261110000017), also role-gated: control
+// settings and period close are owner-only, the audit log owner/admin (the
+// RPCs and the audit-log RLS policy re-check the same roles).
+const OWNER_ONLY_PATHS = ['/zavod-nazorat', '/zavod-davr-yopish']
+const OWNER_ADMIN_PATHS = ['/zavod-audit']
+
 // Route-prefix -> PERMISSION_KEY. /dashboard, /sozlamalar, /pos stay
 // role-based-only (every authenticated company user can reach them).
 // All other permission-gated pages are now covered here as well, closing
@@ -211,6 +217,14 @@ export async function updateSession(request: NextRequest) {
         url.pathname = '/dashboard'
         return NextResponse.redirect(url)
       }
+    }
+
+    const ownerOnly = OWNER_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+    const ownerAdmin = OWNER_ADMIN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+    if ((ownerOnly && me?.role !== 'owner') || (ownerAdmin && (!me?.role || !ALL_BRANCH_ROLES.includes(me.role)))) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
     }
   }
 

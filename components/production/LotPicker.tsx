@@ -17,6 +17,7 @@ import { formatDate } from '@/lib/utils/formatters'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { prodFieldCls } from '@/components/production/ProdKit'
+import { useControls, useRole } from '@/components/production/ControlKit'
 import {
   allocateFefo, allocatePicks, formatQty, isLotFree, lotExpiryState, lotPickable, parseDecimal, picksValid, round3, unitKey,
   type LotHoldMode, type LotHoldStatus, type LotPick, type ProdLot, type ProdUnit,
@@ -112,6 +113,11 @@ export function LotPicker({ lots, qty, unit, picks, onChange, disabled, mode = '
   const { formatPrice } = useCurrency()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<Map<string, string>>(new Map())
+  // Controls (migration 20261110000017): manual picks of expired lots (except
+  // write-off / stock count, mode 'any') and picks by a role outside
+  // manual_lot_pick_roles need owner / admin approval when saving.
+  const controls = useControls()
+  const role = useRole()
 
   if (!lots) return null
 
@@ -119,6 +125,7 @@ export function LotPicker({ lots, qty, unit, picks, onChange, disabled, mode = '
   const hasPicks = !!picks && picks.length > 0
   const unitLabel = t(unitKey(unit))
   const today = localYmd()
+  const roleMayPick = !controls.available || !role || (controls.settings.manualLotPickRoles as string[]).includes(role)
 
   function openDialog() {
     setDraft(new Map((picks ?? []).map(p => [p.lotId, String(p.qty)])))
@@ -134,6 +141,8 @@ export function LotPicker({ lots, qty, unit, picks, onChange, disabled, mode = '
   const picked = allocatePicks(lots, draftPicks, required)
   const pickedSum = round3(draftPicks.reduce((s, p) => s + p.qty, 0))
   const canConfirm = picksValid(lots, draftPicks, required, mode)
+  const pickedExpired = controls.available && mode !== 'any'
+    && draftPicks.some(p => { const l = lots.find(x => x.id === p.lotId); return !!l?.expiryDate && l.expiryDate < today })
 
   function setDraftQty(lotId: string, v: string) {
     setDraft(prev => {
@@ -179,6 +188,8 @@ export function LotPicker({ lots, qty, unit, picks, onChange, disabled, mode = '
                 {mode === 'strict' ? t('prodInventory.hold.notPickable') : t('prodInventory.hold.fefoHint')}
               </p>
             )}
+            {!roleMayPick && <p className="text-[12px] text-amber-700 dark:text-amber-400">{t('prodControls.hints.manualPickRole')}</p>}
+            {pickedExpired && <p className="text-[12px] text-amber-700 dark:text-amber-400">{t('prodControls.hints.expiredPick')}</p>}
           </DialogHeader>
 
           <div className="max-h-[55vh] overflow-auto rounded-xl border border-gray-100 dark:border-gray-800">
