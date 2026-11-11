@@ -15,7 +15,7 @@ import { formatDate, formatDateTime } from '@/lib/utils/formatters'
 import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { BackLink, DocStatusBadge, InfoField, TotalsBox, prodCardCls, secondaryBtnCls } from '@/components/production/ProdKit'
+import { BackLink, DocStatusBadge, InfoField, MoreFields, TotalsBox, prodCardCls, secondaryBtnCls } from '@/components/production/ProdKit'
 import { useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { DocLotsSection } from '@/components/production/DocLots'
@@ -155,11 +155,16 @@ export default function SaleViewPage() {
         <InfoField label={t('prodInventory.ageing.dueDate')}>
           <span className={cn(overdue && 'text-red-600 dark:text-red-400')}>{doc.due_date ? formatDate(doc.due_date) : '—'}</span>
         </InfoField>
-        <InfoField label={t('prodSales.common.vehicle')}>{doc.vehicle_no || '—'}</InfoField>
-        <InfoField label={t('prodSales.common.driver')}>{doc.driver || '—'}</InfoField>
-        <InfoField label={t('production.common.author')}>{doc.created_by_name ?? '—'}</InfoField>
-        <InfoField label={t('production.common.createdAt')}>{formatDateTime(doc.created_at)}</InfoField>
-        {doc.cancelled_at && <InfoField label={t('production.common.cancelledAt')}>{formatDateTime(doc.cancelled_at)}</InfoField>}
+        {/* Secondary facts folded under "Tafsilotlar" (open for cancelled documents). */}
+        <MoreFields className="col-span-2 lg:col-span-4" label={t('prodUx.details')} active={!!doc.cancelled_at}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <InfoField label={t('prodSales.common.vehicle')}>{doc.vehicle_no || '—'}</InfoField>
+            <InfoField label={t('prodSales.common.driver')}>{doc.driver || '—'}</InfoField>
+            <InfoField label={t('production.common.author')}>{doc.created_by_name ?? '—'}</InfoField>
+            <InfoField label={t('production.common.createdAt')}>{formatDateTime(doc.created_at)}</InfoField>
+            {doc.cancelled_at && <InfoField label={t('production.common.cancelledAt')}>{formatDateTime(doc.cancelled_at)}</InfoField>}
+          </div>
+        </MoreFields>
       </div>
 
       <div className={cn(prodCardCls, 'overflow-hidden')}>
@@ -229,10 +234,12 @@ export default function SaleViewPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className={cn(prodCardCls, 'p-6')}>
-          <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('production.common.note')}</p>
-          <p className="mt-1 text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{doc.note || '—'}</p>
-        </div>
+        {doc.note ? (
+          <div className={cn(prodCardCls, 'p-6')}>
+            <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('production.common.note')}</p>
+            <p className="mt-1 text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{doc.note}</p>
+          </div>
+        ) : <div className="hidden lg:block" />}
         <TotalsBox rows={[
           { label: t('prodInventory.common.itemsCount'), value: String(lines.length) },
           { label: t('prodInventory.common.totalQty'), value: groups(totalQty) },

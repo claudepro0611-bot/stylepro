@@ -119,12 +119,7 @@ export default function SaleReturnsListPage() {
 
       {available === false ? <NotAvailableNote /> : (
         <>
-          <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />}>
-            <DateRangeFilter value={range} onChange={setRange} />
-            <select value={customerId} onChange={e => setCustomerId(e.target.value)} className={cn(prodFieldCls, 'w-52')}>
-              <option value="">{t('prodSales.common.allCustomers')}</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+          <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />} moreActive={!!warehouseId || !!status} more={<>
             <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
               <option value="">{t('production.common.allWarehouses')}</option>
               {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -133,6 +128,12 @@ export default function SaleReturnsListPage() {
               <option value="">{t('production.common.allStatuses')}</option>
               <option value="posted">{t('production.common.statusPosted')}</option>
               <option value="cancelled">{t('production.common.statusCancelled')}</option>
+            </select>
+          </>}>
+            <DateRangeFilter value={range} onChange={setRange} />
+            <select value={customerId} onChange={e => setCustomerId(e.target.value)} className={cn(prodFieldCls, 'w-52')}>
+              <option value="">{t('prodSales.common.allCustomers')}</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <div className="relative w-full sm:w-64">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

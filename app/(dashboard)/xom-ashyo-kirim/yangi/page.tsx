@@ -13,8 +13,8 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import {
-  BackLink, DisabledSelect, FormFooter, NoteField, PageHeader, TotalsBox,
-  prodCardCls, prodFieldCls, prodLabelCls,
+  BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox,
+  prodCardCls, prodFieldCls, prodLabelCls, useRememberedDefault,
 } from '@/components/production/ProdKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { SupplierFormDialog, useProdSuppliers } from '@/components/production/SupplierKit'
@@ -52,6 +52,9 @@ export default function NewReceiptPage() {
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
 
   const activeWarehouses = warehouses.filter(w => w.isActive)
+  // Last used warehouse / supplier of this user.
+  const rememberWarehouse = useRememberedDefault('receipt-warehouse', activeWarehouses.map(w => w.id), warehouseId, setWarehouseId)
+  const rememberSupplier = useRememberedDefault('receipt-supplier', suppliers.filter(s => s.isActive).map(s => s.id), supplierId, setSupplierId)
 
   const supplierOptions = useMemo(() => [
     { value: '', label: t('production.suppliers.noSupplier') },
@@ -100,6 +103,8 @@ export default function NewReceiptPage() {
     })
     setSaving(false)
     if (error) { toast.error(t(prodErrorKey(error))); return }
+    rememberWarehouse(warehouseId)
+    rememberSupplier(supplierId)
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/xom-ashyo-kirim/${id}` : '/xom-ashyo-kirim')
@@ -110,7 +115,7 @@ export default function NewReceiptPage() {
       <BackLink href="/xom-ashyo-kirim" label={t('production.receipts.title')} />
       <PageHeader title={t('production.receipts.newTitle')} />
 
-      <div className={cn(prodCardCls, 'p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4')}>
+      <div className={cn(prodCardCls, 'p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.date')}</span>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} className={prodFieldCls} />
@@ -126,7 +131,7 @@ export default function NewReceiptPage() {
             {activeWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
         </label>
-        <div>
+        <div data-autofocus>
           <span className={prodLabelCls}>{t('production.suppliers.supplier')}</span>
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
@@ -144,6 +149,9 @@ export default function NewReceiptPage() {
             )}
           </div>
         </div>
+        <MoreFields className="sm:col-span-2 lg:col-span-4" active={!!note}>
+          <NoteField value={note} onChange={setNote} />
+        </MoreFields>
       </div>
 
       <div className={cn(prodCardCls, 'overflow-hidden')}>
@@ -179,7 +187,7 @@ export default function NewReceiptPage() {
                 </tr>
               </thead>
               <tbody>
-                {computed.map(c => {
+                {computed.map((c, i) => {
                   const item = itemById.get(c.itemId)
                   const unit = item ? t(unitKey(item.unit)) : ''
                   return (
@@ -187,7 +195,7 @@ export default function NewReceiptPage() {
                       <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{item?.name ?? '—'}</td>
                       <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatQty(stock.get(c.itemId)?.qty ?? 0)} {unit}</td>
                       <td className="px-4 py-2">
-                        <input inputMode="decimal" value={c.qty} onChange={e => setLine(c.itemId, { qty: e.target.value })} placeholder="0" className={cn(prodFieldCls, 'h-8 text-right tabular-nums')} />
+                        <input autoFocus={i === computed.length - 1 && c.qty === ''} inputMode="decimal" value={c.qty} onChange={e => setLine(c.itemId, { qty: e.target.value })} placeholder="0" className={cn(prodFieldCls, 'h-8 text-right tabular-nums')} />
                       </td>
                       <td className="px-4 py-2">
                         <input inputMode="decimal" value={c.price} onChange={e => setLine(c.itemId, { price: e.target.value })} placeholder="0" className={cn(prodFieldCls, 'h-8 text-right tabular-nums')} />
@@ -226,17 +234,20 @@ export default function NewReceiptPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className={cn(prodCardCls, 'p-6')}>
-          <NoteField value={note} onChange={setNote} />
-        </div>
+      <div className="lg:ml-auto lg:w-full lg:max-w-md">
         <TotalsBox rows={[
           { label: t('production.receipts.lines'), value: String(totalQtyLines) },
           { label: t('production.common.total'), value: formatPrice(total), strong: true },
         ]} />
       </div>
 
-      <FormFooter onCancel={() => router.push('/xom-ashyo-kirim')} onSave={save} saving={saving} disabled={!valid} />
+      <FormFooter
+        onCancel={() => router.push('/xom-ashyo-kirim')}
+        onSave={save}
+        saving={saving}
+        disabled={!valid}
+        total={{ label: t('production.common.total'), value: formatPrice(total) }}
+      />
 
       <SupplierFormDialog
         open={supplierFormOpen}

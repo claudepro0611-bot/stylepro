@@ -79,15 +79,7 @@ export default function ProductionItemsPage() {
         onAction={() => { setEditing(null); setFormOpen(true) }}
       />
 
-      <FilterBar onReset={reset} columns={<ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} />}>
-        <div className="relative w-full sm:w-64">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder={t('production.common.searchItem')} className={cn(prodFieldCls, 'pl-9')} />
-        </div>
-        <select value={groupId} onChange={e => { setGroupId(e.target.value); setPage(1) }} className={cn(prodFieldCls, 'w-44')}>
-          <option value="">{t('production.items.allGroups')}</option>
-          {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-        </select>
+      <FilterBar onReset={reset} columns={<ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} />} moreActive={!!itemType || !!status} more={<>
         <select value={itemType} onChange={e => { setItemType(e.target.value); setPage(1) }} className={cn(prodFieldCls, 'w-40')}>
           <option value="">{t('production.common.allTypes')}</option>
           {PROD_ITEM_TYPES.map(type => <option key={type} value={type}>{t(itemTypeKey(type))}</option>)}
@@ -96,6 +88,15 @@ export default function ProductionItemsPage() {
           <option value="">{t('production.common.allStatuses')}</option>
           <option value="active">{t('production.common.active')}</option>
           <option value="inactive">{t('production.common.inactive')}</option>
+        </select>
+      </>}>
+        <div className="relative w-full sm:w-64">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder={t('production.common.searchItem')} className={cn(prodFieldCls, 'pl-9')} />
+        </div>
+        <select value={groupId} onChange={e => { setGroupId(e.target.value); setPage(1) }} className={cn(prodFieldCls, 'w-44')}>
+          <option value="">{t('production.items.allGroups')}</option>
+          {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
       </FilterBar>
 

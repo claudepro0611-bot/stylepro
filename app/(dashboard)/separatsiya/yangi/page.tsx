@@ -18,7 +18,7 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import {
-  BackLink, FormFooter, NoteField, PageHeader, Segmented, TotalsBox,
+  BackLink, FormFooter, MoreFields, NoteField, PageHeader, Segmented, TotalsBox,
   prodCardCls, prodFieldCls, prodLabelCls, type TotalRow,
 } from '@/components/production/ProdKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
@@ -409,6 +409,9 @@ export default function NewSeparationPage() {
           </div>
 
           <SepSection title={t('production.separation.costBlock')} hint={t('production.separation.costHint')}>
+            {/* Allocation method and its prices: advanced, folded unless there is an issue. */}
+            <MoreFields active={r.issues.includes('skim_over_cost')}>
+            <div className="space-y-4">
             <Segmented<SeparationAllocation>
               options={[
                 { value: 'skim_price', label: t('production.separation.methodSkimPrice') },
@@ -419,7 +422,6 @@ export default function NewSeparationPage() {
               onChange={setMethodStored}
             />
             <p className="text-[12px] text-gray-500 dark:text-gray-400">{t(allocationHintKey(method))}</p>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
               <div className="space-y-4">
                 {method === 'skim_price' && (
                   <NumField
@@ -439,12 +441,13 @@ export default function NewSeparationPage() {
                   <p className="text-[12px] text-gray-400 dark:text-gray-500">{t('production.separation.methodFatHint')}</p>
                 )}
               </div>
-              <TotalsBox rows={costRows} />
             </div>
+            </MoreFields>
+            <TotalsBox rows={costRows} />
           </SepSection>
 
-          <div className={cn(prodCardCls, 'p-5')}>
-            <NoteField value={note} onChange={setNote} />
+          <div className={cn(prodCardCls, 'p-4')}>
+            <MoreFields active={!!note}><NoteField value={note} onChange={setNote} /></MoreFields>
           </div>
         </div>
 
@@ -523,7 +526,7 @@ export default function NewSeparationPage() {
             </div>
           )}
 
-          <FormFooter onCancel={() => router.push('/separatsiya')} onSave={save} saving={saving} disabled={!valid} />
+          <FormFooter inline onCancel={() => router.push('/separatsiya')} onSave={save} saving={saving} disabled={!valid} />
         </div>
       </div>
     </div>

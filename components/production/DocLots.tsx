@@ -4,7 +4,7 @@
 // (its outflow movements joined to prod_lots) and lots it created
 // (prod_lots.source_doc_id). Renders nothing while the lots migration is not
 // applied, when the read fails, or when the document touched no lots
-// (legacy documents).
+// (legacy documents). Folded by default (traceability detail, not daily work).
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -13,7 +13,7 @@ import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
-import { prodCardCls } from '@/components/production/ProdKit'
+import { CollapsibleCard } from '@/components/production/ProdKit'
 import { LotExpiry, LotNo } from '@/components/production/LotPicker'
 import { expiryWarnDaysOf, fetchDocLots, formatQty, round2, unitKey, type DocLots, type ProdItem, type ProdWarehouse } from '@/lib/production'
 import { formatPct } from '@/lib/milk'
@@ -53,8 +53,7 @@ export function DocLotsSection({ docId, itemById, warehouseById, reloadKey }: {
   const showProducedWarehouse = new Set(data.produced.map(l => l.warehouseId)).size > 1
 
   return (
-    <div className={cn(prodCardCls, 'overflow-hidden')}>
-      <h2 className="border-b border-gray-100 dark:border-gray-800 px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{t('production.lots.title')}</h2>
+    <CollapsibleCard title={`${t('production.lots.title')} (${data.consumed.length + data.produced.length})`} defaultOpen={false}>
 
       {data.consumed.length > 0 && (
         <div className="overflow-x-auto">
@@ -127,6 +126,6 @@ export function DocLotsSection({ docId, itemById, warehouseById, reloadKey }: {
           </table>
         </div>
       )}
-    </div>
+    </CollapsibleCard>
   )
 }

@@ -301,30 +301,24 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
   const navItems = isAdmin ? [...filteredNavItems, ADMIN_NAV_ITEM] : filteredNavItems
   const groups = [...navItems, ...(filteredSettingsItem ? [filteredSettingsItem] : [])].filter(i => i.children)
 
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {}
-    groups.forEach(g => { init[g.href] = groupActive(pathname, g) })
-    return init
-  })
+  // Accordion: only one group is open at a time; the active route's group opens.
+  const [openGroup, setOpenGroup] = useState<string | null>(() => groups.find(g => groupActive(pathname, g))?.href ?? null)
 
   // Auto-collapse all accordion groups when sidebar collapses
   useEffect(() => {
-    if (collapsed) setExpandedGroups({})
+    if (collapsed) setOpenGroup(null)
   }, [collapsed])
 
   // Re-run when the visible groups change too (features / session load after
   // the first render), so the group of the active route opens on a hard reload.
   const groupKey = groups.map(g => g.href).join('|')
   useEffect(() => {
-    groups.forEach(g => {
-      if (groupActive(pathname, g)) {
-        setExpandedGroups(prev => ({ ...prev, [g.href]: true }))
-      }
-    })
+    const active = groups.find(g => groupActive(pathname, g))
+    if (active && !collapsed) setOpenGroup(active.href)
   }, [pathname, isProduction, groupKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleGroup(href: string) {
-    setExpandedGroups(prev => ({ ...prev, [href]: !prev[href] }))
+    setOpenGroup(prev => (prev === href ? null : href))
   }
 
   // ─── Monochrome nav icon ──────────────────────────────────────────────────
@@ -409,7 +403,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
 
     if (item.children) {
       const active = groupActive(pathname, item)
-      const expanded = expandedGroups[item.href]
+      const expanded = openGroup === item.href
 
       if (collapsed) {
         return renderCollapsedItem(

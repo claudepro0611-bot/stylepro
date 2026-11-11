@@ -174,10 +174,12 @@ export default function SaleReturnViewPage() {
       <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={doc.status} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className={cn(prodCardCls, 'p-6')}>
-          <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('production.common.note')}</p>
-          <p className="mt-1 text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{doc.note || '—'}</p>
-        </div>
+        {doc.note ? (
+          <div className={cn(prodCardCls, 'p-6')}>
+            <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('production.common.note')}</p>
+            <p className="mt-1 text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{doc.note}</p>
+          </div>
+        ) : <div className="hidden lg:block" />}
         <TotalsBox rows={[
           { label: t('prodInventory.common.itemsCount'), value: String(lines.length) },
           { label: t('prodSales.common.subtotal'), value: formatPrice(Number(doc.subtotal)) },

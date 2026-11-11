@@ -19,7 +19,7 @@ import { DateRangeFilter, type DateRangeValue } from '@/components/ui/date-range
 import { Pagination } from '@/components/ui/Pagination'
 import { monthToDate } from '@/components/reports/ReportKit'
 import {
-  DocStatusBadge, FilterBar, PageHeader, TableCard, prodFieldCls, tdCls, thCls, thRightCls, trCls,
+  DocStatusBadge, FilterBar, PageHeader, TableCard, prodFieldCls, tdCls, thCls, thRightCls, trCls, useOpenOnNewParam,
 } from '@/components/production/ProdKit'
 import { PaymentCancelButton, PaymentMethodBadge } from '@/components/production/SupplierKit'
 import { NotAvailableNote } from '@/components/production/InventoryKit'
@@ -50,6 +50,9 @@ export default function ProdCustomerPaymentsPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // ?new=1 (dashboard "Tezkor amallar") opens the create dialog right away.
+  const openDialog = useCallback(() => setDialogOpen(true), [])
+  useOpenOnNewParam(openDialog, available === true)
 
   const customerById = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers])
 
@@ -120,12 +123,7 @@ export default function ProdCustomerPaymentsPage() {
 
       {available === false ? <NotAvailableNote /> : (
         <>
-          <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />}>
-            <DateRangeFilter value={range} onChange={setRange} />
-            <select value={customerId} onChange={e => setCustomerId(e.target.value)} className={cn(prodFieldCls, 'w-52')}>
-              <option value="">{t('prodSales.common.allCustomers')}</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+          <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />} moreActive={!!method || !!status} more={<>
             <select value={method} onChange={e => setMethod(e.target.value)} className={cn(prodFieldCls, 'w-40')}>
               <option value="">{t('production.suppliers.allMethods')}</option>
               {PROD_PAYMENT_METHODS.map(m => <option key={m} value={m}>{t(paymentMethodKey(m))}</option>)}
@@ -134,6 +132,12 @@ export default function ProdCustomerPaymentsPage() {
               <option value="">{t('production.common.allStatuses')}</option>
               <option value="posted">{t('production.common.statusPosted')}</option>
               <option value="cancelled">{t('production.common.statusCancelled')}</option>
+            </select>
+          </>}>
+            <DateRangeFilter value={range} onChange={setRange} />
+            <select value={customerId} onChange={e => setCustomerId(e.target.value)} className={cn(prodFieldCls, 'w-52')}>
+              <option value="">{t('prodSales.common.allCustomers')}</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <div className="relative w-full sm:w-64">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

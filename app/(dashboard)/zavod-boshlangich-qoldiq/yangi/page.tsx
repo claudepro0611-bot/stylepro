@@ -15,7 +15,7 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import {
-  BackLink, DisabledSelect, FormFooter, NoteField, PageHeader, TotalsBox, prodCardCls, prodFieldCls, prodLabelCls,
+  BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, useRememberedDefault, prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
@@ -72,6 +72,8 @@ export default function NewOpeningPage() {
   }, [])
 
   const activeWarehouses = warehouses.filter(w => w.isActive)
+  // Last used warehouse(s) of this user for this document type.
+  const remember0 = useRememberedDefault('opening-warehouse', activeWarehouses.map(w => w.id), warehouseId, setWarehouseId)
   const itemOptions = useMemo(() => items.filter(i => i.isActive).map(i => ({ value: i.id, label: i.name, sublabel: i.sku || undefined })), [items])
 
   const computed = lines.map(l => {
@@ -113,6 +115,7 @@ export default function NewOpeningPage() {
     })
     setSaving(false)
     if (error) { toast.error(t(prodErrorKey(error))); return }
+    remember0(warehouseId)
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/zavod-boshlangich-qoldiq/${id}` : '/zavod-boshlangich-qoldiq')
@@ -145,7 +148,7 @@ export default function NewOpeningPage() {
         </label>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.warehouse')}</span>
-          <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={prodFieldCls}>
+          <select data-autofocus value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={prodFieldCls}>
             <option value="">{t('prodInventory.common.selectWarehouse')}</option>
             {activeWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
@@ -242,8 +245,8 @@ export default function NewOpeningPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className={cn(prodCardCls, 'p-6')}>
-          <NoteField value={note} onChange={setNote} />
+        <div className={cn(prodCardCls, 'p-4')}>
+          <MoreFields active={!!note}><NoteField value={note} onChange={setNote} /></MoreFields>
         </div>
         <TotalsBox rows={[
           { label: t('prodInventory.common.itemsCount'), value: String(computed.length) },
@@ -252,7 +255,7 @@ export default function NewOpeningPage() {
         ]} />
       </div>
 
-      <FormFooter onCancel={() => router.push('/zavod-boshlangich-qoldiq')} onSave={save} saving={saving} disabled={!valid || available !== true} />
+      <FormFooter onCancel={() => router.push('/zavod-boshlangich-qoldiq')} onSave={save} saving={saving} disabled={!valid || available !== true} total={{ label: t('production.common.total'), value: formatPrice(total) }} />
     </div>
   )
 }

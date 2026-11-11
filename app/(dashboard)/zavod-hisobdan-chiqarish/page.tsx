@@ -145,12 +145,7 @@ export default function WriteoffListPage() {
 
       {available === false ? <NotAvailableNote /> : (
         <>
-          <FilterBar onReset={reset} columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}>
-            <DateRangeFilter value={range} onChange={setRange} />
-            <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
-              <option value="">{t('production.common.allWarehouses')}</option>
-              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
+          <FilterBar onReset={reset} columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>} moreActive={!!reason || !!status} more={<>
             <select value={reason} onChange={e => setReason(e.target.value)} className={cn(prodFieldCls, 'w-44')}>
               <option value="">{t('prodInventory.common.allReasons')}</option>
               {WRITEOFF_REASONS.map(r => <option key={r} value={r}>{t(writeoffReasonKey(r))}</option>)}
@@ -159,6 +154,12 @@ export default function WriteoffListPage() {
               <option value="">{t('production.common.allStatuses')}</option>
               <option value="posted">{t('production.common.statusPosted')}</option>
               <option value="cancelled">{t('production.common.statusCancelled')}</option>
+            </select>
+          </>}>
+            <DateRangeFilter value={range} onChange={setRange} />
+            <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
+              <option value="">{t('production.common.allWarehouses')}</option>
+              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
             <div className="relative w-full sm:w-64">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

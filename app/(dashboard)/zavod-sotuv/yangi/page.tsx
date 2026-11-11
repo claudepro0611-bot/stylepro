@@ -19,8 +19,8 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import {
-  BackLink, DisabledSelect, FormFooter, NoteField, PageHeader, Segmented, TotalsBox,
-  prodCardCls, prodFieldCls, prodLabelCls,
+  BackLink, DisabledSelect, FieldError, FormFooter, MoreFields, NoteField, PageHeader, Segmented, TotalsBox,
+  prodCardCls, prodFieldCls, prodLabelCls, useRememberedDefault,
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
@@ -99,6 +99,10 @@ export default function NewSalePage() {
 
   const saleWarehouses = warehousesFor(warehouses, ['finished'])
   const sourceId = saleWarehouses.some(w => w.id === warehouseId) ? warehouseId : ''
+  // Last used warehouse of this user (a single option is chosen automatically).
+  // The customer is deliberately NOT remembered: a pre-filled customer makes it
+  // easy to post a sale to the wrong buyer.
+  const rememberWarehouse = useRememberedDefault('sale-warehouse', saleWarehouses.map(w => w.id), warehouseId, setWarehouseId)
   const { stock, loading: stockLoading } = useWarehouseStock(sourceId)
   const { lotsOf, available: lotsAvailable } = useWarehouseLots(sourceId)
 
@@ -199,6 +203,7 @@ export default function NewSalePage() {
     })
     setSaving(false)
     if (error) { toast.error(t(prodErrorKey(error))); return }
+    rememberWarehouse(sourceId)
     const res = data as { id?: string; credit_warning?: unknown } | null
     const cw = parseCreditWarning(res?.credit_warning)
     if (cw) toast.warning(t('prodSales.sales.creditWarnPosted'), { description: `${t('prodSales.common.creditLimit')}: ${formatPrice(cw.limit)} · ${t('prodSales.sales.balanceAfter')}: ${formatPrice(cw.balanceAfter)}` })
@@ -227,8 +232,8 @@ export default function NewSalePage() {
       <BackLink href="/zavod-sotuv" label={t('prodSales.sales.title')} />
       <PageHeader title={t('prodSales.sales.newTitle')} />
 
-      <div className={cn(prodCardCls, 'p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
-        <div className="md:col-span-2">
+      <div className={cn(prodCardCls, 'p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
+        <div className="md:col-span-2" data-autofocus>
           <span className={prodLabelCls}>{t('prodSales.common.customer')}</span>
           {customersLoading ? (
             <div className="flex h-9 items-center"><Loader2 className="h-4 w-4 animate-spin text-gray-400" /></div>
@@ -236,6 +241,7 @@ export default function NewSalePage() {
             <SearchSelect options={customerOptions} value={customerId} onChange={setCustomerId} placeholder={t('prodSales.common.selectCustomer')} />
           )}
           {customer && <CustomerSummary customer={customer} ageing={ageing?.get(customer.id)} />}
+          {!customer && lines.length > 0 && <FieldError>{t('prodUx.required')}</FieldError>}
         </div>
         <label className="block">
           <span className={prodLabelCls}>{t('production.common.date')}</span>
@@ -282,14 +288,19 @@ export default function NewSalePage() {
             )}
           </div>
         </div>
-        <label className="block">
-          <span className={prodLabelCls}>{t('prodSales.common.vehicle')}</span>
-          <input value={vehicle} onChange={e => setVehicle(e.target.value.slice(0, 30))} placeholder="01 A 123 BC" className={prodFieldCls} />
-        </label>
-        <label className="block">
-          <span className={prodLabelCls}>{t('prodSales.common.driver')}</span>
-          <input value={driver} onChange={e => setDriver(e.target.value.slice(0, 100))} className={prodFieldCls} />
-        </label>
+        <MoreFields className="md:col-span-2 lg:col-span-4" active={!!vehicle || !!driver || !!note}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block">
+              <span className={prodLabelCls}>{t('prodSales.common.vehicle')}</span>
+              <input value={vehicle} onChange={e => setVehicle(e.target.value.slice(0, 30))} placeholder="01 A 123 BC" className={prodFieldCls} />
+            </label>
+            <label className="block">
+              <span className={prodLabelCls}>{t('prodSales.common.driver')}</span>
+              <input value={driver} onChange={e => setDriver(e.target.value.slice(0, 100))} className={prodFieldCls} />
+            </label>
+            <div className="md:col-span-2"><NoteField value={note} onChange={setNote} /></div>
+          </div>
+        </MoreFields>
       </div>
 
       {warning && <CreditWarningBanner warning={warning} />}
@@ -424,10 +435,7 @@ export default function NewSalePage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className={cn(prodCardCls, 'p-6')}>
-          <NoteField value={note} onChange={setNote} />
-        </div>
+      <div className="lg:ml-auto lg:max-w-md">
         <TotalsBox rows={[
           { label: t('prodInventory.common.itemsCount'), value: String(computed.length) },
           { label: t('prodSales.common.subtotal'), value: formatPrice(totals.subtotal) },
@@ -444,7 +452,13 @@ export default function NewSalePage() {
         ]} />
       </div>
 
-      <FormFooter onCancel={() => router.push('/zavod-sotuv')} onSave={save} saving={saving} disabled={!valid} />
+      <FormFooter
+        onCancel={() => router.push('/zavod-sotuv')}
+        onSave={save}
+        saving={saving}
+        disabled={!valid}
+        total={{ label: t('prodSales.common.totalWithVat'), value: formatPrice(totals.total) }}
+      />
     </div>
   )
 }

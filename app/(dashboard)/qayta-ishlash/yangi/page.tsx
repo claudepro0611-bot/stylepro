@@ -11,7 +11,7 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import {
-  BackLink, DisabledSelect, FormFooter, NoteField, PageHeader, TotalsBox,
+  BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, useRememberedDefault,
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
@@ -50,6 +50,8 @@ export default function NewProcessingPage() {
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
 
   const activeWarehouses = warehouses.filter(w => w.isActive)
+  // Last used warehouse(s) of this user for this document type.
+  const remember0 = useRememberedDefault('processing-warehouse', activeWarehouses.map(w => w.id), warehouseId, setWarehouseId)
   const outputWarehouseId = outputWarehouseChoice ?? warehouseId
   const source = itemById.get(sourceItemId)
   const sourceStock = stock.get(sourceItemId)
@@ -120,6 +122,7 @@ export default function NewProcessingPage() {
     })
     setSaving(false)
     if (error) { toast.error(t(prodErrorKey(error))); return }
+    remember0(warehouseId)
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/qayta-ishlash/${id}` : '/qayta-ishlash')
@@ -142,7 +145,7 @@ export default function NewProcessingPage() {
           </label>
           <label className="block">
             <span className={prodLabelCls}>{t('production.common.warehouse')}</span>
-            <select value={warehouseId} onChange={e => changeWarehouse(e.target.value)} className={prodFieldCls}>
+            <select data-autofocus value={warehouseId} onChange={e => changeWarehouse(e.target.value)} className={prodFieldCls}>
               <option value="">{t('production.common.selectWarehouse')}</option>
               {activeWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
@@ -291,8 +294,8 @@ export default function NewProcessingPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className={cn(prodCardCls, 'p-6')}>
-          <NoteField value={note} onChange={setNote} />
+        <div className={cn(prodCardCls, 'p-4')}>
+          <MoreFields active={!!note}><NoteField value={note} onChange={setNote} /></MoreFields>
         </div>
         <TotalsBox rows={[
           { label: t('production.processings.processingCost'), value: formatPrice(processingCost) },

@@ -193,10 +193,12 @@ export default function SeparationViewPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         <FatBalance r={balance} />
         <TotalsBox rows={costRows} />
-        <div className={cn(prodCardCls, 'p-6')}>
-          <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('production.common.note')}</p>
-          <p className="mt-1 text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{doc.note || '—'}</p>
-        </div>
+        {doc.note ? (
+          <div className={cn(prodCardCls, 'p-6')}>
+            <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('production.common.note')}</p>
+            <p className="mt-1 text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{doc.note}</p>
+          </div>
+        ) : <div className="hidden lg:block" />}
       </div>
     </div>
     <PrintSheet

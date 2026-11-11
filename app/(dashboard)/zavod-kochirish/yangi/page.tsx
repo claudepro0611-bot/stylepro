@@ -11,7 +11,7 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import {
-  BackLink, DisabledSelect, FormFooter, NoteField, PageHeader, TotalsBox,
+  BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, useRememberedDefault,
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
@@ -57,6 +57,9 @@ export default function NewTransferPage() {
   }, [])
 
   const activeWarehouses = warehouses.filter(w => w.isActive)
+  // Last used warehouse(s) of this user for this document type.
+  const remember0 = useRememberedDefault('transfer-from-warehouse', activeWarehouses.map(w => w.id), fromId, setFromId)
+  const remember1 = useRememberedDefault('transfer-to-warehouse', activeWarehouses.map(w => w.id), toId, setToId)
   // A ?from id that is not an active warehouse is ignored.
   const sourceId = activeWarehouses.some(w => w.id === fromId) ? fromId : ''
   const { stock, loading: stockLoading } = useWarehouseStock(sourceId)
@@ -113,6 +116,8 @@ export default function NewTransferPage() {
     })
     setSaving(false)
     if (error) { toast.error(t(prodErrorKey(error))); return }
+    remember0(fromId)
+    remember1(toId)
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/zavod-kochirish/${id}` : '/zavod-kochirish')
@@ -134,7 +139,7 @@ export default function NewTransferPage() {
         </label>
         <label className="block">
           <span className={prodLabelCls}>{t('production.transfers.from')}</span>
-          <select value={sourceId} onChange={e => changeFrom(e.target.value)} className={prodFieldCls}>
+          <select data-autofocus value={sourceId} onChange={e => changeFrom(e.target.value)} className={prodFieldCls}>
             <option value="">{t('production.transfers.selectFrom')}</option>
             {activeWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
@@ -238,8 +243,8 @@ export default function NewTransferPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className={cn(prodCardCls, 'p-6')}>
-          <NoteField value={note} onChange={setNote} />
+        <div className={cn(prodCardCls, 'p-4')}>
+          <MoreFields active={!!note}><NoteField value={note} onChange={setNote} /></MoreFields>
         </div>
         <TotalsBox rows={[
           { label: t('production.transfers.itemsCount'), value: String(computed.length) },
@@ -248,7 +253,7 @@ export default function NewTransferPage() {
         ]} />
       </div>
 
-      <FormFooter onCancel={() => router.push('/zavod-kochirish')} onSave={save} saving={saving} disabled={!valid} />
+      <FormFooter onCancel={() => router.push('/zavod-kochirish')} onSave={save} saving={saving} disabled={!valid} total={{ label: t('production.common.total'), value: formatPrice(total) }} />
     </div>
   )
 }

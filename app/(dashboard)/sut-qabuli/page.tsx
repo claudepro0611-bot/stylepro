@@ -1,12 +1,14 @@
 'use client'
 
-// Sut qabuli (raw milk intake) list: today's intakes by default, KPIs for
-// the period. Rows open /sut-qabuli/[id] (lab results + decision).
+// Sut qabuli (raw milk intake) list: today's intakes by default. Two action
+// cards (waiting for the lab, rejected - a click filters the table); the
+// period totals (kg, litres, avg fat, credited, amount) sit in the table's
+// totals row. Rows open /sut-qabuli/[id] (lab results + decision).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Ban, Droplets, FlaskConical, Milk, Plus, Scale, Search, Settings, Wallet } from 'lucide-react'
+import { Ban, FlaskConical, Milk, Plus, Search, Settings } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase/helpers'
@@ -177,24 +179,30 @@ export default function MilkIntakeListPage() {
 
       {!settingsLoading && !configured && <MilkSetupBanner />}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        <MilkKpi icon={Milk} label={t('production.milk.kpiAccepted')} value={`${formatQty(kpi.netKg)} ${kg}`} sub={`${formatQty(kpi.litres)} ${t('production.units.l')}`} />
-        <MilkKpi icon={Droplets} label={t('production.milk.kpiAvgFat')} value={kpi.avgFat === null ? '—' : formatPct(kpi.avgFat)} />
-        <MilkKpi icon={Scale} label={t('production.milk.kpiCredited')} value={`${formatQty(kpi.credited)} ${kg}`} />
-        <MilkKpi icon={Wallet} label={t('production.milk.kpiAmount')} value={formatPrice(kpi.amount)} />
-        <MilkKpi icon={Ban} label={t('production.milk.kpiRejected')} value={`${formatQty(kpi.rejectedKg)} ${kg}`} sub={String(kpi.rejectedCount)} tone={kpi.rejectedCount > 0 ? 'negative' : undefined} />
-        <MilkKpi icon={FlaskConical} label={t('production.milk.kpiWaitingLab')} value={String(kpi.waiting)} />
+      <div className="grid grid-cols-2 gap-4 lg:max-w-xl">
+        <button type="button" onClick={() => setStatus(status === 'weighed' ? '' : 'weighed')} aria-pressed={status === 'weighed'} className={cn('text-left rounded-xl transition-all duration-200 hover:shadow-md', status === 'weighed' && 'ring-1 ring-gray-400 dark:ring-gray-500')}>
+          <MilkKpi icon={FlaskConical} label={t('production.milk.kpiWaitingLab')} value={String(kpi.waiting)} />
+        </button>
+        <button type="button" onClick={() => setStatus(status === 'rejected' ? '' : 'rejected')} aria-pressed={status === 'rejected'} className={cn('text-left rounded-xl transition-all duration-200 hover:shadow-md', status === 'rejected' && 'ring-1 ring-gray-400 dark:ring-gray-500')}>
+          <MilkKpi icon={Ban} label={t('production.milk.kpiRejected')} value={`${formatQty(kpi.rejectedKg)} ${kg}`} sub={String(kpi.rejectedCount)} tone={kpi.rejectedCount > 0 ? 'negative' : undefined} />
+        </button>
       </div>
 
-      <FilterBar onReset={reset} columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}>
+      <FilterBar
+        onReset={reset}
+        columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}
+        moreActive={!!status}
+        more={(
+          <select value={status} onChange={e => setStatus(e.target.value)} className={cn(prodFieldCls, 'w-44')}>
+            <option value="">{t('production.common.allStatuses')}</option>
+            {MILK_STATUSES.map(s => <option key={s} value={s}>{t(milkStatusKey(s))}</option>)}
+          </select>
+        )}
+      >
         <DateRangeFilter value={range} onChange={setRange} />
         <div className="w-full sm:w-56">
           <SearchSelect options={supplierOptions} value={supplierId} onChange={setSupplierId} placeholder={t('production.suppliers.allSuppliers')} />
         </div>
-        <select value={status} onChange={e => setStatus(e.target.value)} className={cn(prodFieldCls, 'w-44')}>
-          <option value="">{t('production.common.allStatuses')}</option>
-          {MILK_STATUSES.map(s => <option key={s} value={s}>{t(milkStatusKey(s))}</option>)}
-        </select>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder={t('production.milk.search')} className={cn(prodFieldCls, 'pl-9')} />
@@ -249,6 +257,24 @@ export default function MilkIntakeListPage() {
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr className="border-t border-gray-100 dark:border-gray-800 text-sm font-medium text-gray-900 dark:text-gray-100">
+              <td className={cn(tdCls, 'whitespace-nowrap')}>{t('prodUx.total')} <span className="font-normal text-gray-500 dark:text-gray-400">({t('production.milk.kpiAccepted').toLowerCase()})</span></td>
+              {isVisible('date') && <td className={tdCls} />}
+              {isVisible('supplier') && <td className={tdCls} />}
+              {isVisible('vehicle') && <td className={tdCls} />}
+              {isVisible('net') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{formatQty(kpi.netKg)}</td>}
+              {isVisible('litres') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{formatQty(kpi.litres)}</td>}
+              {isVisible('fat') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{kpi.avgFat === null ? '—' : formatPct(kpi.avgFat)}</td>}
+              {isVisible('protein') && <td className={tdCls} />}
+              {isVisible('acidity') && <td className={tdCls} />}
+              {isVisible('antibiotic') && <td className={tdCls} />}
+              {isVisible('status') && <td className={tdCls} />}
+              {isVisible('credited') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{formatQty(kpi.credited)}</td>}
+              {isVisible('amount') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{formatPrice(kpi.amount)}</td>}
+              <td className={tdCls} />
+            </tr>
+          </tfoot>
         </table>
       </TableCard>
       {filtered.length > PAGE_SIZE && (

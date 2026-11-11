@@ -12,7 +12,7 @@ import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import {
-  BackLink, DisabledSelect, FormFooter, NoteField, PageHeader, TotalsBox,
+  BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, useRememberedDefault,
   prodCardCls, prodFieldCls, prodLabelCls, type TotalRow,
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
@@ -83,6 +83,9 @@ export default function NewProductionPage() {
   const defaultOutputId = warehouses.find(w => w.isActive && w.storageTypes.includes('finished'))?.id
     ?? (outputWarehouses.some(w => w.id === warehouseId) ? warehouseId : '')
   const outputWarehouseId = outputWarehouseChoice ?? defaultOutputId
+  // Last used warehouses of this user for this document type.
+  const rememberRaw = useRememberedDefault('production-raw-warehouse', rawWarehouses.map(w => w.id), warehouseId, setWarehouseId)
+  const rememberOut = useRememberedDefault('production-output-warehouse', outputWarehouses.map(w => w.id), outputWarehouseChoice ?? '', setOutputWarehouseChoice)
   const outputItem = itemById.get(outputItemId)
   const outUnitLabel = outputItem ? t(unitKey(outputItem.unit)) : ''
 
@@ -195,6 +198,8 @@ export default function NewProductionPage() {
     })
     setSaving(false)
     if (error) { toast.error(t(prodErrorKey(error))); return }
+    rememberRaw(warehouseId)
+    rememberOut(outputWarehouseId)
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/ishlab-chiqarish/${id}` : '/ishlab-chiqarish')
@@ -222,7 +227,7 @@ export default function NewProductionPage() {
       <BackLink href="/ishlab-chiqarish" label={t('production.productions.title')} />
       <PageHeader title={t('production.productions.newTitle')} />
 
-      <div className={cn(prodCardCls, 'p-6 space-y-5')}>
+      <div className={cn(prodCardCls, 'p-4 sm:p-6 space-y-5')}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <label className="block">
             <span className={prodLabelCls}>{t('production.common.date')}</span>
@@ -234,7 +239,7 @@ export default function NewProductionPage() {
           </label>
           <label className="block">
             <span className={prodLabelCls}>{t('production.productions.rawWarehouse')}</span>
-            <select value={warehouseId} onChange={e => changeWarehouse(e.target.value)} className={prodFieldCls}>
+            <select data-autofocus value={warehouseId} onChange={e => changeWarehouse(e.target.value)} className={prodFieldCls}>
               <option value="">{t('production.productions.chooseRawWarehouse')}</option>
               {rawWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
@@ -294,6 +299,10 @@ export default function NewProductionPage() {
             </div>
           </label>
         </div>
+
+        <MoreFields active={!!note}>
+          <NoteField value={note} onChange={setNote} />
+        </MoreFields>
       </div>
 
       {creamFromMilk && (
@@ -436,14 +445,17 @@ export default function NewProductionPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className={cn(prodCardCls, 'p-6')}>
-          <NoteField value={note} onChange={setNote} />
-        </div>
+      <div className="lg:ml-auto lg:max-w-md">
         <TotalsBox rows={totalRows} />
       </div>
 
-      <FormFooter onCancel={() => router.push('/ishlab-chiqarish')} onSave={save} saving={saving} disabled={!valid} />
+      <FormFooter
+        onCancel={() => router.push('/ishlab-chiqarish')}
+        onSave={save}
+        saving={saving}
+        disabled={!valid}
+        total={{ label: t('production.productions.totalCost'), value: formatPrice(totalCost) }}
+      />
     </div>
   )
 }

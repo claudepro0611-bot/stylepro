@@ -18,7 +18,7 @@ import { DateRangeFilter, type DateRangeValue } from '@/components/ui/date-range
 import { Pagination } from '@/components/ui/Pagination'
 import { monthToDate } from '@/components/reports/ReportKit'
 import {
-  DocStatusBadge, FilterBar, PageHeader, TableCard, prodFieldCls, tdCls, thCls, thRightCls, trCls,
+  DocStatusBadge, FilterBar, PageHeader, TableCard, prodFieldCls, tdCls, thCls, thRightCls, trCls, useOpenOnNewParam,
 } from '@/components/production/ProdKit'
 import { ExportButton } from '@/components/production/ReportKit'
 import { NotAvailableNote } from '@/components/production/InventoryKit'
@@ -48,6 +48,9 @@ export default function CashOrdersPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // ?new=1 (dashboard "Tezkor amallar") opens the create dialog right away.
+  const openDialog = useCallback(() => setDialogOpen(true), [])
+  useOpenOnNewParam(openDialog, available === true)
   const [printing, setPrinting] = useState<CashOrderRow | null>(null)
 
   const accountById = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts])
@@ -142,13 +145,7 @@ export default function CashOrdersPage() {
 
         {available === false ? <NotAvailableNote /> : (
           <>
-            <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />}>
-              <DateRangeFilter value={range} onChange={setRange} />
-              <select value={direction} onChange={e => setDirection(e.target.value)} className={cn(prodFieldCls, 'w-40')}>
-                <option value="">{t('prodCash.orders.allDirections')}</option>
-                <option value="in">{t('prodCash.common.in')}</option>
-                <option value="out">{t('prodCash.common.out')}</option>
-              </select>
+            <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />} moreActive={!!accountId || !!status} more={<>
               <select value={accountId} onChange={e => setAccountId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
                 <option value="">{t('prodCash.common.allAccounts')}</option>
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -157,6 +154,13 @@ export default function CashOrdersPage() {
                 <option value="">{t('production.common.allStatuses')}</option>
                 <option value="posted">{t('production.common.statusPosted')}</option>
                 <option value="cancelled">{t('production.common.statusCancelled')}</option>
+              </select>
+            </>}>
+              <DateRangeFilter value={range} onChange={setRange} />
+              <select value={direction} onChange={e => setDirection(e.target.value)} className={cn(prodFieldCls, 'w-40')}>
+                <option value="">{t('prodCash.orders.allDirections')}</option>
+                <option value="in">{t('prodCash.common.in')}</option>
+                <option value="out">{t('prodCash.common.out')}</option>
               </select>
               <div className="relative w-full sm:w-64">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

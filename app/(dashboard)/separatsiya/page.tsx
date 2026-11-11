@@ -1,10 +1,11 @@
 'use client'
 
-// Separatsiya (milk -> cream + skim) documents with period KPIs.
+// Separatsiya (milk -> cream + skim) documents; period totals and the cream
+// yield are in the table's totals row (posted documents only).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Droplets, Milk, Percent, Search, Split } from 'lucide-react'
+import { Search, Split } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase/helpers'
@@ -21,7 +22,6 @@ import {
 } from '@/components/production/ProdKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
-import { MilkKpi } from '@/components/production/MilkKit'
 import { formatQty, rangeToIsoBounds, round3, warehousePairLabel } from '@/lib/production'
 import { ExportButton } from '@/components/production/ReportKit'
 import { dateTimeCell, downloadXlsx, x2, x3 } from '@/lib/production-reports'
@@ -80,14 +80,15 @@ export default function SeparationListPage() {
   }, [rows, search, itemById])
 
   const kpi = useMemo(() => {
-    let milk = 0, cream = 0, skim = 0
+    let milk = 0, cream = 0, skim = 0, loss = 0
     for (const r of filtered) {
       if (r.status !== 'posted') continue
       milk += Number(r.milk_qty)
       cream += Number(r.cream_qty)
       skim += Number(r.skim_qty)
+      loss += Number(r.loss_qty)
     }
-    return { milk: round3(milk), cream: round3(cream), skim: round3(skim), yieldPct: milk > 0 ? (cream / milk) * 100 : null }
+    return { milk: round3(milk), cream: round3(cream), skim: round3(skim), loss: round3(loss), yieldPct: milk > 0 ? (cream / milk) * 100 : null }
   }, [filtered])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -139,23 +140,22 @@ export default function SeparationListPage() {
         actionHref="/separatsiya/yangi"
       />
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <MilkKpi icon={Milk} label={t('production.separation.kpiMilk')} value={`${formatQty(kpi.milk)} ${kg}`} />
-        <MilkKpi icon={Droplets} label={t('production.separation.kpiCream')} value={`${formatQty(kpi.cream)} ${kg}`} />
-        <MilkKpi icon={Split} label={t('production.separation.kpiSkim')} value={`${formatQty(kpi.skim)} ${kg}`} />
-        <MilkKpi icon={Percent} label={t('production.separation.kpiYield')} value={kpi.yieldPct === null ? '—' : `${formatPct(kpi.yieldPct)}%`} />
-      </div>
-
-      <FilterBar onReset={reset} columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}>
+      <FilterBar
+        onReset={reset}
+        columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}
+        moreActive={!!status}
+        more={(
+          <select value={status} onChange={e => setStatus(e.target.value)} className={cn(prodFieldCls, 'w-40')}>
+            <option value="">{t('production.common.allStatuses')}</option>
+            <option value="posted">{t('production.common.statusPosted')}</option>
+            <option value="cancelled">{t('production.common.statusCancelled')}</option>
+          </select>
+        )}
+      >
         <DateRangeFilter value={range} onChange={setRange} />
         <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
           <option value="">{t('production.common.allWarehouses')}</option>
           {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-        </select>
-        <select value={status} onChange={e => setStatus(e.target.value)} className={cn(prodFieldCls, 'w-40')}>
-          <option value="">{t('production.common.allStatuses')}</option>
-          <option value="posted">{t('production.common.statusPosted')}</option>
-          <option value="cancelled">{t('production.common.statusCancelled')}</option>
         </select>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -215,6 +215,27 @@ export default function SeparationListPage() {
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr className="border-t border-gray-100 dark:border-gray-800 text-sm font-medium text-gray-900 dark:text-gray-100">
+              <td className={tdCls}>{t('prodUx.total')}</td>
+              {isVisible('date') && <td className={tdCls} />}
+              {isVisible('milk') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{formatQty(kpi.milk)} {kg}</td>}
+              {isVisible('cream') && (
+                <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>
+                  {formatQty(kpi.cream)} {kg}
+                  {kpi.yieldPct !== null && <span className="ml-1 font-normal text-gray-500 dark:text-gray-400" title={t('production.separation.kpiYield')}>({formatPct(kpi.yieldPct)}%)</span>}
+                </td>
+              )}
+              {isVisible('skim') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{formatQty(kpi.skim)} {kg}</td>}
+              {isVisible('loss') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap')}>{formatQty(kpi.loss)} {kg}</td>}
+              {isVisible('creamCost') && <td className={tdCls} />}
+              {isVisible('skimCost') && <td className={tdCls} />}
+              {isVisible('warehouse') && <td className={tdCls} />}
+              {isVisible('status') && <td className={tdCls} />}
+              {isVisible('author') && <td className={tdCls} />}
+              <td className={tdCls} />
+            </tr>
+          </tfoot>
         </table>
       </TableCard>
       {filtered.length > PAGE_SIZE && (

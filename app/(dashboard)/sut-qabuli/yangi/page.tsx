@@ -17,14 +17,14 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { SearchSelect } from '@/components/ui/SearchSelect'
-import { BackLink, NoteField, PageHeader, Segmented, prodCardCls, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
+import { BackLink, MoreFields, NoteField, PageHeader, Segmented, prodCardCls, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { SupplierFormDialog, useProdSuppliers } from '@/components/production/SupplierKit'
 import {
   EMPTY_LAB, LabFields, MilkSetupBanner, NetReadout, PricePreviewBox, ThresholdChecks, labPayload, labValues,
   useHasPermission, useMilkSettings, type LabDraft,
 } from '@/components/production/MilkKit'
-import { localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round3, warehousesFor } from '@/lib/production'
+import { formatQty, localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round3, warehousesFor } from '@/lib/production'
 import {
   focusNextField, isMilkItemCandidate, litresOf, numInput, parseDensity, parseOverride, suggestDecision, thresholdChecks, type MilkDecision,
 } from '@/lib/milk'
@@ -67,8 +67,14 @@ export default function NewMilkIntakePage() {
   const [decisionNote, setDecisionNote] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Client clock only (avoids a server/client hydration mismatch).
-  useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
+  // Client clock only (avoids a server/client hydration mismatch); the
+  // supplier picker gets focus first (date / time default to now).
+  useEffect(() => {
+    setDate(localYmd())
+    setTime(nowHm())
+    const timer = window.setTimeout(() => rootRef.current?.querySelector<HTMLElement>('[data-autofocus] button')?.focus(), 50)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   // Defaults from settings once they load (the user may change them).
   const [defaultsApplied, setDefaultsApplied] = useState(false)
@@ -168,6 +174,11 @@ export default function NewMilkIntakePage() {
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault()
+      save()
+      return
+    }
     if (e.key !== 'Enter') return
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
@@ -200,7 +211,7 @@ export default function NewMilkIntakePage() {
               <span className={prodLabelCls}>{t('production.common.time')}</span>
               <input type="time" value={time} onChange={e => setTime(e.target.value)} className={prodFieldCls} />
             </label>
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-2" data-autofocus>
               <span className={prodLabelCls}>{t('production.milk.supplier')}</span>
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
@@ -250,10 +261,6 @@ export default function NewMilkIntakePage() {
               <span className={prodLabelCls}>{t('production.milk.vehicleNo')}</span>
               <input ref={vehicleRef} data-enter value={vehicleNo} onChange={e => setVehicleNo(e.target.value.toUpperCase())} placeholder="01 A 123 BC" className={cn(prodFieldCls, 'h-12 uppercase')} />
             </label>
-            <label className="block">
-              <span className={prodLabelCls}>{t('production.milk.driver')}</span>
-              <input data-enter value={driver} onChange={e => setDriver(e.target.value)} className={cn(prodFieldCls, 'h-12')} />
-            </label>
             <div className="sm:col-span-2 lg:col-span-1">
               <span className={prodLabelCls}>{t('production.milk.weighing')}</span>
               <Segmented
@@ -289,6 +296,16 @@ export default function NewMilkIntakePage() {
               <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">{t('production.milk.densityHint')}</span>
             </label>
           </div>
+
+          <MoreFields active={!!driver || !!note}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <label className="block">
+                <span className={prodLabelCls}>{t('production.milk.driver')}</span>
+                <input data-enter value={driver} onChange={e => setDriver(e.target.value)} className={prodFieldCls} />
+              </label>
+              <div className="sm:col-span-2"><NoteField value={note} onChange={setNote} /></div>
+            </div>
+          </MoreFields>
         </div>
 
         <NetReadout netKg={netKg} litres={litres} error={tareExceeds ? t('production.milk.tareExceeds') : undefined} />
@@ -348,11 +365,12 @@ export default function NewMilkIntakePage() {
         </div>
       )}
 
-      <div className={cn(prodCardCls, 'p-6')}>
-        <NoteField value={note} onChange={setNote} />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="sticky bottom-0 z-20 -mx-6 -mb-5 flex flex-wrap items-center justify-end gap-x-4 gap-y-2 border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 px-6 py-3 backdrop-blur">
+        <div className="mr-auto text-sm">
+          <span className="text-gray-500 dark:text-gray-400">{t('production.milk.netKg')}: </span>
+          <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatQty(netKg)} {t('production.units.kg')}</span>
+        </div>
+        <span className="hidden text-[12px] text-gray-400 dark:text-gray-500 lg:inline">{t('prodUx.saveHint')}</span>
         <Button variant="outline" onClick={() => router.push('/sut-qabuli')}>{t('production.common.cancel')}</Button>
         <Button variant="outline" onClick={() => save(true)} disabled={saving || !valid}>{t('production.milk.saveAndNew')}</Button>
         <Button onClick={() => save()} disabled={saving || !valid} loading={saving}>{t('production.common.save')}</Button>

@@ -4,12 +4,13 @@
 // column settings, status badges, document form pieces). Floxen monochrome:
 // color only for semantic status.
 
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Ban, ChevronDown, Columns3, Eye, Loader2, Plus, RotateCcw, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, Ban, ChevronDown, Columns3, Eye, Loader2, Plus, RotateCcw, SlidersHorizontal, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
+import { useSession } from '@/lib/session/SessionContext'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuTrigger,
@@ -58,24 +59,125 @@ export function BackLink({ href, label }: { href: string; label: string }) {
   )
 }
 
-/** Filter toolbar card: filters on the left, reset + column settings on the right. */
-export function FilterBar({ children, onReset, columns }: {
+/**
+ * Filter toolbar card: main filters on the left, reset + export / column
+ * settings on the right. `more` holds rarely used filters behind a "Filtrlar"
+ * toggle (shown while one of them is set: `moreActive`).
+ */
+export function FilterBar({ children, onReset, columns, more, moreActive }: {
   children: ReactNode
   onReset?: () => void
   columns?: ReactNode
+  more?: ReactNode
+  moreActive?: boolean
 }) {
   const { t } = useLanguage()
+  const [open, setOpen] = useState(false)
+  const shown = open || !!moreActive
   return (
-    <div className={cn(prodCardCls, 'p-4 flex flex-wrap items-center gap-2')}>
+    <div className={cn(prodCardCls, 'p-3 flex flex-wrap items-center gap-2')}>
       {children}
-      <div className="ml-auto flex items-center gap-2">
+      {more && (
+        <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={shown} className={cn(secondaryBtnCls, moreActive && 'border-gray-400 dark:border-gray-500')}>
+          <SlidersHorizontal className="h-3.5 w-3.5" /> {t('prodUx.filters')}
+        </button>
+      )}
+      <div className="ml-auto flex flex-wrap items-center gap-2">
         {onReset && (
-          <button type="button" onClick={onReset} className={secondaryBtnCls}>
-            <RotateCcw className="h-3.5 w-3.5" /> {t('production.common.reset')}
+          <button type="button" onClick={onReset} className={secondaryBtnCls} title={t('production.common.reset')} aria-label={t('production.common.reset')}>
+            <RotateCcw className="h-3.5 w-3.5" /> <span className="hidden sm:inline">{t('production.common.reset')}</span>
           </button>
         )}
         {columns}
       </div>
+      {more && shown && <div className="flex w-full flex-wrap items-center gap-2 border-t border-gray-100 dark:border-gray-800 pt-2">{more}</div>}
+    </div>
+  )
+}
+
+/** Opens a "new" dialog when the page is reached with ?new=1 (dashboard shortcuts); the param is then dropped. */
+export function useOpenOnNewParam(open: () => void, ready = true) {
+  const done = useRef(false)
+  useEffect(() => {
+    if (done.current || !ready) return
+    done.current = true
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('new') !== '1') return
+    url.searchParams.delete('new')
+    window.history.replaceState(null, '', url.pathname + url.search)
+    open()
+  }, [open, ready])
+}
+
+/**
+ * Remembered default per user and per document type (localStorage, try/catch):
+ * applied once when the options arrive and nothing is chosen yet (a single
+ * option is chosen automatically). Returns `remember(id)` to call after a save.
+ */
+export function useRememberedDefault(kind: string, ids: string[], value: string, setValue: (id: string) => void) {
+  const { userId } = useSession()
+  const key = `stylepro-prod-last:${userId ?? 'anon'}:${kind}`
+  const applied = useRef(false)
+  const idsKey = ids.join('|')
+  useEffect(() => {
+    if (applied.current || !userId || idsKey === '') return
+    applied.current = true
+    if (value) return
+    const list = idsKey.split('|')
+    let saved = ''
+    try { saved = window.localStorage.getItem(key) ?? '' } catch {}
+    if (saved && list.includes(saved)) setValue(saved)
+    else if (list.length === 1) setValue(list[0])
+  }, [idsKey, userId, key, value, setValue])
+  return useCallback((id: string) => {
+    try { if (id) window.localStorage.setItem(key, id) } catch {}
+  }, [key])
+}
+
+/** "Qo'shimcha" disclosure for advanced form fields; shown while one of them is set (`active`). */
+export function MoreFields({ children, active, label, className }: {
+  children: ReactNode
+  active?: boolean
+  label?: string
+  className?: string
+}) {
+  const { t } = useLanguage()
+  const [open, setOpen] = useState(false)
+  const shown = open || !!active
+  return (
+    <div className={className}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={shown}
+        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+      >
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', shown ? 'rotate-0' : '-rotate-90')} />
+        {label ?? t('prodUx.more')}
+      </button>
+      {shown && <div className="mt-3">{children}</div>}
+    </div>
+  )
+}
+
+/** Card section whose title folds its body (detail pages). */
+export function CollapsibleCard({ title, defaultOpen = true, action, children }: {
+  title: string
+  defaultOpen?: boolean
+  action?: ReactNode
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className={cn(prodCardCls, 'overflow-hidden')}>
+      <div className={cn('flex items-center justify-between gap-3 px-4 py-3', open && 'border-b border-gray-100 dark:border-gray-800')}>
+        <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="flex min-w-0 items-center gap-1.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-200', open ? 'rotate-0' : '-rotate-90')} />
+          <span className="truncate">{title}</span>
+        </button>
+        {action}
+      </div>
+      {open && children}
     </div>
   )
 }
@@ -133,11 +235,18 @@ export function TableCard({ loading, empty, emptyText, emptyIcon: EmptyIcon, chi
           {emptyText}
         </div>
       ) : (
-        <div className="overflow-x-auto">{children}</div>
+        <div className={stickyTableCls}>{children}</div>
       )}
     </div>
   )
 }
+
+/** Scroll box of list tables: sticky header and totals row; tables scroll inside their card. */
+export const stickyTableCls = cn(
+  'max-h-[calc(100dvh-15rem)] min-h-48 overflow-auto',
+  '[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-white dark:[&_thead_th]:bg-gray-900',
+  '[&_tfoot_td]:sticky [&_tfoot_td]:bottom-0 [&_tfoot_td]:z-10 [&_tfoot_td]:bg-gray-50 dark:[&_tfoot_td]:bg-gray-800',
+)
 
 export function DocStatusBadge({ status }: { status: string }) {
   const { t } = useLanguage()
@@ -243,19 +352,79 @@ export function TotalsBox({ rows }: { rows: TotalRow[] }) {
   )
 }
 
-export function FormFooter({ onCancel, onSave, saving, disabled }: {
+const FOCUSABLE = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([disabled]), select:not([disabled]), textarea:not([disabled])'
+
+/**
+ * Sticky bottom save bar of document forms (optionally with the document
+ * total). It also wires the form keyboard: Ctrl+S / Ctrl+Enter saves, Enter in
+ * a field moves to the next field, and the element marked data-autofocus (or
+ * its first control) gets focus when the form opens.
+ */
+export function FormFooter({ onCancel, onSave, saving, disabled, total, inline }: {
   onCancel: () => void
   onSave: () => void
   saving: boolean
   disabled?: boolean
+  total?: { label: string; value: string }
+  /** Inside a side column: plain row instead of the full-width sticky bar. */
+  inline?: boolean
 }) {
   const { t } = useLanguage()
+  const state = useRef({ onSave, saving, disabled })
+  useEffect(() => { state.current = { onSave, saving, disabled } })
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>('[data-autofocus]')
+      if (!el) return
+      const target = el.matches(`${FOCUSABLE}, button`) ? el : el.querySelector<HTMLElement>(`${FOCUSABLE}, button`)
+      target?.focus()
+    }, 50)
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.key === 'Enter')) {
+        e.preventDefault()
+        const s = state.current
+        if (!s.saving && !s.disabled) s.onSave()
+        return
+      }
+      if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.defaultPrevented || e.isComposing) return
+      const el = e.target as HTMLElement | null
+      if (!el || !el.matches('input, select') || el.closest('[data-enter-ignore], [role="dialog"]')) return
+      const root = el.closest('main') ?? document.body
+      const list = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(n => n.offsetParent !== null)
+      const i = list.indexOf(el)
+      if (i < 0) return
+      e.preventDefault()
+      list[i + 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.clearTimeout(timer); window.removeEventListener('keydown', onKey) }
+  }, [])
+
   return (
-    <div className="flex items-center justify-end gap-2">
-      <Button variant="outline" onClick={onCancel}>{t('production.common.cancel')}</Button>
-      <Button onClick={onSave} disabled={saving || disabled} loading={saving}>{t('production.common.save')}</Button>
+    <div className={cn(
+      'flex flex-wrap items-center justify-end gap-x-4 gap-y-2 print:hidden',
+      !inline && 'sticky bottom-0 z-20 -mx-6 -mb-5 border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 px-6 py-3 backdrop-blur',
+    )}>
+      {total && (
+        <div className="mr-auto min-w-0 text-sm">
+          <span className="text-gray-500 dark:text-gray-400">{total.label}: </span>
+          <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{total.value}</span>
+        </div>
+      )}
+      <span className="hidden text-[12px] text-gray-400 dark:text-gray-500 lg:inline">{t('prodUx.saveHint')}</span>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" onClick={onCancel}>{t('production.common.cancel')}</Button>
+        <Button onClick={onSave} disabled={saving || disabled} loading={saving}>{t('production.common.save')}</Button>
+      </div>
     </div>
   )
+}
+
+/** Inline validation message under a field. */
+export function FieldError({ children }: { children?: ReactNode }) {
+  if (!children) return null
+  return <span className="mt-1 block text-[11px] text-red-600 dark:text-red-400">{children}</span>
 }
 
 /** Read-only label/value pair for document view pages. */

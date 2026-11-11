@@ -123,12 +123,7 @@ export default function ProdSupplierPaymentsPage() {
         onAction={() => setDialogOpen(true)}
       />
 
-      <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />}>
-        <DateRangeFilter value={range} onChange={setRange} />
-        <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={cn(prodFieldCls, 'w-52')}>
-          <option value="">{t('production.suppliers.allSuppliers')}</option>
-          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+      <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />} moreActive={!!method || !!status} more={<>
         <select value={method} onChange={e => setMethod(e.target.value)} className={cn(prodFieldCls, 'w-40')}>
           <option value="">{t('production.suppliers.allMethods')}</option>
           {PROD_PAYMENT_METHODS.map(m => <option key={m} value={m}>{t(paymentMethodKey(m))}</option>)}
@@ -137,6 +132,12 @@ export default function ProdSupplierPaymentsPage() {
           <option value="">{t('production.common.allStatuses')}</option>
           <option value="posted">{t('production.common.statusPosted')}</option>
           <option value="cancelled">{t('production.common.statusCancelled')}</option>
+        </select>
+      </>}>
+        <DateRangeFilter value={range} onChange={setRange} />
+        <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={cn(prodFieldCls, 'w-52')}>
+          <option value="">{t('production.suppliers.allSuppliers')}</option>
+          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

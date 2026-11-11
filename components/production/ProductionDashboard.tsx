@@ -12,6 +12,10 @@
 // would show a misleading 0); cost, gross profit and margin only for
 // owner / admin (useSeesMargin). Data is aggregated client-side from
 // paginated reads; independent reads run in parallel.
+//
+// Kept short on purpose: max 4 KPI cards per row, a "Tezkor amallar" row of
+// permission-filtered shortcuts, 4 charts by default (the rest behind
+// "Ko'proq", remembered in localStorage) and only the lists that need action.
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -20,8 +24,8 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import {
-  AlarmClock, AlertTriangle, Boxes, Factory, FileBarChart, Hourglass, Landmark, Milk, Percent, Receipt, Wallet,
-  type LucideIcon,
+  AlarmClock, AlertTriangle, Boxes, ChevronDown, CreditCard, Factory, FileBarChart, Landmark, Milk, PackagePlus, Receipt,
+  ReceiptText, Wallet, type LucideIcon,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase/helpers'
@@ -31,6 +35,7 @@ import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { formatDateTime } from '@/lib/utils/formatters'
 import { localYmd } from '@/lib/utils/date'
 import { cn } from '@/lib/utils'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { DateRangeFilter } from '@/components/ui/date-range-filter'
 import { DocStatusBadge, Segmented, prodCardCls, secondaryBtnCls } from '@/components/production/ProdKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
@@ -135,11 +140,12 @@ interface KpiCardProps {
   sub?: string
   href?: string
   tone?: 'negative' | 'warning'
+  subTone?: 'negative' | 'warning'
   delta?: { value: number | null; title: string }
   spark?: number[]
 }
 
-function KpiCard({ label, value, icon: Icon, sub, href, tone, delta, spark }: KpiCardProps) {
+function KpiCard({ label, value, icon: Icon, sub, href, tone, subTone, delta, spark }: KpiCardProps) {
   const body = (
     <>
       <div className="flex items-start justify-between gap-2">
@@ -155,7 +161,14 @@ function KpiCard({ label, value, icon: Icon, sub, href, tone, delta, spark }: Kp
           : tone === 'warning' ? 'text-amber-700 dark:text-amber-400'
             : 'text-gray-900 dark:text-gray-100',
       )}>{value}</p>
-      {sub && <p className="mt-0.5 text-[12px] tabular-nums text-gray-500 dark:text-gray-400">{sub}</p>}
+      {sub && (
+        <p className={cn(
+          'mt-0.5 text-[12px] tabular-nums',
+          subTone === 'negative' ? 'text-red-600 dark:text-red-400'
+            : subTone === 'warning' ? 'text-amber-700 dark:text-amber-400'
+              : 'text-gray-500 dark:text-gray-400',
+        )}>{sub}</p>
+      )}
       {spark && <div className="mt-2"><Sparkline data={spark} /></div>}
     </>
   )
@@ -615,15 +628,13 @@ export function ProductionDashboard() {
   const periodKpis: KpiCardProps[] = [
     ...(showSales ? [{
       label: t('prodDash.kpi.revenue'), value: formatPrice(sales.cur.revenue), icon: Receipt, href: '/zavod-hisobotlar/sotuv',
+      // Gross profit and margin (owner / admin) as a sub-line instead of a card of their own.
+      sub: seesMargin
+        ? `${t('prodDash.kpi.grossProfit')}: ${formatPrice(sales.cur.margin)} · ${formatMarginPct(marginPct(sales.cur.margin, sales.cur.revenue))}`
+        : undefined,
+      subTone: seesMargin && sales.cur.margin < 0 ? 'negative' as const : undefined,
       delta: { value: pctChange(sales.cur.revenue, sales.prv.revenue), title: `${prevTitle} · ${formatPrice(sales.prv.revenue)}` },
       spark: sales.series.map(s => s.revenue),
-    }] : []),
-    ...(showSales && seesMargin ? [{
-      label: t('prodDash.kpi.grossProfit'), value: formatPrice(sales.cur.margin), icon: Percent,
-      sub: `${t('prodDash.kpi.margin')}: ${formatMarginPct(marginPct(sales.cur.margin, sales.cur.revenue))}`,
-      tone: sales.cur.margin < 0 ? 'negative' as const : undefined,
-      delta: { value: pctChange(sales.cur.margin, sales.prv.margin), title: `${prevTitle} · ${formatPrice(sales.prv.margin)}` },
-      spark: sales.series.map(s => ('profit' in s ? s.profit ?? 0 : 0)),
     }] : []),
     ...(canMilk ? [{
       label: t('prodDash.kpi.milk'), value: kgText(milk.cur?.receivedKg ?? 0), icon: Milk, href: '/zavod-hisobotlar/sut',
@@ -657,22 +668,34 @@ export function ProductionDashboard() {
       sub: `${t('prodDash.kpi.overdue')}: ${formatPrice(payables.overdue)}`,
       tone: payables.overdue > 0 ? 'negative' as const : undefined,
     }] : []),
-    ...(canStock ? [
-      { label: t('prodDash.kpi.stockValue'), value: formatPrice(stockValue), icon: Boxes, href: '/zavod-qoldiq' },
-      {
-        label: t('prodDash.kpi.expiring'), value: formatPrice(riskValue), icon: Hourglass, href: '/zavod-hisobotlar/muddat',
-        sub: `${expiredCount} ${t('prodDash.kpi.expired')} · ${riskLots.length - expiredCount} ${t('prodDash.kpi.soon')}`,
-        tone: expiredCount > 0 ? 'negative' as const : riskLots.length > 0 ? 'warning' as const : undefined,
-      },
-    ] : []),
+    ...(canStock ? [{
+      label: t('prodDash.kpi.stockValue'), value: formatPrice(stockValue), icon: Boxes, href: '/zavod-qoldiq',
+      // Expiring / expired lots as a sub-line (the list below has the details).
+      sub: riskLots.length > 0
+        ? `${t('prodUx.expiringShort')}: ${formatPrice(riskValue)} (${expiredCount} ${t('prodDash.kpi.expired')} · ${riskLots.length - expiredCount} ${t('prodDash.kpi.soon')})`
+        : undefined,
+      subTone: expiredCount > 0 ? 'negative' as const : riskLots.length > 0 ? 'warning' as const : undefined,
+    }] : []),
   ]
   const nowBusy = nowLoading || refsLoading || salesPending || (showCash && cashLoading) || (canCash && cashAvailable === null)
 
   const nothing = !canProduction && !canMilk && !canStock && !canSuppliers && !showSales && !showCash && !canSupply && !salesPending
   const kpiRowCls = (n: number) => cn(
     'grid grid-cols-1 gap-4 min-[420px]:grid-cols-2',
-    n >= 5 ? 'lg:grid-cols-3 2xl:grid-cols-5' : n === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4',
+    n === 3 ? 'lg:grid-cols-3' : n <= 2 ? '' : 'lg:grid-cols-4',
   )
+
+  // Shortcuts to the daily documents, only those the user may create.
+  const quickActions: { href: string; label: string; icon: LucideIcon }[] = [
+    ...(canMilk ? [{ href: '/sut-qabuli/yangi', label: t('prodUx.qMilk'), icon: Milk }] : []),
+    ...(canProduction ? [{ href: '/ishlab-chiqarish/yangi', label: t('prodUx.qProduction'), icon: Factory }] : []),
+    ...(showSales ? [{ href: '/zavod-sotuv/yangi', label: t('prodUx.qSale'), icon: Receipt }] : []),
+    ...(showCustPays ? [{ href: '/zavod-mijoz-tolovlari?new=1', label: t('prodUx.qPayment'), icon: CreditCard }] : []),
+    ...(canReceipts ? [{ href: '/xom-ashyo-kirim/yangi', label: t('prodUx.qReceipt'), icon: PackagePlus }] : []),
+    ...(showCash ? [{ href: '/zavod-kassa-orderlar?new=1', label: t('prodUx.qCashOrder'), icon: ReceiptText }] : []),
+  ]
+  const [showMore, setShowMore] = useLocalStorage<boolean>('stylepro-prod-dash-more', false)
+  const hasMoreCharts = showSales || salesPending || canStock || canProduction || showOutflows || canSuppliers
 
   const axis = { tick: theme.axisTick, axisLine: false, tickLine: false } as const
   const xBuckets = { dataKey: 'key', tickFormatter: bucketLabel, interval: 'preserveStartEnd' as const, minTickGap: 18, ...axis }
@@ -712,7 +735,6 @@ export function ProductionDashboard() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('production.dashboard.title')}</h1>
-          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{t('prodDash.subtitle')}</p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Segmented<DashPreset | 'custom'>
@@ -728,6 +750,16 @@ export function ProductionDashboard() {
         </div>
       </div>
       <p className="-mt-3 text-[12px] text-gray-400 dark:text-gray-500">{prevTitle}</p>
+
+      {quickActions.length > 0 && (
+        <nav aria-label={t('prodUx.quickTitle')} className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          {quickActions.map(a => (
+            <Link key={a.href} href={a.href} className={cn(secondaryBtnCls, 'justify-center bg-white dark:bg-gray-900')}>
+              <a.icon className="h-4 w-4 text-gray-400" /> {a.label}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       {nothing && (
         <div className={cn(prodCardCls, 'p-6 text-sm text-gray-500 dark:text-gray-400')}>{t('prodCash.dashboard.noAccess')}</div>
@@ -748,12 +780,12 @@ export function ProductionDashboard() {
         <section className="space-y-2">
           <SectionTitle>{t('prodCash.dashboard.nowTitle')}</SectionTitle>
           {nowBusy
-            ? <KpiSkeletonRow count={5} cls={kpiRowCls(5)} />
+            ? <KpiSkeletonRow count={4} cls={kpiRowCls(4)} />
             : <div className={kpiRowCls(nowKpis.length)}>{nowKpis.map(k => <KpiCard key={k.label} {...k} />)}</div>}
         </section>
       )}
 
-      {/* 4. Charts */}
+      {/* 4. Charts: the four essentials, the rest behind "Ko'proq" */}
       <div className="grid grid-flow-row-dense grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
         {/* a. Revenue vs cost vs profit */}
         {(showSales || salesPending) && (
@@ -826,6 +858,41 @@ export function ProductionDashboard() {
           </ChartCard>
         )}
 
+        {/* g. Cash balance per day */}
+        {showCash && (
+          <ChartCard
+            title={t('prodDash.charts.cashBalance')}
+            href="/zavod-kassa" linkLabel={t('production.dashboard.viewAll')}
+            loading={cashPeriodLoading || cashLoading} empty={accounts.length === 0} emptyText={noData}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={cashSeries} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                <CartesianGrid {...theme.grid} />
+                <XAxis {...xBuckets} />
+                <YAxis tickFormatter={shortMoney} width={56} {...axis} />
+                <Tooltip cursor={tooltipCursor} content={<ChartTooltip
+                  labelOf={k => (gran === 'month' ? `${bucketTitle(k)} · ${dmy(bucketEndYmd(k, gran, range.to))}` : bucketTitle(k))}
+                  names={{ balance: t('prodDash.charts.balance') }}
+                  format={v => formatPrice(v)}
+                />} />
+                <Line type="monotone" dataKey="balance" stroke={theme.primary} strokeWidth={2} dot={dots} activeDot={{ r: 4, stroke: theme.dotStroke, strokeWidth: 2 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
+      </div>
+
+      {hasMoreCharts && (
+        <div className="flex justify-center">
+          <button type="button" onClick={() => setShowMore(v => !v)} aria-expanded={showMore} className={secondaryBtnCls}>
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', showMore && 'rotate-180')} />
+            {showMore ? t('prodUx.showLess') : t('prodUx.showMore')}
+          </button>
+        </div>
+      )}
+
+      {hasMoreCharts && showMore && (
+        <div className="grid grid-flow-row-dense grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
         {/* d. Stock value by warehouse / item type */}
         {canStock && (
           <ChartCard
@@ -899,29 +966,6 @@ export function ProductionDashboard() {
           </ChartCard>
         )}
 
-        {/* g. Cash balance per day + outflows by category */}
-        {showCash && (
-          <ChartCard
-            className="md:col-span-2"
-            title={t('prodDash.charts.cashBalance')}
-            href="/zavod-kassa" linkLabel={t('production.dashboard.viewAll')}
-            loading={cashPeriodLoading || cashLoading} empty={accounts.length === 0} emptyText={noData}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={cashSeries} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid {...theme.grid} />
-                <XAxis {...xBuckets} />
-                <YAxis tickFormatter={shortMoney} width={56} {...axis} />
-                <Tooltip cursor={tooltipCursor} content={<ChartTooltip
-                  labelOf={k => (gran === 'month' ? `${bucketTitle(k)} · ${dmy(bucketEndYmd(k, gran, range.to))}` : bucketTitle(k))}
-                  names={{ balance: t('prodDash.charts.balance') }}
-                  format={v => formatPrice(v)}
-                />} />
-                <Line type="monotone" dataKey="balance" stroke={theme.primary} strokeWidth={2} dot={dots} activeDot={{ r: 4, stroke: theme.dotStroke, strokeWidth: 2 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        )}
         {showOutflows && (
           <ChartCard
             title={t('prodDash.charts.outflows')}
@@ -955,10 +999,11 @@ export function ProductionDashboard() {
             {debtChart(topCreditors)}
           </ChartCard>
         )}
-      </div>
+        </div>
+      )}
 
       {/* 5. Lists */}
-      <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className={cn('grid grid-cols-1 items-start gap-5 md:grid-cols-2', lowStock.length > 0 && 'xl:grid-cols-3')}>
         {canStock && (
           <div className={cn(prodCardCls, 'min-w-0 overflow-hidden')}>
             <div className={panelHeadCls}>
@@ -1003,15 +1048,13 @@ export function ProductionDashboard() {
           </div>
         )}
 
-        {canStock && (
+        {canStock && !nowLoading && !refsLoading && lowStock.length > 0 && (
           <div className={cn(prodCardCls, 'min-w-0 overflow-hidden')}>
             <div className={panelHeadCls}>
               <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('production.dashboard.lowStock')}</h2>
               <Link href="/zavod-qoldiq" className={panelLinkCls}>{t('production.dashboard.viewAll')}</Link>
             </div>
-            {nowLoading || refsLoading ? <ListSkeleton /> : lowStock.length === 0 ? (
-              <div className="flex h-32 items-center justify-center px-4 text-center text-sm text-gray-400 dark:text-gray-500">{t('production.dashboard.noLowStock')}</div>
-            ) : (
+            {(
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -1041,7 +1084,7 @@ export function ProductionDashboard() {
         )}
 
         {showFeed && (
-          <div className={cn(prodCardCls, 'min-w-0 overflow-hidden md:col-span-2 xl:col-span-1')}>
+          <div className={cn(prodCardCls, 'min-w-0 overflow-hidden', lowStock.length > 0 && 'md:col-span-2 xl:col-span-1')}>
             <div className={panelHeadCls}>
               <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('prodDash.lists.recentDocs')}</h2>
             </div>
