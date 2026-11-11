@@ -3,7 +3,12 @@
 // Akt sverka (reconciliation statement) with one PRODUCTION supplier.
 // Mirrors the retail statement (app/(dashboard)/yetkazuvchilar/[id]/akt-sverka):
 //   Kredit = receipt (our debt grows), Debet = payment (debt shrinks).
-//   Balance = what we owe = receipts − payments (posted documents only).
+//   Price corrections (prod_price_corrections, posted): debt_delta > 0 =
+//   Kredit, < 0 = Debet, so the closing balance equals
+//   prod_supplier_balances.debt.
+//   Balance = what we owe = receipts + corrections − payments (posted only).
+//   Cancelled receipts / payments are listed struck through and excluded
+//   from every total and from the running balance.
 //   Displayed from OUR side (pos = −balance): + green = advance (supplier owes
 //   us), − red = we owe the supplier.
 
@@ -24,7 +29,7 @@ import { downloadCsv, monthToDate } from '@/components/reports/ReportKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { formatQty, unitKey } from '@/lib/production'
 
-type TxType = 'receipt' | 'payment'
+type TxType = 'receipt' | 'payment' | 'correction'
 
 interface Tx {
   key: string
@@ -37,20 +42,28 @@ interface Tx {
   author: string
   items: { name: string; unit: string; qty: number; price: number; sum: number }[]
   info: { label: string; value: string }[]
+  /** Cancelled document: shown struck through, excluded from totals. */
+  cancelled?: boolean
 }
 
 interface SupplierRow { id: string; name: string; phone: string | null; address: string | null }
 interface ReceiptItemRow { item_id: string; qty: number; price: number; total: number }
 interface ReceiptRow {
-  id: string; number: number; doc_date: string; warehouse_id: string; total: number
+  id: string; number: number; doc_date: string; warehouse_id: string; total: number; status: string
   note: string | null; created_by_name: string | null; prod_receipt_items: ReceiptItemRow[]
 }
-interface PaymentRow { id: string; number: number; pay_date: string; amount: number; method: string; note: string | null; created_by_name: string | null; created_at: string }
+interface PaymentRow { id: string; number: number; pay_date: string; amount: number; method: string; status: string; note: string | null; created_by_name: string | null; created_at: string }
+interface CorrectionRow {
+  id: string; number: number; doc_date: string; receipt_id: string; item_id: string; qty: number
+  old_price: number; new_price: number; debt_delta: number; note: string | null; created_by_name: string | null
+}
 
 const timeOf = (iso: string) => (iso.length > 10 ? iso.slice(11, 16) : '')
 const dayOf = (iso: string) => iso.slice(0, 10)
 const pos = (debt: number) => (debt === 0 ? 0 : -debt)
-const sumBy = (list: Tx[], type: TxType) => list.filter(x => x.type === type).reduce((s, x) => s + x.credit + x.debit, 0)
+/** Purchases = receipts + corrections (net), payments = payments; cancelled rows excluded. */
+const sumPurchases = (list: Tx[]) => list.filter(x => !x.cancelled && x.type !== 'payment').reduce((s, x) => s + x.credit - x.debit, 0)
+const sumPaid = (list: Tx[]) => list.filter(x => !x.cancelled && x.type === 'payment').reduce((s, x) => s + x.debit, 0)
 
 /** Local "YYYY-MM-DDTHH:mm:ss" of a timestamptz, so day filters match the user's calendar. */
 function localIso(ts: string) {
@@ -68,6 +81,7 @@ export default function ProdAktSverkaPage() {
   const [supplier, setSupplier] = useState<SupplierRow | null>(null)
   const [receipts, setReceipts] = useState<ReceiptRow[]>([])
   const [payments, setPayments] = useState<PaymentRow[]>([])
+  const [corrections, setCorrections] = useState<CorrectionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState<DateRangeValue | null>(monthToDate)
   const [selected, setSelected] = useState<(Tx & { balance: number }) | null>(null)
@@ -76,13 +90,17 @@ export default function ProdAktSverkaPage() {
     let cancelled = false
     ;(async () => {
       const supabase = createClient()
-      const [supRes, recRes, payRes] = await Promise.all([
+      const [supRes, recRes, payRes, corrRes] = await Promise.all([
         supabase.from('prod_suppliers').select('id, name, phone, address').eq('id', id).maybeSingle(),
         fetchAllRows<Omit<ReceiptRow, 'prod_receipt_items'>>((from, to) => supabase.from('prod_receipts')
-          .select('id, number, doc_date, warehouse_id, total, note, created_by_name')
-          .eq('supplier_id', id).eq('status', 'posted').order('id').range(from, to)),
+          .select('id, number, doc_date, warehouse_id, total, status, note, created_by_name')
+          .eq('supplier_id', id).in('status', ['posted', 'cancelled']).order('id').range(from, to)),
         fetchAllRows<PaymentRow>((from, to) => supabase.from('prod_supplier_payments')
-          .select('id, number, pay_date, amount, method, note, created_by_name, created_at')
+          .select('id, number, pay_date, amount, method, status, note, created_by_name, created_at')
+          .eq('supplier_id', id).in('status', ['posted', 'cancelled']).order('id').range(from, to)),
+        // Missing until migration 20261110000014 is applied: then no corrections.
+        fetchAllRows<CorrectionRow>((from, to) => supabase.from('prod_price_corrections')
+          .select('id, number, doc_date, receipt_id, item_id, qty, old_price, new_price, debt_delta, note, created_by_name')
           .eq('supplier_id', id).eq('status', 'posted').order('id').range(from, to)),
       ])
       if (cancelled) return
@@ -104,6 +122,7 @@ export default function ProdAktSverkaPage() {
       setSupplier((supRes.data as SupplierRow | null) ?? null)
       setReceipts(recRes.data.map(r => ({ ...r, prod_receipt_items: byReceipt.get(r.id) ?? [] })))
       setPayments(payRes.data)
+      setCorrections(corrRes.error ? [] : corrRes.data)
       setLoading(false)
     })()
     return () => { cancelled = true }
@@ -120,6 +139,7 @@ export default function ProdAktSverkaPage() {
       list.push({
         key: `r:${r.id}`,
         type: 'receipt',
+        cancelled: r.status === 'cancelled',
         number: String(r.number),
         at: localIso(r.doc_date),
         debit: 0,
@@ -140,6 +160,7 @@ export default function ProdAktSverkaPage() {
       list.push({
         key: `p:${p.id}`,
         type: 'payment',
+        cancelled: p.status === 'cancelled',
         number: String(p.number),
         at: `${p.pay_date}T${localIso(p.created_at).slice(11, 19)}`,
         debit: Number(p.amount),
@@ -155,21 +176,51 @@ export default function ProdAktSverkaPage() {
         ],
       })
     }
+    const receiptNo = new Map(receipts.map(r => [r.id, r.number]))
+    for (const c of corrections) {
+      const delta = Number(c.debt_delta)
+      const item = itemById.get(c.item_id)
+      const rn = receiptNo.get(c.receipt_id)
+      list.push({
+        key: `c:${c.id}`,
+        type: 'correction',
+        number: String(c.number),
+        at: localIso(c.doc_date),
+        debit: delta < 0 ? -delta : 0,
+        credit: delta > 0 ? delta : 0,
+        description: [
+          `${item?.name ?? '—'}: ${formatPrice(Number(c.old_price))} → ${formatPrice(Number(c.new_price))}`,
+          rn !== undefined ? `${t('prodInventory.corrections.receipt')} #${rn}` : '',
+          c.note ?? '',
+        ].filter(Boolean).join(' · '),
+        author: c.created_by_name ?? '—',
+        items: [],
+        info: [
+          { label: t('suppliersPage.product'), value: item?.name ?? '—' },
+          { label: t('suppliersPage.qty'), value: `${formatQty(Number(c.qty))} ${item ? t(unitKey(item.unit)) : ''}` },
+          { label: t('prodInventory.corrections.oldPrice'), value: formatPrice(Number(c.old_price)) },
+          { label: t('prodInventory.corrections.newPrice'), value: formatPrice(Number(c.new_price)) },
+          { label: t('prodInventory.corrections.debtDelta'), value: formatPrice(delta) },
+          ...(rn !== undefined ? [{ label: t('prodInventory.corrections.receipt'), value: `#${rn}` }] : []),
+          ...(c.note ? [{ label: t('suppliersPage.note'), value: c.note }] : []),
+        ],
+      })
+    }
     return list
-  }, [receipts, payments, itemById, warehouseById, methodLabel, t, formatPrice])
+  }, [receipts, payments, corrections, itemById, warehouseById, methodLabel, t, formatPrice])
 
   const withBalance = useMemo(() => {
     const sorted = [...txs].sort((a, b) => a.at.localeCompare(b.at))
     const out: (Tx & { balance: number })[] = []
     for (const tx of sorted) {
       const prev = out.length ? out[out.length - 1].balance : 0
-      out.push({ ...tx, balance: prev + tx.credit - tx.debit })
+      out.push({ ...tx, balance: tx.cancelled ? prev : prev + tx.credit - tx.debit })
     }
     return out
   }, [txs])
 
   const all = useMemo(() => {
-    const purchases = sumBy(txs, 'receipt'), paid = sumBy(txs, 'payment')
+    const purchases = sumPurchases(txs), paid = sumPaid(txs)
     return { purchases, paid, final: purchases - paid }
   }, [txs])
 
@@ -180,13 +231,15 @@ export default function ProdAktSverkaPage() {
   const period = useMemo(() => {
     const before = range ? withBalance.filter(x => dayOf(x.at) < range.from) : []
     const start = before.length ? before[before.length - 1].balance : 0
-    const purchases = sumBy(inPeriod, 'receipt'), paid = sumBy(inPeriod, 'payment')
+    const purchases = sumPurchases(inPeriod), paid = sumPaid(inPeriod)
     return { start, purchases, paid, end: start + purchases - paid }
   }, [withBalance, inPeriod, range])
 
   const rows = useMemo(() => [...inPeriod].reverse(), [inPeriod])
 
-  const typeLabel: Record<TxType, string> = { receipt: t('aktSverka.typePurchase'), payment: t('aktSverka.typePayment') }
+  const typeLabel: Record<TxType, string> = {
+    receipt: t('aktSverka.typePurchase'), payment: t('aktSverka.typePayment'), correction: t('prodInventory.akt.typeCorrection'),
+  }
   const money = (n: number) => formatPrice(n)
   const balanceCls = (n: number) => (n < -0.5 ? 'text-red-600 dark:text-red-400' : n > 0.5 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100')
 
@@ -194,7 +247,10 @@ export default function ProdAktSverkaPage() {
     if (!supplier) return
     downloadCsv(`akt_sverka_${supplier.name.replace(/\s+/g, '_')}`,
       [t('aktSverka.no'), t('aktSverka.number'), t('aktSverka.dateTime'), t('aktSverka.type'), t('aktSverka.debit'), t('aktSverka.credit'), t('aktSverka.runningBalance'), t('aktSverka.description'), t('aktSverka.author')],
-      rows.map((r, i) => [i + 1, r.number, `${dayOf(r.at)} ${timeOf(r.at)}`, typeLabel[r.type], r.debit || '', r.credit || '', Math.round(pos(r.balance)), r.description, r.author]))
+      rows.map((r, i) => [
+        i + 1, r.number, `${dayOf(r.at)} ${timeOf(r.at)}`, typeLabel[r.type], r.debit || '', r.credit || '', Math.round(pos(r.balance)),
+        r.cancelled ? `${t('prodInventory.akt.cancelledRow')} · ${r.description}` : r.description, r.author,
+      ]))
   }
 
   if (loading || refsLoading) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
@@ -283,14 +339,19 @@ export default function ProdAktSverkaPage() {
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
-                    <tr key={r.key} onClick={() => setSelected(r)} className="cursor-pointer border-b border-gray-50 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                    <tr
+                      key={r.key}
+                      onClick={() => setSelected(r)}
+                      title={r.cancelled ? t('prodInventory.akt.cancelledRow') : undefined}
+                      className={cn('cursor-pointer border-b border-gray-50 dark:border-gray-800/60 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors', r.cancelled && 'line-through opacity-50')}
+                    >
                       <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400">{i + 1}</td>
                       <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">#{r.number}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-gray-900 dark:text-gray-100">{formatDate(dayOf(r.at))} {timeOf(r.at)}</td>
                       <td className="px-4 py-2.5 text-gray-900 dark:text-gray-100">{typeLabel[r.type]}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap text-gray-900 dark:text-gray-100">{r.debit ? money(r.debit) : ''}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap text-gray-900 dark:text-gray-100">{r.credit ? money(r.credit) : ''}</td>
-                      <td className={cn('px-4 py-2.5 text-right tabular-nums whitespace-nowrap font-semibold', balanceCls(pos(r.balance)))}>{money(pos(r.balance))}</td>
+                      <td className={cn('px-4 py-2.5 text-right tabular-nums whitespace-nowrap font-semibold', balanceCls(pos(r.balance)))}>{r.cancelled ? '' : money(pos(r.balance))}</td>
                       <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{r.description}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-gray-600 dark:text-gray-400">{r.author}</td>
                     </tr>

@@ -15,16 +15,24 @@ import {
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
-import { useProdRefs, useWarehouseStock } from '@/components/production/useProdRefs'
+import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
+import { LotPicker } from '@/components/production/LotPicker'
 import {
-  formatQty, localDateTimeToIso, nowHm, prodErrorKey, round2, round3, sumByUnitGroup, unitKey,
-  type EntryUnit,
+  activePicks, formatQty, lineAllocation, lineCost, localDateTimeToIso, makeLinePicks, nowHm, picksPayload, prodErrorKey,
+  round2, round3, sumByUnitGroup, unitKey,
+  type EntryUnit, type LinePicks,
 } from '@/lib/production'
 
 // prod_create_transfer accepts 1..500 lines.
 const MAX_LINES = 500
 
-interface Line { itemId: string; value: string; unit: EntryUnit }
+interface Line {
+  itemId: string
+  value: string
+  unit: EntryUnit
+  /** Manually picked lots; dropped automatically when warehouse or qty change. */
+  picks?: LinePicks | null
+}
 
 export default function NewTransferPage() {
   const { t } = useLanguage()
@@ -52,6 +60,7 @@ export default function NewTransferPage() {
   // A ?from id that is not an active warehouse is ignored.
   const sourceId = activeWarehouses.some(w => w.id === fromId) ? fromId : ''
   const { stock, loading: stockLoading } = useWarehouseStock(sourceId)
+  const { lotsOf, available: lotsAvailable } = useWarehouseLots(sourceId)
 
   const itemOptions = useMemo(() => items
     .filter(i => stock.has(i.id) && !lines.some(l => l.itemId === i.id))
@@ -68,7 +77,11 @@ export default function NewTransferPage() {
     const available = s?.qty ?? 0
     const avg = s?.avgCost ?? 0
     const qty = round3(entryToBase(l.value, base, l.unit))
-    return { ...l, item, base, available, avg, qty, total: round2(qty * avg), over: qty > available }
+    // Destination lots keep the source lots' costs: exact cost from the lots, avg_cost without lots.
+    const lots = lotsOf(l.itemId)
+    const picks = activePicks(l.picks, sourceId, l.itemId, qty)
+    const total = lineCost(lineAllocation(lots, picks, qty, 'pick'), qty, avg)
+    return { ...l, item, base, available, avg, qty, lots, picks, unitPrice: qty > 0 ? round2(total / qty) : avg, total, over: qty > available }
   })
   const total = round2(computed.reduce((s, c) => s + c.total, 0))
   const same = !!sourceId && sourceId === toId
@@ -95,11 +108,11 @@ export default function NewTransferPage() {
         from_warehouse_id: sourceId,
         to_warehouse_id: toId,
         note: note.trim() || null,
-        items: computed.map(c => ({ item_id: c.itemId, qty: c.qty })),
+        items: computed.map(c => ({ item_id: c.itemId, qty: c.qty, lots: picksPayload(c.picks) })),
       },
     })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/zavod-kochirish/${id}` : '/zavod-kochirish')
@@ -171,8 +184,8 @@ export default function NewTransferPage() {
                 <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
                   <th className="px-4 py-2.5 text-left font-medium">{t('production.common.item')}</th>
                   <th className="px-4 py-2.5 text-right font-medium">{t('production.common.available')}</th>
-                  <th className="px-4 py-2.5 text-right font-medium w-56">{t('production.common.qty')}</th>
-                  <th className="px-4 py-2.5 text-right font-medium">{t('production.common.avgCost')}</th>
+                  <th className={cn('px-4 py-2.5 text-right font-medium', lotsAvailable ? 'w-72' : 'w-56')}>{t('production.common.qty')}</th>
+                  <th className="px-4 py-2.5 text-right font-medium">{lotsAvailable ? t('production.lots.unitCost') : t('production.common.avgCost')}</th>
                   <th className="px-4 py-2.5 text-right font-medium">{t('production.common.total')}</th>
                   <th className="px-4 py-2.5 w-10" />
                 </tr>
@@ -183,17 +196,28 @@ export default function NewTransferPage() {
                     <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{c.item?.name ?? '—'}</td>
                     <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{smart(c.available, c.base)}</td>
                     <td className="px-4 py-2">
-                      <UnitQtyInput
-                        value={c.value}
-                        onChange={v => patchLine(c.itemId, { value: v })}
-                        base={c.base}
-                        unit={c.unit}
-                        onUnitChange={(u, v) => patchLine(c.itemId, { unit: u, value: v })}
-                        invalid={c.over}
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <UnitQtyInput
+                          className="flex-1"
+                          value={c.value}
+                          onChange={v => patchLine(c.itemId, { value: v })}
+                          base={c.base}
+                          unit={c.unit}
+                          onUnitChange={(u, v) => patchLine(c.itemId, { unit: u, value: v })}
+                          invalid={c.over}
+                        />
+                        <LotPicker
+                          lots={c.lots}
+                          qty={c.qty}
+                          unit={c.base}
+                          picks={c.picks}
+                          mode="pick"
+                          onChange={p => patchLine(c.itemId, { picks: makeLinePicks(sourceId, c.itemId, c.qty, p) })}
+                        />
+                      </div>
                       {c.over && <p className="mt-0.5 text-right text-[11px] text-red-600 dark:text-red-400">{t('productionErrors.insufficient_stock')}</p>}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(c.avg)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(c.unitPrice)}</td>
                     <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{formatPrice(c.total)}</td>
                     <td className="px-4 py-2">
                       <button

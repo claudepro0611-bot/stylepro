@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { Banknote, CreditCard, FileText, Loader2, PackagePlus, Pencil, Wallet } from 'lucide-react'
+import { Banknote, CreditCard, FileText, FlaskConical, Loader2, PackagePlus, Pencil, Wallet } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase/helpers'
@@ -23,8 +23,12 @@ import { useCancelDoc } from '@/components/production/useCancelDoc'
 import {
   DebtValue, PaymentCancelButton, PaymentMethodBadge, SupplierFormDialog, SupplierPaymentDialog, useCancelSupplierPayment, useProdSuppliers,
 } from '@/components/production/SupplierKit'
+import { useMilkSettings } from '@/components/production/MilkKit'
+import { formatPct } from '@/lib/milk'
+import { formatQty } from '@/lib/production'
+import { MILK_INTAKE_COLS, aggregateMilk, ymdOf, type MilkIntakeLite } from '@/lib/production-reports'
 
-type Tab = 'receipts' | 'payments' | 'ledger'
+type Tab = 'receipts' | 'payments' | 'ledger' | 'quality'
 
 interface ReceiptRow {
   id: string
@@ -48,6 +52,9 @@ interface PaymentRow {
   created_at: string
 }
 
+/** Posted price corrections of the supplier (migration 20261110000014). */
+interface CorrectionRow { id: string; number: number; doc_date: string; receipt_id: string; debt_delta: number; created_at: string }
+
 interface LedgerRow {
   key: string
   ymd: string
@@ -70,6 +77,9 @@ export default function ProdSupplierViewPage() {
   const [tab, setTab] = useState<Tab>('receipts')
   const [receipts, setReceipts] = useState<ReceiptRow[]>([])
   const [payments, setPayments] = useState<PaymentRow[]>([])
+  const [intakes, setIntakes] = useState<MilkIntakeLite[]>([])
+  const [corrections, setCorrections] = useState<CorrectionRow[]>([])
+  const { settings: milkSettings } = useMilkSettings()
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
@@ -78,7 +88,7 @@ export default function ProdSupplierViewPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const [rRes, pRes] = await Promise.all([
+    const [rRes, pRes, iRes, cRes] = await Promise.all([
       fetchAllRows<ReceiptRow>((from, to) => supabase.from('prod_receipts')
         .select('id, number, doc_date, warehouse_id, total, status, created_by_name')
         .eq('supplier_id', id)
@@ -89,10 +99,26 @@ export default function ProdSupplierViewPage() {
         .eq('supplier_id', id)
         .order('number', { ascending: false })
         .range(from, to)),
+      fetchAllRows<MilkIntakeLite>((from, to) => supabase.from('prod_milk_intakes')
+        .select(MILK_INTAKE_COLS)
+        .eq('supplier_id', id)
+        .neq('status', 'cancelled')
+        .order('intake_date')
+        .order('id')
+        .range(from, to)),
+      fetchAllRows<CorrectionRow>((from, to) => supabase.from('prod_price_corrections')
+        .select('id, number, doc_date, receipt_id, debt_delta, created_at')
+        .eq('supplier_id', id)
+        .eq('status', 'posted')
+        .order('number')
+        .range(from, to)),
     ])
-    if (rRes.error || pRes.error) toast.error(t('productionErrors.unknown'))
+    // Corrections are missing until the migration is applied: no error toast for them.
+    setCorrections(cRes.error ? [] : cRes.data)
+    if (rRes.error || pRes.error || iRes.error) toast.error(t('productionErrors.unknown'))
     setReceipts(rRes.data)
     setPayments(pRes.data)
+    setIntakes(iRes.data)
     setLoading(false)
   }, [id, t])
 
@@ -124,6 +150,20 @@ export default function ProdSupplierViewPage() {
         income: 0,
         outcome: Number(p.amount),
       })),
+      // Price correction: debt_delta > 0 raises the debt (kredit), < 0 lowers it (debet).
+      ...corrections.map(c => {
+        const delta = Number(c.debt_delta)
+        const rn = receipts.find(r => r.id === c.receipt_id)?.number
+        return {
+          key: `c-${c.id}`,
+          ymd: localYmd(new Date(c.doc_date)),
+          sortTs: c.doc_date,
+          href: `/xom-ashyo-kirim/${c.receipt_id}`,
+          label: `${t('prodInventory.akt.typeCorrection')} #${c.number}${rn !== undefined ? ` · ${t('production.suppliers.receiptDoc')} #${rn}` : ''}`,
+          income: delta > 0 ? delta : 0,
+          outcome: delta < 0 ? -delta : 0,
+        }
+      }),
     ].sort((a, b) => a.ymd.localeCompare(b.ymd) || a.sortTs.localeCompare(b.sortTs))
     const out: LedgerRow[] = []
     for (const e of entries) {
@@ -131,7 +171,12 @@ export default function ProdSupplierViewPage() {
       out.push({ ...e, balance: Math.round((prev + e.income - e.outcome) * 100) / 100 })
     }
     return out
-  }, [receipts, payments, t])
+  }, [receipts, payments, corrections, t])
+
+  // Sifat: per month quality of everything the lab tested (rejected included).
+  const quality = useMemo(() => aggregateMilk(intakes, r => ymdOf(r.intake_date).slice(0, 7), 'tested')
+    .sort((a, b) => b.key.localeCompare(a.key)), [intakes])
+  const qualityTotal = useMemo(() => aggregateMilk(intakes, () => 'all', 'tested')[0] ?? null, [intakes])
 
   if (suppliersLoading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
@@ -198,11 +243,13 @@ export default function ProdSupplierViewPage() {
             { value: 'receipts' as const, label: `${t('production.suppliers.tabReceipts')} (${receipts.length})` },
             { value: 'payments' as const, label: `${t('production.suppliers.tabPayments')} (${payments.length})` },
             { value: 'ledger' as const, label: t('production.suppliers.tabLedger') },
+            ...(intakes.length > 0 || tab === 'quality' ? [{ value: 'quality' as const, label: t('prodReports.quality.tab') }] : []),
           ]}
           value={tab}
           onChange={setTab}
         />
         {tab === 'ledger' && <span className="text-[12px] text-gray-500 dark:text-gray-400">{t('production.suppliers.postedOnly')}</span>}
+        {tab === 'quality' && <span className="text-[12px] text-gray-500 dark:text-gray-400">{t('prodReports.quality.hint')}</span>}
       </div>
 
       {tab === 'receipts' && (
@@ -318,6 +365,59 @@ export default function ProdSupplierViewPage() {
                 <td className="px-4 py-3 text-right"><DebtValue debt={Math.round((ledgerIncome - ledgerOutcome) * 100) / 100} /></td>
               </tr>
             </tfoot>
+          </table>
+        </TableCard>
+      )}
+
+      {tab === 'quality' && (
+        <TableCard loading={loading} empty={quality.length === 0} emptyText={t('prodReports.quality.empty')} emptyIcon={FlaskConical}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
+                <th className={thCls}>{t('prodReports.quality.month')}</th>
+                <th className={thRightCls}>{t('prodReports.milk.deliveries')}</th>
+                <th className={thRightCls}>{t('prodReports.milk.receivedKg')}</th>
+                <th className={thRightCls}>{t('production.milk.fat')}</th>
+                <th className={thRightCls}>{t('production.milk.protein')}</th>
+                <th className={thRightCls}>{t('production.milk.acidity')}</th>
+                <th className={thRightCls}>{t('production.milk.status.conditional')}</th>
+                <th className={thRightCls}>{t('production.milk.status.rejected')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quality.map(q => {
+                const lowFat = q.fat !== null && milkSettings.minFat > 0 && q.fat < milkSettings.minFat
+                const sourAcid = q.acidity !== null && milkSettings.maxAcidity > 0 && q.acidity > milkSettings.maxAcidity
+                return (
+                  <tr key={q.key} className={trCls}>
+                    <td className={cn(tdCls, 'whitespace-nowrap font-medium text-gray-900 dark:text-gray-100')}>{q.key.slice(5, 7)}.{q.key.slice(0, 4)}</td>
+                    <td className={cn(tdCls, 'text-right tabular-nums text-gray-700 dark:text-gray-300')}>{q.count}</td>
+                    <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap text-gray-900 dark:text-gray-100')}>{formatQty(q.receivedKg)} {t('production.units.kg')}</td>
+                    <td className={cn(tdCls, 'text-right tabular-nums', lowFat ? 'text-amber-700 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100')}>{formatPct(q.fat)}</td>
+                    <td className={cn(tdCls, 'text-right tabular-nums text-gray-900 dark:text-gray-100')}>{formatPct(q.protein)}</td>
+                    <td className={cn(tdCls, 'text-right tabular-nums', sourAcid ? 'text-amber-700 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400')}>{q.acidity === null ? '—' : q.acidity.toFixed(1)}</td>
+                    <td className={cn(tdCls, 'text-right tabular-nums', q.conditional ? 'text-amber-700 dark:text-amber-400' : 'text-gray-400')}>{q.conditional}</td>
+                    <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap', q.rejected ? 'text-red-600 dark:text-red-400' : 'text-gray-400')}>
+                      {q.rejected}{q.rejected ? ` · ${formatQty(q.rejectedKg)} ${t('production.units.kg')}` : ''}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            {qualityTotal && (
+              <tfoot>
+                <tr className="bg-gray-50 dark:bg-gray-800/50 font-medium text-gray-900 dark:text-gray-100">
+                  <td className="px-4 py-3">{t('production.common.total')}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{qualityTotal.count}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{formatQty(qualityTotal.receivedKg)} {t('production.units.kg')}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{formatPct(qualityTotal.fat)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{formatPct(qualityTotal.protein)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{qualityTotal.acidity === null ? '—' : qualityTotal.acidity.toFixed(1)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{qualityTotal.conditional}</td>
+                  <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">{qualityTotal.rejected}{qualityTotal.rejected ? ` · ${formatQty(qualityTotal.rejectedKg)} ${t('production.units.kg')}` : ''}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </TableCard>
       )}

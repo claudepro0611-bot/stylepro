@@ -114,7 +114,7 @@ function GroupFormDialog({ open, onOpenChange, group, onSaved }: {
     setSaving(true)
     const { error } = await createClient().rpc('prod_save_item_group', { p_id: group?.id ?? null, p_name: name.trim(), p_is_active: isActive })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }

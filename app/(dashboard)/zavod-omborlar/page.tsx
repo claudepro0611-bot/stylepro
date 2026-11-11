@@ -154,7 +154,7 @@ function WarehouseFormDialog({ open, onOpenChange, warehouse, onSaved }: {
       p_is_active: isActive,
     })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }

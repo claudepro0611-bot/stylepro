@@ -20,6 +20,9 @@ import {
   PaymentCancelButton, PaymentMethodBadge, SupplierPaymentDialog, useCancelSupplierPayment, useProdSuppliers,
 } from '@/components/production/SupplierKit'
 import { PROD_PAYMENT_METHODS, paymentMethodKey } from '@/lib/production'
+import { ExportButton } from '@/components/production/ReportKit'
+import { AccountName, useCashAccounts } from '@/components/production/CashKit'
+import { downloadXlsx, x2 } from '@/lib/production-reports'
 
 const PAGE_SIZE = 25
 
@@ -33,12 +36,15 @@ interface Row {
   note: string | null
   status: string
   created_by_name: string | null
+  /** Cash & bank (migration 20261110000016); undefined before it. */
+  account_id?: string | null
 }
 
 export default function ProdSupplierPaymentsPage() {
   const { t } = useLanguage()
   const { formatPrice } = useCurrency()
   const { suppliers, reload: reloadSuppliers } = useProdSuppliers()
+  const { available: cashAvailable, accounts } = useCashAccounts()
 
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -56,8 +62,8 @@ export default function ProdSupplierPaymentsPage() {
     setLoading(true)
     const supabase = createClient()
     const { data, error } = await fetchAllRows<Row>((from, to) => {
-      let q = supabase.from('prod_supplier_payments')
-        .select('id, number, supplier_id, amount, method, pay_date, note, status, created_by_name')
+      // '*' so account_id comes along once migration 20261110000016 adds it.
+      let q = supabase.from('prod_supplier_payments').select('*')
       if (range) q = q.gte('pay_date', range.from).lte('pay_date', range.to)
       if (supplierId) q = q.eq('supplier_id', supplierId)
       if (method) q = q.eq('method', method)
@@ -90,6 +96,16 @@ export default function ProdSupplierPaymentsPage() {
   const safePage = Math.min(page, totalPages)
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
+  function exportXlsx() {
+    downloadXlsx('zavod_yetkazuvchi_tolovlar', [
+      t('production.common.number'), t('production.common.date'), t('production.suppliers.supplier'), t('production.suppliers.method'),
+      `${t('production.suppliers.amount')} (UZS)`, t('production.common.status'), t('production.common.author'), t('production.common.note'),
+    ], filtered.map(r => [
+      r.number, r.pay_date, supplierById.get(r.supplier_id)?.name ?? '', t(paymentMethodKey(r.method)), x2(Number(r.amount)),
+      r.status === 'cancelled' ? t('production.common.statusCancelled') : t('production.common.statusPosted'), r.created_by_name ?? '', r.note ?? '',
+    ]), t('production.suppliers.paymentsTitle'))
+  }
+
   function reset() {
     setRange(monthToDate())
     setSupplierId('')
@@ -107,7 +123,7 @@ export default function ProdSupplierPaymentsPage() {
         onAction={() => setDialogOpen(true)}
       />
 
-      <FilterBar onReset={reset}>
+      <FilterBar onReset={reset} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />}>
         <DateRangeFilter value={range} onChange={setRange} />
         <select value={supplierId} onChange={e => setSupplierId(e.target.value)} className={cn(prodFieldCls, 'w-52')}>
           <option value="">{t('production.suppliers.allSuppliers')}</option>
@@ -137,6 +153,7 @@ export default function ProdSupplierPaymentsPage() {
               <th className={thCls}>{t('production.suppliers.supplier')}</th>
               <th className={thRightCls}>{t('production.suppliers.amount')}</th>
               <th className={thCls}>{t('production.suppliers.method')}</th>
+              {cashAvailable && <th className={thCls}>{t('prodCash.common.account')}</th>}
               <th className={thCls}>{t('production.common.status')}</th>
               <th className={thCls}>{t('production.common.author')}</th>
               <th className={thRightCls}>{t('production.common.actions')}</th>
@@ -154,6 +171,7 @@ export default function ProdSupplierPaymentsPage() {
                 </td>
                 <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100')}>{formatPrice(Number(r.amount))}</td>
                 <td className={tdCls}><PaymentMethodBadge method={r.method} /></td>
+                {cashAvailable && <td className={tdCls}><AccountName accounts={accounts} id={r.account_id} /></td>}
                 <td className={tdCls}><DocStatusBadge status={r.status} /></td>
                 <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{r.created_by_name ?? '—'}</td>
                 <td className={tdCls}>
@@ -164,7 +182,7 @@ export default function ProdSupplierPaymentsPage() {
           </tbody>
           <tfoot>
             <tr className="bg-gray-50 dark:bg-gray-800/50 text-sm text-gray-900 dark:text-gray-100">
-              <td colSpan={8} className="px-4 py-3 text-right">
+              <td colSpan={cashAvailable ? 9 : 8} className="px-4 py-3 text-right">
                 {t('production.suppliers.totalPaid')}: <b className="tabular-nums">{formatPrice(totalPaid)}</b>
               </td>
             </tr>

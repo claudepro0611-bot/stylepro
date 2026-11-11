@@ -21,9 +21,10 @@ import {
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
+import { RecipeVersionHistory } from '@/components/production/RecipeVersions'
 import {
   NOTE_MAX, RECIPE_MAX_LINES, fetchAvgCosts, fetchProdRecipe, fetchProdRecipes, itemTypeKey, parseDecimal, prodErrorKey,
-  round2, round4, smartUnit, sumByUnitGroup, toInputString, fromBaseQty, unitKey, yieldPercent,
+  round2, round4, smartUnit, sumByUnitGroup, toInputString, fromBaseQty, unitKey, yieldPercent, yieldWeightOf,
   type EntryUnit, type ProdRecipe,
 } from '@/lib/production'
 
@@ -141,8 +142,8 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
   })
   const batchCost = round2(computed.reduce((s, c) => s + c.cost, 0))
   const unitCost = outQty > 0 ? round2(batchCost / outQty) : 0
-  const inputs = computed.map(c => ({ qty: c.qty, unit: c.base }))
-  const yieldPct = outputItem ? yieldPercent({ qty: outQty, unit: outputItem.unit }, inputs) : null
+  const inputs = computed.map(c => ({ qty: c.qty, unit: c.base, weightKg: yieldWeightOf(c.item) }))
+  const yieldPct = outputItem ? yieldPercent({ qty: outQty, unit: outputItem.unit, weightKg: outputItem.weightKg }, inputs) : null
   const outUnitLabel = outputItem ? t(unitKey(outputItem.unit)) : ''
 
   const valid = !!itemId && round4(outQty) > 0 && computed.length > 0 && computed.length <= RECIPE_MAX_LINES
@@ -165,7 +166,7 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
     const supabase = createClient()
     if (conflict) {
       const { error } = await supabase.rpc('prod_save_recipe', { p_id: conflict.id, p_data: recipePayload({ ...conflict, isActive: false }) })
-      if (error) { setSaving(false); toast.error(t(prodErrorKey(error.message))); return }
+      if (error) { setSaving(false); toast.error(t(prodErrorKey(error))); return }
     }
     const { error } = await supabase.rpc('prod_save_recipe', {
       // A copy is always a new recipe.
@@ -177,7 +178,7 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
       await supabase.rpc('prod_save_recipe', { p_id: conflict.id, p_data: recipePayload({ ...conflict, isActive: true }) })
     }
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     toast.success(t('production.common.saved'))
     router.push('/zavod-retseptlar')
   }
@@ -343,6 +344,10 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
       </div>
 
       <FormFooter onCancel={() => router.push('/zavod-retseptlar')} onSave={save} saving={saving} disabled={!valid} />
+
+      {isEdit && recipeId && (
+        <RecipeVersionHistory recipeId={recipeId} currentVersion={original?.version ?? null} itemById={itemById} reloadKey={original?.version} />
+      )}
     </div>
   )
 }

@@ -13,8 +13,10 @@ import { Button } from '@/components/ui/button'
 import { BackLink, DocStatusBadge, InfoField, TotalsBox, prodCardCls } from '@/components/production/ProdKit'
 import { useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
+import { DocLotsSection } from '@/components/production/DocLots'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { formatQty, sumByUnitGroup, unitKey } from '@/lib/production'
+import { PrintButton, PrintFields, PrintSheet, PrintTable } from '@/components/production/PrintKit'
 import type { Database } from '@/lib/database.types'
 
 type Doc = Database['public']['Tables']['prod_transfers']['Row']
@@ -63,18 +65,22 @@ export default function TransferViewPage() {
   const totalQty = sumByUnitGroup(lines.map(l => ({ qty: Number(l.qty), unit: itemById.get(l.item_id)?.unit ?? 'pcs' })))
 
   return (
-    <div className="space-y-5">
+    <>
+    <div className="space-y-5 print:hidden">
       <BackLink href="/zavod-kochirish" label={t('production.transfers.title')} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('production.transfers.docTitle')} #{doc.number}</h1>
           <DocStatusBadge status={doc.status} />
         </div>
-        {canCancel && doc.status === 'posted' && (
-          <Button variant="outline" onClick={() => cancel(doc.id)} loading={busyId === doc.id}>
-            <Ban className="h-3.5 w-3.5" /> {t('production.common.cancelDoc')}
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <PrintButton />
+          {canCancel && doc.status === 'posted' && (
+            <Button variant="outline" onClick={() => cancel(doc.id)} loading={busyId === doc.id}>
+              <Ban className="h-3.5 w-3.5" /> {t('production.common.cancelDoc')}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-2 lg:grid-cols-4 gap-4')}>
@@ -119,6 +125,8 @@ export default function TransferViewPage() {
         </div>
       </div>
 
+      <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={doc.status} />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         <div className={cn(prodCardCls, 'p-6')}>
           <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('production.common.note')}</p>
@@ -131,5 +139,31 @@ export default function TransferViewPage() {
         ]} />
       </div>
     </div>
+    <PrintSheet
+      title={t('prodReports.print.transferTitle')}
+      number={doc.number}
+      date={doc.doc_date}
+      signatures={[t('prodReports.print.handedOver'), t('prodReports.print.acceptedBy'), t('prodReports.print.driver')]}
+    >
+      <PrintFields rows={[
+        { label: t('production.transfers.from'), value: warehouseById.get(doc.from_warehouse_id)?.name ?? '—' },
+        { label: t('production.transfers.to'), value: warehouseById.get(doc.to_warehouse_id)?.name ?? '—' },
+        { label: t('production.common.author'), value: doc.created_by_name ?? '—' },
+        { label: t('production.common.status'), value: doc.status === 'cancelled' ? t('production.common.statusCancelled') : t('production.common.statusPosted') },
+      ]} />
+      <PrintTable
+        columns={[
+          { label: t('production.common.item') }, { label: t('production.common.qty'), right: true }, { label: t('production.common.unit') },
+          { label: t('production.common.avgCost'), right: true }, { label: t('production.common.total'), right: true },
+        ]}
+        rows={lines.map(l => {
+          const item = itemById.get(l.item_id)
+          return [item?.name ?? '—', formatQty(Number(l.qty)), item ? t(unitKey(item.unit)) : '', formatPrice(Number(l.unit_cost)), formatPrice(Number(l.total))]
+        })}
+        total={[t('production.common.total'), groups(totalQty), '', '', formatPrice(Number(doc.total))]}
+      />
+      {doc.note && <p>{t('production.common.note')}: {doc.note}</p>}
+    </PrintSheet>
+    </>
   )
 }

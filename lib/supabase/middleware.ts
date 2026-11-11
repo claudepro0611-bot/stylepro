@@ -62,6 +62,7 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   // Production firms (business_type = 'production'). Retail firms never get
   // this far for these paths: the business-type check redirects them first.
   '/ishlab-chiqarish': 'prod_production',
+  '/separatsiya': 'prod_production',
   '/qayta-ishlash': 'prod_processing',
   '/xom-ashyo-kirim': 'prod_receipts',
   '/zavod-qoldiq': 'prod_stock',
@@ -69,10 +70,35 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   '/zavod-guruhlar': 'prod_catalog',
   '/zavod-omborlar': 'prod_stock',
   '/zavod-kochirish': 'prod_stock',
+  // Inventory documents (migration 20261110000014).
+  '/zavod-hisobdan-chiqarish': 'prod_stock',
+  '/zavod-inventarizatsiya': 'prod_stock',
+  '/zavod-boshlangich-qoldiq': 'prod_stock',
+  '/zavod-narx-tuzatish': 'prod_receipts',
   '/zavod-retseptlar': 'prod_catalog',
   '/taminot': 'prod_supply',
   '/zavod-yetkazuvchilar': 'prod_suppliers',
   '/zavod-yetkazuvchi-tolovlar': 'prod_suppliers',
+  // Covers /sut-qabuli/yangi, /[id] and /sozlamalar too. Lab actions need
+  // 'prod_lab' as well, checked on the page and in prod_record_milk_lab.
+  '/sut-qabuli': 'prod_milk',
+  // Read-only production reports (oborot, qoldiq, muddat, partiya, ...).
+  '/zavod-hisobotlar': 'prod_stock',
+  // Wholesale sales (migration 20261110000015). The sales reports need
+  // 'prod_stock' (parent prefix) and 'prod_sales'.
+  '/zavod-hisobotlar/sotuv': 'prod_sales',
+  '/zavod-hisobotlar/debitorlik': 'prod_sales',
+  '/zavod-sotuv': 'prod_sales',
+  '/zavod-qaytarishlar': 'prod_sales',
+  '/zavod-mijozlar': 'prod_sales',
+  '/zavod-narxlar': 'prod_sales',
+  '/zavod-mijoz-tolovlari': 'prod_customer_payments',
+  // Cash & bank (migration 20261110000016). The cash report also needs
+  // 'prod_stock' (parent /zavod-hisobotlar prefix).
+  '/zavod-kassa': 'prod_cash',
+  '/zavod-kassa-orderlar': 'prod_cash',
+  '/zavod-kassa-otkazmalar': 'prod_cash',
+  '/zavod-hisobotlar/kassa': 'prod_cash',
 }
 
 // API routes do their own auth and are called by pages of both business

@@ -22,7 +22,7 @@ export function useCancelDoc(docType: ProdDocType, onDone: () => void) {
     setBusyId(id)
     const { error } = await createClient().rpc('prod_cancel_document', { p_doc_type: docType, p_id: id })
     setBusyId(null)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     toast.success(t('production.common.cancelSuccess'))
     onDone()
   }

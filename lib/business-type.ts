@@ -15,6 +15,7 @@ export const BUSINESS_TYPES: BusinessType[] = ['retail', 'production']
 /** Routes that exist only for production firms. */
 export const PRODUCTION_PREFIXES = [
   '/ishlab-chiqarish',
+  '/separatsiya',
   '/qayta-ishlash',
   '/xom-ashyo-kirim',
   '/zavod-qoldiq',
@@ -22,10 +23,27 @@ export const PRODUCTION_PREFIXES = [
   '/zavod-guruhlar',
   '/zavod-omborlar',
   '/zavod-kochirish',
+  '/zavod-hisobdan-chiqarish',
+  '/zavod-inventarizatsiya',
+  '/zavod-boshlangich-qoldiq',
+  '/zavod-narx-tuzatish',
   '/zavod-retseptlar',
   '/taminot',
   '/zavod-yetkazuvchilar',
   '/zavod-yetkazuvchi-tolovlar',
+  '/sut-qabuli',
+  '/zavod-hisobotlar',
+  // Wholesale sales (migration 20261110000015).
+  '/zavod-sotuv',
+  '/zavod-qaytarishlar',
+  '/zavod-mijozlar',
+  '/zavod-mijoz-tolovlari',
+  '/zavod-narxlar',
+  // Cash & bank (migration 20261110000016). '/zavod-kassa' does not match
+  // '/zavod-kassa-orderlar' (prefix match is on '<p>/').
+  '/zavod-kassa',
+  '/zavod-kassa-orderlar',
+  '/zavod-kassa-otkazmalar',
 ] as const
 
 /** Routes both business types may open. */

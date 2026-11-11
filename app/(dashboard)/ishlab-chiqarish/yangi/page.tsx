@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Loader2, RotateCcw, X } from 'lucide-react'
+import { AlertTriangle, Loader2, RotateCcw, X } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -16,18 +16,27 @@ import {
   prodCardCls, prodFieldCls, prodLabelCls, type TotalRow,
 } from '@/components/production/ProdKit'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
-import { useProdRefs, useWarehouseStock } from '@/components/production/useProdRefs'
+import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
+import { LotPicker } from '@/components/production/LotPicker'
+import { useMilkSettings } from '@/components/production/MilkKit'
 import {
-  fetchActiveRecipe, formatQty, fromBaseQty, localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round2, round3, round4,
-  smartUnit, sumByUnitGroup, toInputString, unitKey, warehousesFor, yieldPercent,
-  type EntryUnit, type ProdItem, type ProdRecipe,
+  CREAM_NAME_RE, activePicks, allocateFefo, fetchActiveRecipe, formatQty, fromBaseQty, lineAllocation, lineCost, localDateTimeToIso,
+  makeLinePicks, nowHm, parseDecimal, picksPayload, prodErrorKey, round2, round3, round4,
+  smartUnit, sumByUnitGroup, toInputString, unitKey, warehousesFor, yieldPercent, yieldWeightOf,
+  type EntryUnit, type LinePicks, type ProdItem, type ProdRecipe,
 } from '@/lib/production'
 
 /**
  * value === null: the line follows the recipe norm (rescaled whenever the
  * produced quantity changes). Typing into Fakt detaches it from the norm.
  */
-interface ComponentLine { itemId: string; value: string | null; unit: EntryUnit }
+interface ComponentLine {
+  itemId: string
+  value: string | null
+  unit: EntryUnit
+  /** Manually picked lots; dropped automatically when warehouse or qty change. */
+  picks?: LinePicks | null
+}
 
 // Fakt is stored with 3 decimals, the norm with 4: ignore the rounding gap.
 const EPS = 0.0005
@@ -45,6 +54,7 @@ export default function NewProductionPage() {
   const router = useRouter()
   const { smart, inUnit, groups } = useQtyFormat()
   const { items, warehouses, itemById } = useProdRefs()
+  const { settings: milkSettings } = useMilkSettings()
 
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
@@ -61,6 +71,7 @@ export default function NewProductionPage() {
   const recipeReq = useRef(0)
 
   const { stock, loading: stockLoading } = useWarehouseStock(warehouseId)
+  const { lotsOf, available: lotsAvailable } = useWarehouseLots(warehouseId)
 
   // Client clock only (avoids a server/client hydration mismatch).
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
@@ -103,10 +114,15 @@ export default function NewProductionPage() {
     const s = stock.get(l.itemId)
     const available = s?.qty ?? 0
     const avg = s?.avgCost ?? 0
+    // Exact cost from the lots (picked, else the FEFO preview); avg_cost without lots.
+    const lots = lotsOf(l.itemId)
+    const picks = activePicks(l.picks, warehouseId, l.itemId, fact)
+    const total = lineCost(lineAllocation(lots, picks, fact), fact, avg)
     return {
-      ...l, item, base, planned, display, fact, diff, available, avg,
-      total: round2(fact * avg),
-      normTotal: planned === null ? 0 : round2(planned * avg),
+      ...l, item, base, planned, display, fact, diff, available, avg, lots, picks,
+      unitPrice: fact > 0 ? round2(total / fact) : avg,
+      total,
+      normTotal: planned === null ? 0 : lineCost(lots ? allocateFefo(lots, planned) : null, planned, avg),
       over: fact > available,
       edited: planned !== null && l.value !== null,
     }
@@ -114,8 +130,11 @@ export default function NewProductionPage() {
   const totalCost = round2(computed.reduce((sum, c) => sum + c.total, 0))
   const unitCost = outQty > 0 ? round2(totalCost / outQty) : 0
   const normCost = round2(computed.reduce((sum, c) => sum + c.normTotal, 0))
-  const factInputs = computed.map(c => ({ qty: c.fact, unit: c.base }))
-  const yieldPct = outputItem ? yieldPercent({ qty: outQty, unit: outputItem.unit }, factInputs) : null
+  const factInputs = computed.map(c => ({ qty: c.fact, unit: c.base, weightKg: yieldWeightOf(c.item) }))
+  const yieldPct = outputItem ? yieldPercent({ qty: outQty, unit: outputItem.unit, weightKg: outputItem.weightKg }, factInputs) : null
+  // Cream made from milk belongs in a Separatsiya document (cream + skim together).
+  const creamFromMilk = !!outputItem && CREAM_NAME_RE.test(outputItem.name) && computed.some(c =>
+    (!!milkSettings.milkItemId && c.itemId === milkSettings.milkItemId) || /(^|\s)sut(\s|$)|молок|milk/i.test(c.item?.name ?? ''))
   const canReset = !!recipe && (computed.some(c => c.edited) || recipe.lines.some(rl => !lines.some(l => l.itemId === rl.itemId)))
 
   const valid = !!warehouseId && !!outputWarehouseId && !!outputItemId && round3(outQty) > 0 && computed.length > 0
@@ -170,11 +189,12 @@ export default function NewProductionPage() {
           item_id: c.itemId,
           qty: c.fact,
           planned_qty: c.planned === null ? null : round4(c.planned),
+          lots: picksPayload(c.picks),
         })),
       },
     })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/ishlab-chiqarish/${id}` : '/ishlab-chiqarish')
@@ -276,6 +296,16 @@ export default function NewProductionPage() {
         </div>
       </div>
 
+      {creamFromMilk && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="min-w-0 flex-1 text-[13px] text-amber-800 dark:text-amber-300">{t('production.productions.creamHint')}</p>
+          <Link href="/separatsiya/yangi" className="inline-flex h-9 items-center rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-gray-100 dark:hover:bg-white dark:text-gray-900 px-3 text-sm font-medium text-white transition-colors">
+            {t('production.productions.creamHintLink')}
+          </Link>
+        </div>
+      )}
+
       <div className={cn(prodCardCls, 'overflow-hidden')}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-3">
           <div className="flex items-center gap-3">
@@ -321,9 +351,9 @@ export default function NewProductionPage() {
                   <th className="px-4 py-2.5 text-left font-medium">{t('production.productions.component')}</th>
                   <th className="px-4 py-2.5 text-right font-medium">{t('production.common.stockLeft')}</th>
                   <th className="px-4 py-2.5 text-right font-medium">{t('production.productions.norm')}</th>
-                  <th className="px-4 py-2.5 text-right font-medium w-52">{t('production.productions.fact')}</th>
+                  <th className={cn('px-4 py-2.5 text-right font-medium', lotsAvailable ? 'w-72' : 'w-52')}>{t('production.productions.fact')}</th>
                   <th className="px-4 py-2.5 text-right font-medium">{t('production.productions.diff')}</th>
-                  <th className="px-4 py-2.5 text-right font-medium">{t('production.common.avgCost')}</th>
+                  <th className="px-4 py-2.5 text-right font-medium">{lotsAvailable ? t('production.lots.unitCost') : t('production.common.avgCost')}</th>
                   <th className="px-4 py-2.5 text-right font-medium">{t('production.common.total')}</th>
                   <th className="px-4 py-2.5 w-10" />
                 </tr>
@@ -367,6 +397,13 @@ export default function NewProductionPage() {
                               <RotateCcw className="h-3.5 w-3.5" />
                             </button>
                           ) : <span className="w-7 shrink-0" />}
+                          <LotPicker
+                            lots={c.lots}
+                            qty={c.fact}
+                            unit={c.base}
+                            picks={c.picks}
+                            onChange={p => patchLine(c.itemId, { picks: makeLinePicks(warehouseId, c.itemId, c.fact, p) })}
+                          />
                         </div>
                         {c.over && <p className="mt-0.5 text-right text-[11px] text-red-600 dark:text-red-400">{t('productionErrors.insufficient_stock')}</p>}
                       </td>
@@ -378,7 +415,7 @@ export default function NewProductionPage() {
                           </>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(c.avg)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{formatPrice(c.unitPrice)}</td>
                       <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{formatPrice(c.total)}</td>
                       <td className="px-4 py-2">
                         <button

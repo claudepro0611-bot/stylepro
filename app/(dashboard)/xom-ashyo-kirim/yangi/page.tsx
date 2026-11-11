@@ -16,11 +16,12 @@ import {
   BackLink, DisabledSelect, FormFooter, NoteField, PageHeader, TotalsBox,
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
-import { useProdRefs, useWarehouseStock } from '@/components/production/useProdRefs'
+import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { SupplierFormDialog, useProdSuppliers } from '@/components/production/SupplierKit'
 import { formatQty, localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round2, round3, unitKey } from '@/lib/production'
 
-interface Line { itemId: string; qty: string; price: string }
+/** expiry: optional "YYYY-MM-DD"; empty = the item's shelf life (server side). */
+interface Line { itemId: string; qty: string; price: string; expiry: string }
 
 export default function NewReceiptPage() {
   const { t } = useLanguage()
@@ -44,6 +45,8 @@ export default function NewReceiptPage() {
 
   // Current stock is shown next to each line for context only.
   const { stock } = useWarehouseStock(warehouseId)
+  // Lots (and so per-line expiry) only exist once the lots migration is applied.
+  const { available: lotsAvailable } = useWarehouseLots(warehouseId)
 
   // Client clock only (avoids a server/client hydration mismatch).
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
@@ -87,11 +90,16 @@ export default function NewReceiptPage() {
         supplier_id: supplierId || null,
         supplier_name: null,
         note: note.trim() || null,
-        items: computed.map(c => ({ item_id: c.itemId, qty: round3(c.qtyNum), price: round2(c.priceNum) })),
+        items: computed.map(c => ({
+          item_id: c.itemId,
+          qty: round3(c.qtyNum),
+          price: round2(c.priceNum),
+          ...(lotsAvailable && c.expiry ? { expiry_date: c.expiry } : {}),
+        })),
       },
     })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/xom-ashyo-kirim/${id}` : '/xom-ashyo-kirim')
@@ -146,7 +154,7 @@ export default function NewReceiptPage() {
               <SearchSelect
                 options={itemOptions}
                 value=""
-                onChange={id => setLines(prev => [...prev, { itemId: id, qty: '', price: '' }])}
+                onChange={id => setLines(prev => [...prev, { itemId: id, qty: '', price: '', expiry: '' }])}
                 placeholder={t('production.receipts.addItem')}
               />
             ) : (
@@ -165,6 +173,7 @@ export default function NewReceiptPage() {
                   <th className="px-4 py-2.5 text-right font-medium">{t('production.common.stockLeft')}</th>
                   <th className="px-4 py-2.5 text-right font-medium w-40">{t('production.common.qty')}</th>
                   <th className="px-4 py-2.5 text-right font-medium w-44">{t('production.common.price')}</th>
+                  {lotsAvailable && <th className="px-4 py-2.5 text-left font-medium w-44">{t('production.receipts.expiry')}</th>}
                   <th className="px-4 py-2.5 text-right font-medium">{t('production.common.total')}</th>
                   <th className="px-4 py-2.5 w-10" />
                 </tr>
@@ -183,6 +192,20 @@ export default function NewReceiptPage() {
                       <td className="px-4 py-2">
                         <input inputMode="decimal" value={c.price} onChange={e => setLine(c.itemId, { price: e.target.value })} placeholder="0" className={cn(prodFieldCls, 'h-8 text-right tabular-nums')} />
                       </td>
+                      {lotsAvailable && (
+                        <td className="px-4 py-2">
+                          <input
+                            type="date"
+                            value={c.expiry}
+                            onChange={e => setLine(c.itemId, { expiry: e.target.value })}
+                            title={t('production.receipts.expiryHint')}
+                            className={cn(prodFieldCls, 'h-8 tabular-nums')}
+                          />
+                          {!c.expiry && item?.shelfLifeDays != null && (
+                            <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{t('production.receipts.expiryAuto')}: {item.shelfLifeDays} {t('production.receipts.days')}</p>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{formatPrice(c.total)}</td>
                       <td className="px-4 py-2">
                         <button

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -9,7 +9,8 @@ import {
   MessageSquare, Settings, ArrowDownCircle, Trash2, ChevronDown, ShoppingCart,
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
   Receipt, Warehouse, Store, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered, Truck, ArrowLeftRight, PackagePlus,
-  Factory, Recycle, BookOpen, HandCoins, Banknote,
+  Factory, Recycle, BookOpen, HandCoins, Banknote, Milk, Split, FileBarChart, PackageOpen, Tags, Undo2,
+  Landmark, ReceiptText, ArrowRightLeft, Boxes,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -32,16 +33,104 @@ export interface NavLeaf {
   allBranchRolesOnly?: boolean
   /** Highlight only on this exact path (siblings live under it, e.g. /taminot/*). */
   exact?: boolean
+  /** Shared module the retail nav already lists elsewhere: dropped from the retail production add-on. */
+  retailHasOwn?: boolean
 }
 
 export interface NavEntry extends NavLeaf {
   children?: NavLeaf[]
   noLink?: boolean
+  /** Nav section: a labelled divider is drawn above the first visible item of a section. */
+  section?: 'production'
 }
 
 interface SidebarProps {
   forceExpanded?: boolean
 }
+
+// Production module groups (Bosh sahifa / HR / Jamoa excluded), defined once:
+// production firms get them as-is, retail firms with the "production" add-on
+// get them under a "Zavod" section (see PRODUCTION_ADDON_ITEMS). Group hrefs
+// are synthetic keys (noLink) and never collide with real routes or with the
+// retail groups ('/moliya', '/reports', ...), so their open state is separate.
+const PRODUCTION_GROUPS: NavEntry[] = [
+  {
+    href: '/zavod-ishlab-chiqarish-bolimi', labelKey: 'production.nav.production', icon: Factory, noLink: true,
+    children: [
+      { href: '/sut-qabuli', labelKey: 'production.nav.milk', icon: Milk, permKey: 'prod_milk' },
+      { href: '/ishlab-chiqarish', labelKey: 'production.nav.production', icon: Factory, permKey: 'prod_production' },
+      { href: '/separatsiya', labelKey: 'production.nav.separation', icon: Split, permKey: 'prod_production' },
+      { href: '/qayta-ishlash', labelKey: 'production.nav.processing', icon: Recycle, permKey: 'prod_processing' },
+    ],
+  },
+  {
+    href: '/zavod-sotuv-bolimi', labelKey: 'prodSales.nav.group', icon: ShoppingCart, noLink: true,
+    children: [
+      { href: '/zavod-sotuv', labelKey: 'prodSales.nav.sales', icon: Receipt, permKey: 'prod_sales' },
+      { href: '/zavod-qaytarishlar', labelKey: 'prodSales.nav.returns', icon: Undo2, permKey: 'prod_sales' },
+      { href: '/zavod-mijozlar', labelKey: 'prodSales.nav.customers', icon: Contact, permKey: 'prod_sales' },
+      { href: '/zavod-mijoz-tolovlari', labelKey: 'prodSales.nav.customerPayments', icon: CreditCard, permKey: 'prod_customer_payments' },
+      { href: '/zavod-narxlar', labelKey: 'prodSales.nav.priceLists', icon: ListOrdered, permKey: 'prod_sales' },
+    ],
+  },
+  {
+    href: '/zavod-xarid-bolimi', labelKey: 'prodCash.nav.purchase', icon: Truck, noLink: true,
+    children: [
+      { href: '/xom-ashyo-kirim', labelKey: 'production.nav.receipts', icon: PackagePlus, permKey: 'prod_receipts' },
+      { href: '/zavod-yetkazuvchilar', labelKey: 'production.nav.suppliers', icon: Contact, permKey: 'prod_suppliers' },
+      { href: '/zavod-yetkazuvchi-tolovlar', labelKey: 'prodCash.nav.supplierPayments', icon: CreditCard, permKey: 'prod_suppliers' },
+      { href: '/zavod-narx-tuzatish', labelKey: 'prodInventory.nav.priceCorrections', icon: Tags, permKey: 'prod_receipts' },
+    ],
+  },
+  {
+    href: '/zavod-ombor-bolimi', labelKey: 'prodCash.nav.stock', icon: Boxes, noLink: true,
+    children: [
+      { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_stock' },
+      { href: '/zavod-kochirish', labelKey: 'production.nav.transfers', icon: ArrowLeftRight, permKey: 'prod_stock' },
+      { href: '/zavod-hisobdan-chiqarish', labelKey: 'prodInventory.nav.writeoffs', icon: Trash2, permKey: 'prod_stock' },
+      { href: '/zavod-inventarizatsiya', labelKey: 'prodInventory.nav.stockCounts', icon: ClipboardCheck, permKey: 'prod_stock' },
+      { href: '/zavod-boshlangich-qoldiq', labelKey: 'prodInventory.nav.openings', icon: PackageOpen, permKey: 'prod_stock' },
+    ],
+  },
+  {
+    href: '/zavod-moliya-bolimi', labelKey: 'sidebar.finance', icon: Wallet, noLink: true,
+    children: [
+      { href: '/zavod-kassa', labelKey: 'prodCash.nav.cash', icon: Landmark, permKey: 'prod_cash' },
+      { href: '/zavod-kassa-orderlar', labelKey: 'prodCash.nav.orders', icon: ReceiptText, permKey: 'prod_cash' },
+      { href: '/zavod-kassa-otkazmalar', labelKey: 'prodCash.nav.transfers', icon: ArrowRightLeft, permKey: 'prod_cash' },
+      { href: '/xarajatlar', labelKey: 'sidebar.expenses', icon: Receipt, permKey: 'xarajatlar', featureKey: 'expenses', retailHasOwn: true },
+      { href: '/valyuta-kurslari', labelKey: 'sidebar.exchangeRates', icon: TrendingUp, permKey: 'sozlamalar', retailHasOwn: true },
+    ],
+  },
+  {
+    href: '/taminot-bolimi', labelKey: 'production.nav.supply', icon: HandCoins, noLink: true,
+    children: [
+      { href: '/taminot', labelKey: 'production.nav.agents', icon: Contact, permKey: 'prod_supply', exact: true },
+      { href: '/taminot/pul-berish', labelKey: 'production.nav.cashIssue', icon: Banknote, permKey: 'prod_supply' },
+      { href: '/taminot/sarflar', labelKey: 'production.nav.spending', icon: Receipt, permKey: 'prod_supply' },
+    ],
+  },
+  // Single entry: the reports index lists every report (incl. the cash report).
+  { href: '/zavod-hisobotlar', labelKey: 'prodReports.nav', icon: FileBarChart, permKey: 'prod_stock' },
+  {
+    href: '/zavod-malumotnomalar', labelKey: 'production.nav.catalog', icon: BookOpen, noLink: true,
+    children: [
+      { href: '/zavod-mahsulotlar', labelKey: 'production.nav.items', icon: ShoppingBag, permKey: 'prod_catalog' },
+      { href: '/zavod-guruhlar', labelKey: 'production.nav.groups', icon: Tag, permKey: 'prod_catalog' },
+      { href: '/zavod-retseptlar', labelKey: 'production.nav.recipes', icon: ClipboardList, permKey: 'prod_catalog' },
+    ],
+  },
+]
+
+// Retail firms with the "production" add-on (super-admin enables the
+// 'production' feature): same groups under a "Zavod" section; Xarajatlar and
+// Valyuta kurslari stay only in the retail Moliya group.
+const PRODUCTION_ADDON_ITEMS: NavEntry[] = PRODUCTION_GROUPS.map(item => ({
+  ...item,
+  featureKey: 'production',
+  section: 'production' as const,
+  ...(item.children ? { children: item.children.filter(c => !c.retailHasOwn) } : {}),
+}))
 
 export const NAV_ITEMS: NavEntry[] = [
   { href: '/dashboard', labelKey: 'sidebar.dashboard', icon: LayoutDashboard, permKey: 'dashboard' },
@@ -119,26 +208,8 @@ export const NAV_ITEMS: NavEntry[] = [
       { href: '/valyuta-kurslari', labelKey: 'sidebar.exchangeRates', icon: TrendingUp, permKey: 'sozlamalar' },
     ],
   },
-  // "Ishlab chiqarish" add-on module for retail firms (super-admin enables the
-  // 'production' feature). Production-type firms use PRODUCTION_NAV_ITEMS.
-  {
-    href: '/ishlab-chiqarish-moduli', labelKey: 'production.nav.production', icon: Factory, noLink: true, featureKey: 'production',
-    children: [
-      { href: '/ishlab-chiqarish', labelKey: 'production.nav.production', icon: Factory, permKey: 'prod_production' },
-      { href: '/qayta-ishlash', labelKey: 'production.nav.processing', icon: Recycle, permKey: 'prod_processing' },
-      { href: '/xom-ashyo-kirim', labelKey: 'production.nav.receipts', icon: PackagePlus, permKey: 'prod_receipts' },
-      { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_stock' },
-      { href: '/zavod-kochirish', labelKey: 'production.nav.transfers', icon: ArrowLeftRight, permKey: 'prod_stock' },
-      { href: '/zavod-mahsulotlar', labelKey: 'production.nav.items', icon: ShoppingBag, permKey: 'prod_catalog' },
-      { href: '/zavod-guruhlar', labelKey: 'production.nav.groups', icon: Tag, permKey: 'prod_catalog' },
-      { href: '/zavod-retseptlar', labelKey: 'production.nav.recipes', icon: ClipboardList, permKey: 'prod_catalog' },
-      { href: '/taminot', labelKey: 'production.nav.agents', icon: Contact, permKey: 'prod_supply', exact: true },
-      { href: '/taminot/pul-berish', labelKey: 'production.nav.cashIssue', icon: Banknote, permKey: 'prod_supply' },
-      { href: '/taminot/sarflar', labelKey: 'production.nav.spending', icon: Receipt, permKey: 'prod_supply' },
-      { href: '/zavod-yetkazuvchilar', labelKey: 'production.nav.suppliers', icon: Truck, permKey: 'prod_suppliers' },
-      { href: '/zavod-yetkazuvchi-tolovlar', labelKey: 'production.nav.supplierPayments', icon: CreditCard, permKey: 'prod_suppliers' },
-    ],
-  },
+  // Production add-on module (retail firms): see PRODUCTION_ADDON_ITEMS.
+  ...PRODUCTION_ADDON_ITEMS,
   { href: '/marketing', labelKey: 'sidebar.marketing', icon: Megaphone, permKey: 'marketing', featureKey: 'marketing' },
   { href: '/requests', labelKey: 'sidebar.requests', icon: MessageSquare, permKey: 'requests' },
   { href: '/jamoa', labelKey: 'sidebar.jamoa', icon: UserCog, permKey: 'jamoa' },
@@ -149,41 +220,7 @@ export const NAV_ITEMS: NavEntry[] = [
 // modules; route access is enforced in proxy.ts and by has_permission().
 export const PRODUCTION_NAV_ITEMS: NavEntry[] = [
   { href: '/dashboard', labelKey: 'sidebar.dashboard', icon: LayoutDashboard, permKey: 'dashboard' },
-  { href: '/ishlab-chiqarish', labelKey: 'production.nav.production', icon: Factory, permKey: 'prod_production' },
-  { href: '/qayta-ishlash', labelKey: 'production.nav.processing', icon: Recycle, permKey: 'prod_processing' },
-  { href: '/xom-ashyo-kirim', labelKey: 'production.nav.receipts', icon: PackagePlus, permKey: 'prod_receipts' },
-  {
-    href: '/zavod-yetkazuvchilar-bolimi', labelKey: 'production.nav.suppliersGroup', icon: Truck, noLink: true,
-    children: [
-      { href: '/zavod-yetkazuvchilar', labelKey: 'production.nav.suppliers', icon: Contact, permKey: 'prod_suppliers' },
-      { href: '/zavod-yetkazuvchi-tolovlar', labelKey: 'production.nav.supplierPayments', icon: CreditCard, permKey: 'prod_suppliers' },
-    ],
-  },
-  { href: '/zavod-omborlar', labelKey: 'production.nav.warehouses', icon: Warehouse, permKey: 'prod_stock' },
-  { href: '/zavod-kochirish', labelKey: 'production.nav.transfers', icon: ArrowLeftRight, permKey: 'prod_stock' },
-  {
-    href: '/zavod-malumotnomalar', labelKey: 'production.nav.catalog', icon: BookOpen, noLink: true,
-    children: [
-      { href: '/zavod-mahsulotlar', labelKey: 'production.nav.items', icon: ShoppingBag, permKey: 'prod_catalog' },
-      { href: '/zavod-guruhlar', labelKey: 'production.nav.groups', icon: Tag, permKey: 'prod_catalog' },
-      { href: '/zavod-retseptlar', labelKey: 'production.nav.recipes', icon: ClipboardList, permKey: 'prod_catalog' },
-    ],
-  },
-  {
-    href: '/taminot-bolimi', labelKey: 'production.nav.supply', icon: HandCoins, noLink: true,
-    children: [
-      { href: '/taminot', labelKey: 'production.nav.agents', icon: Contact, permKey: 'prod_supply', exact: true },
-      { href: '/taminot/pul-berish', labelKey: 'production.nav.cashIssue', icon: Banknote, permKey: 'prod_supply' },
-      { href: '/taminot/sarflar', labelKey: 'production.nav.spending', icon: Receipt, permKey: 'prod_supply' },
-    ],
-  },
-  {
-    href: '/moliya', labelKey: 'sidebar.finance', icon: Wallet, noLink: true,
-    children: [
-      { href: '/xarajatlar', labelKey: 'sidebar.expenses', icon: Receipt, permKey: 'xarajatlar', featureKey: 'expenses' },
-      { href: '/valyuta-kurslari', labelKey: 'sidebar.exchangeRates', icon: TrendingUp, permKey: 'sozlamalar' },
-    ],
-  },
+  ...PRODUCTION_GROUPS,
   {
     href: '/hr', labelKey: 'sidebar.hrModule', icon: Users, noLink: true, permKey: 'hr', featureKey: 'hr',
     children: [
@@ -275,13 +312,16 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
     if (collapsed) setExpandedGroups({})
   }, [collapsed])
 
+  // Re-run when the visible groups change too (features / session load after
+  // the first render), so the group of the active route opens on a hard reload.
+  const groupKey = groups.map(g => g.href).join('|')
   useEffect(() => {
     groups.forEach(g => {
       if (groupActive(pathname, g)) {
         setExpandedGroups(prev => ({ ...prev, [g.href]: true }))
       }
     })
-  }, [pathname, isProduction]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname, isProduction, groupKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleGroup(href: string) {
     setExpandedGroups(prev => ({ ...prev, [href]: !prev[href] }))
@@ -347,6 +387,22 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
     )
   }
 
+  /** Collapsed tooltip label: "Zavod · Sotuv" inside the production add-on section. */
+  function navLabel(item: NavEntry) {
+    return item.section === 'production' ? `${t('prodCash.nav.section')} · ${t(item.labelKey)}` : t(item.labelKey)
+  }
+
+  // ─── Section header (labelled divider; plain divider when collapsed) ────────
+  function renderSectionHeader(item: NavEntry) {
+    if (collapsed) return <div key={`section:${item.href}`} className="my-2 border-t border-gray-100 dark:border-gray-800" />
+    return (
+      <div key={`section:${item.href}`} className="mt-3 mb-1 flex items-center gap-2 px-2.5">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">{t('prodCash.nav.section')}</span>
+        <span className="h-px flex-1 bg-gray-100 dark:bg-gray-800" />
+      </div>
+    )
+  }
+
   // ─── Main renderItem ─────────────────────────────────────────────────────────
   function renderItem(item: NavEntry) {
     const Icon = item.icon
@@ -357,7 +413,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
 
       if (collapsed) {
         return renderCollapsedItem(
-          item.href, Icon, t(item.labelKey), active,
+          item.href, Icon, navLabel(item), active,
           () => setStoredCollapsed(false), // clicking a group in collapsed mode expands sidebar
         )
       }
@@ -384,7 +440,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
               <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500 transition-transform duration-200', expanded ? 'rotate-0' : '-rotate-90')} />
             </Link>
           )}
-          <div className={cn('overflow-hidden transition-all duration-200 ease-in-out', expanded ? 'mt-0.5 max-h-72 opacity-100' : 'max-h-0 opacity-0')}>
+          <div className={cn('overflow-hidden transition-all duration-200 ease-in-out', expanded ? 'mt-0.5 max-h-96 opacity-100' : 'max-h-0 opacity-0')}>
             <div className="space-y-0.5">
               {item.children.map(child =>
                 renderExpandedLeaf(child.href, child.href, child.icon, t(child.labelKey), isActive(pathname, child.href, child.exact), true)
@@ -398,7 +454,7 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
     const active = isActive(pathname, item.href)
 
     if (collapsed) {
-      return renderCollapsedItem(item.href, Icon, t(item.labelKey), active, undefined, item.href)
+      return renderCollapsedItem(item.href, Icon, navLabel(item), active, undefined, item.href)
     }
 
     return renderExpandedLeaf(item.href, item.href, Icon, t(item.labelKey), active, false)
@@ -445,7 +501,17 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
 
       {/* ── Nav ──────────────────────────────────────────────────────────────── */}
       <nav className={cn('flex-1 py-2 space-y-0.5 overflow-y-auto', collapsed ? 'px-2' : 'px-2.5')}>
-        {filteredNavItems.map(renderItem)}
+        {filteredNavItems.map((item, i) => {
+          const sectionStart = !!item.section && filteredNavItems[i - 1]?.section !== item.section
+          const sectionEnd = !!item.section && i < filteredNavItems.length - 1 && !filteredNavItems[i + 1]?.section
+          return (
+            <Fragment key={item.href}>
+              {sectionStart && renderSectionHeader(item)}
+              {renderItem(item)}
+              {sectionEnd && <div className="my-2 border-t border-gray-100 dark:border-gray-800" />}
+            </Fragment>
+          )
+        })}
 
         {isAdmin && (
           <>

@@ -3,7 +3,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, Trash2, ShoppingBag, Tag,
   BarChart2, Megaphone, MessageSquare, Receipt,
   Briefcase, Settings, UserCog, Archive, TrendingUp, Truck, ArrowLeftRight,
-  Factory, Recycle, Boxes, BookOpen, HandCoins,
+  Factory, Recycle, Boxes, BookOpen, HandCoins, Milk, FlaskConical, CreditCard, Landmark,
   type LucideIcon,
 } from 'lucide-react'
 import type { TranslationKey } from '@/lib/i18n/translations'
@@ -22,7 +22,8 @@ export const PERMISSION_KEYS = [
   // Production firms only (business_type = 'production'). Fail-closed: a
   // missing key means NO access for non-owners, unlike the retail keys.
   'prod_catalog', 'prod_production', 'prod_processing', 'prod_receipts',
-  'prod_stock', 'prod_supply', 'prod_suppliers',
+  'prod_stock', 'prod_supply', 'prod_suppliers', 'prod_milk', 'prod_lab',
+  'prod_sales', 'prod_customer_payments', 'prod_cash',
 ] as const
 
 export type PermissionKey = typeof PERMISSION_KEYS[number]
@@ -31,7 +32,7 @@ export type Permissions = Record<PermissionKey, boolean>
 
 export const PRODUCTION_PERMISSION_KEYS: readonly PermissionKey[] = [
   'prod_catalog', 'prod_production', 'prod_processing', 'prod_receipts', 'prod_stock', 'prod_supply',
-  'prod_suppliers',
+  'prod_suppliers', 'prod_milk', 'prod_lab', 'prod_sales', 'prod_customer_payments', 'prod_cash',
 ]
 
 /** Retail keys that production firms also use (mirrors has_permission()). */
@@ -92,6 +93,8 @@ export const PERMISSION_ITEMS: { key: PermissionKey; labelKey: TranslationKey; i
   { key: 'sozlamalar', labelKey: 'sidebar.settings', icon: Settings },
   { key: 'jamoa', labelKey: 'sidebar.jamoa', icon: UserCog },
   { key: 'arxiv', labelKey: 'sidebar.arxiv', icon: Archive },
+  { key: 'prod_milk', labelKey: 'production.perm.milk', icon: Milk },
+  { key: 'prod_lab', labelKey: 'production.perm.lab', icon: FlaskConical },
   { key: 'prod_production', labelKey: 'production.perm.production', icon: Factory },
   { key: 'prod_processing', labelKey: 'production.perm.processing', icon: Recycle },
   { key: 'prod_receipts', labelKey: 'production.perm.receipts', icon: ArrowDownCircle },
@@ -99,6 +102,9 @@ export const PERMISSION_ITEMS: { key: PermissionKey; labelKey: TranslationKey; i
   { key: 'prod_catalog', labelKey: 'production.perm.catalog', icon: BookOpen },
   { key: 'prod_supply', labelKey: 'production.perm.supply', icon: HandCoins },
   { key: 'prod_suppliers', labelKey: 'production.perm.suppliers', icon: Truck },
+  { key: 'prod_sales', labelKey: 'production.perm.sales', icon: ShoppingCart },
+  { key: 'prod_customer_payments', labelKey: 'production.perm.customerPayments', icon: CreditCard },
+  { key: 'prod_cash', labelKey: 'production.perm.cash', icon: Landmark },
   // 'nasiya' intentionally NOT added here yet: PERMISSION_ITEMS entries are
   // typed against TranslationKey = DotPaths<Translations> (a strict literal
   // union generated from lib/i18n/translations.ts's actual keys), so adding

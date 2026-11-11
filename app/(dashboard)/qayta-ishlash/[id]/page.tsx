@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BackLink, DocStatusBadge, InfoField, TotalsBox, prodCardCls } from '@/components/production/ProdKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
+import { DocLotsSection } from '@/components/production/DocLots'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { formatQty, unitKey } from '@/lib/production'
 import type { Database } from '@/lib/database.types'
@@ -113,6 +114,8 @@ export default function ProcessingViewPage() {
           </table>
         </div>
       </div>
+
+      <DocLotsSection docId={doc.id} itemById={itemById} warehouseById={warehouseById} reloadKey={doc.status} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         <div className={cn(prodCardCls, 'p-6')}>

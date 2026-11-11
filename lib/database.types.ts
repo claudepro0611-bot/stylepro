@@ -2602,8 +2602,12 @@ export type Database = {
           max_stock: number | null
           is_active: boolean
           description: string | null
+          shelf_life_days: number | null
           created_at: string
           updated_at: string
+          standard_cost: number | null
+          sale_price: number | null
+          expiry_warn_days: number | null
         }
         Insert: {
           id?: string
@@ -2619,8 +2623,12 @@ export type Database = {
           max_stock?: number | null
           is_active?: boolean
           description?: string | null
+          shelf_life_days?: number | null
           created_at?: string
           updated_at?: string
+          standard_cost?: number | null
+          sale_price?: number | null
+          expiry_warn_days?: number | null
         }
         Update: {
           id?: string
@@ -2636,8 +2644,12 @@ export type Database = {
           max_stock?: number | null
           is_active?: boolean
           description?: string | null
+          shelf_life_days?: number | null
           created_at?: string
           updated_at?: string
+          standard_cost?: number | null
+          sale_price?: number | null
+          expiry_warn_days?: number | null
         }
         Relationships: []
       }
@@ -2679,6 +2691,9 @@ export type Database = {
           doc_type: string
           doc_id: string
           is_reversal: boolean
+          fat_pct: number | null
+          protein_pct: number | null
+          lot_id: string | null
           created_by: string | null
           created_at: string
         }
@@ -2692,6 +2707,9 @@ export type Database = {
           doc_type?: string
           doc_id?: string
           is_reversal?: boolean
+          fat_pct?: number | null
+          protein_pct?: number | null
+          lot_id?: string | null
           created_by?: string | null
           created_at?: string
         }
@@ -2705,8 +2723,83 @@ export type Database = {
           doc_type?: string
           doc_id?: string
           is_reversal?: boolean
+          fat_pct?: number | null
+          protein_pct?: number | null
+          lot_id?: string | null
           created_by?: string | null
           created_at?: string
+        }
+        Relationships: []
+      }
+      prod_lots: {
+        Row: {
+          id: string
+          company_id: string
+          warehouse_id: string
+          item_id: string
+          lot_no: string
+          received_at: string
+          opening_qty: number
+          unit_cost: number
+          fat_pct: number | null
+          protein_pct: number | null
+          supplier_id: string | null
+          source_doc_type: string | null
+          source_doc_id: string | null
+          origin_lot_id: string | null
+          expiry_date: string | null
+          is_opening: boolean
+          created_at: string
+          hold_status: string
+          hold_reason: string | null
+          hold_at: string | null
+          hold_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          warehouse_id?: string
+          item_id?: string
+          lot_no?: string
+          received_at?: string
+          opening_qty?: number
+          unit_cost?: number
+          fat_pct?: number | null
+          protein_pct?: number | null
+          supplier_id?: string | null
+          source_doc_type?: string | null
+          source_doc_id?: string | null
+          origin_lot_id?: string | null
+          expiry_date?: string | null
+          is_opening?: boolean
+          created_at?: string
+          hold_status?: string
+          hold_reason?: string | null
+          hold_at?: string | null
+          hold_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          warehouse_id?: string
+          item_id?: string
+          lot_no?: string
+          received_at?: string
+          opening_qty?: number
+          unit_cost?: number
+          fat_pct?: number | null
+          protein_pct?: number | null
+          supplier_id?: string | null
+          source_doc_type?: string | null
+          source_doc_id?: string | null
+          origin_lot_id?: string | null
+          expiry_date?: string | null
+          is_opening?: boolean
+          created_at?: string
+          hold_status?: string
+          hold_reason?: string | null
+          hold_at?: string | null
+          hold_by?: string | null
         }
         Relationships: []
       }
@@ -2727,6 +2820,7 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          due_date: string | null
         }
         Insert: {
           id?: string
@@ -2744,6 +2838,7 @@ export type Database = {
           created_at?: string
           cancelled_at?: string | null
           cancelled_by?: string | null
+          due_date?: string | null
         }
         Update: {
           id?: string
@@ -2761,6 +2856,7 @@ export type Database = {
           created_at?: string
           cancelled_at?: string | null
           cancelled_by?: string | null
+          due_date?: string | null
         }
         Relationships: []
       }
@@ -2803,8 +2899,10 @@ export type Database = {
           address: string | null
           note: string | null
           is_active: boolean
+          milk_price_per_kg: number | null
           created_at: string
           updated_at: string
+          payment_terms_days: number | null
         }
         Insert: {
           id?: string
@@ -2814,8 +2912,10 @@ export type Database = {
           address?: string | null
           note?: string | null
           is_active?: boolean
+          milk_price_per_kg?: number | null
           created_at?: string
           updated_at?: string
+          payment_terms_days?: number | null
         }
         Update: {
           id?: string
@@ -2825,8 +2925,187 @@ export type Database = {
           address?: string | null
           note?: string | null
           is_active?: boolean
+          milk_price_per_kg?: number | null
           created_at?: string
           updated_at?: string
+          payment_terms_days?: number | null
+        }
+        Relationships: []
+      }
+      prod_milk_settings: {
+        Row: {
+          company_id: string
+          milk_item_id: string | null
+          default_warehouse_id: string | null
+          base_fat: number
+          base_protein: number
+          pricing_mode: string
+          default_price_per_kg: number
+          default_density: number
+          min_fat: number
+          min_density: number
+          max_acidity: number
+          max_temperature: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          company_id?: string
+          milk_item_id?: string | null
+          default_warehouse_id?: string | null
+          base_fat?: number
+          base_protein?: number
+          pricing_mode?: string
+          default_price_per_kg?: number
+          default_density?: number
+          min_fat?: number
+          min_density?: number
+          max_acidity?: number
+          max_temperature?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          company_id?: string
+          milk_item_id?: string | null
+          default_warehouse_id?: string | null
+          base_fat?: number
+          base_protein?: number
+          pricing_mode?: string
+          default_price_per_kg?: number
+          default_density?: number
+          min_fat?: number
+          min_density?: number
+          max_acidity?: number
+          max_temperature?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_milk_intakes: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          intake_date: string
+          supplier_id: string
+          warehouse_id: string
+          item_id: string
+          vehicle_no: string | null
+          driver: string | null
+          gross_kg: number
+          tare_kg: number
+          net_kg: number
+          density: number | null
+          volume_l: number | null
+          fat_pct: number | null
+          protein_pct: number | null
+          snf_pct: number | null
+          acidity: number | null
+          temperature: number | null
+          antibiotic: string | null
+          status: string
+          pricing_mode: string | null
+          base_price_per_kg: number | null
+          credited_kg: number | null
+          price_per_kg: number | null
+          amount: number | null
+          receipt_id: string | null
+          decision_note: string | null
+          note: string | null
+          lab_by: string | null
+          lab_by_name: string | null
+          lab_at: string | null
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+          lab_amended_at: string | null
+          lab_amend_count: number
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          intake_date?: string
+          supplier_id?: string
+          warehouse_id?: string
+          item_id?: string
+          vehicle_no?: string | null
+          driver?: string | null
+          gross_kg?: number
+          tare_kg?: number
+          net_kg?: number
+          density?: number | null
+          volume_l?: number | null
+          fat_pct?: number | null
+          protein_pct?: number | null
+          snf_pct?: number | null
+          acidity?: number | null
+          temperature?: number | null
+          antibiotic?: string | null
+          status?: string
+          pricing_mode?: string | null
+          base_price_per_kg?: number | null
+          credited_kg?: number | null
+          price_per_kg?: number | null
+          amount?: number | null
+          receipt_id?: string | null
+          decision_note?: string | null
+          note?: string | null
+          lab_by?: string | null
+          lab_by_name?: string | null
+          lab_at?: string | null
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          lab_amended_at?: string | null
+          lab_amend_count?: number
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          intake_date?: string
+          supplier_id?: string
+          warehouse_id?: string
+          item_id?: string
+          vehicle_no?: string | null
+          driver?: string | null
+          gross_kg?: number
+          tare_kg?: number
+          net_kg?: number
+          density?: number | null
+          volume_l?: number | null
+          fat_pct?: number | null
+          protein_pct?: number | null
+          snf_pct?: number | null
+          acidity?: number | null
+          temperature?: number | null
+          antibiotic?: string | null
+          status?: string
+          pricing_mode?: string | null
+          base_price_per_kg?: number | null
+          credited_kg?: number | null
+          price_per_kg?: number | null
+          amount?: number | null
+          receipt_id?: string | null
+          decision_note?: string | null
+          note?: string | null
+          lab_by?: string | null
+          lab_by_name?: string | null
+          lab_at?: string | null
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          lab_amended_at?: string | null
+          lab_amend_count?: number
         }
         Relationships: []
       }
@@ -2846,6 +3125,8 @@ export type Database = {
           created_at: string
           cancelled_at: string | null
           cancelled_by: string | null
+          // Cash & bank (migration 20261110000016); undefined before it.
+          account_id?: string | null
         }
         Insert: {
           id?: string
@@ -2862,6 +3143,7 @@ export type Database = {
           created_at?: string
           cancelled_at?: string | null
           cancelled_by?: string | null
+          account_id?: string | null
         }
         Update: {
           id?: string
@@ -2878,6 +3160,7 @@ export type Database = {
           created_at?: string
           cancelled_at?: string | null
           cancelled_by?: string | null
+          account_id?: string | null
         }
         Relationships: []
       }
@@ -3229,6 +3512,953 @@ export type Database = {
         }
         Relationships: []
       }
+      // Wholesale sales (migration 20261110000015, hand-written).
+      prod_customers: {
+        Row: {
+          id: string
+          company_id: string
+          name: string
+          legal_name: string | null
+          inn: string | null
+          phone: string | null
+          address: string | null
+          contact_person: string | null
+          price_list_id: string | null
+          credit_limit: number | null
+          payment_terms_days: number | null
+          vat_payer: boolean
+          note: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          name?: string
+          legal_name?: string | null
+          inn?: string | null
+          phone?: string | null
+          address?: string | null
+          contact_person?: string | null
+          price_list_id?: string | null
+          credit_limit?: number | null
+          payment_terms_days?: number | null
+          vat_payer?: boolean
+          note?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          name?: string
+          legal_name?: string | null
+          inn?: string | null
+          phone?: string | null
+          address?: string | null
+          contact_person?: string | null
+          price_list_id?: string | null
+          credit_limit?: number | null
+          payment_terms_days?: number | null
+          vat_payer?: boolean
+          note?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      prod_price_lists: {
+        Row: {
+          id: string
+          company_id: string
+          name: string
+          currency: string
+          is_default: boolean
+          is_active: boolean
+          note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          name?: string
+          currency?: string
+          is_default?: boolean
+          is_active?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          name?: string
+          currency?: string
+          is_default?: boolean
+          is_active?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      prod_price_list_items: {
+        Row: {
+          id: string
+          company_id: string
+          price_list_id: string
+          item_id: string
+          price: number
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          price_list_id?: string
+          item_id?: string
+          price?: number
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          price_list_id?: string
+          item_id?: string
+          price?: number
+        }
+        Relationships: []
+      }
+      prod_sales: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          customer_id: string
+          customer_name: string
+          warehouse_id: string
+          price_list_id: string | null
+          due_date: string | null
+          vat_rate: number
+          subtotal: number
+          vat_amount: number
+          total: number
+          cost_total: number
+          margin: number
+          vehicle_no: string | null
+          driver: string | null
+          note: string | null
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          customer_id?: string
+          customer_name?: string
+          warehouse_id?: string
+          price_list_id?: string | null
+          due_date?: string | null
+          vat_rate?: number
+          subtotal?: number
+          vat_amount?: number
+          total?: number
+          cost_total?: number
+          margin?: number
+          vehicle_no?: string | null
+          driver?: string | null
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          customer_id?: string
+          customer_name?: string
+          warehouse_id?: string
+          price_list_id?: string | null
+          due_date?: string | null
+          vat_rate?: number
+          subtotal?: number
+          vat_amount?: number
+          total?: number
+          cost_total?: number
+          margin?: number
+          vehicle_no?: string | null
+          driver?: string | null
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_sale_items: {
+        Row: {
+          id: string
+          company_id: string
+          sale_id: string
+          sort_order: number
+          item_id: string
+          unit: string
+          qty: number
+          price: number
+          discount_pct: number
+          price_source: string
+          amount: number
+          vat_amount: number
+          total: number
+          cost: number
+          unit_cost: number
+          lots: Json
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          sale_id?: string
+          sort_order?: number
+          item_id?: string
+          unit?: string
+          qty?: number
+          price?: number
+          discount_pct?: number
+          price_source?: string
+          amount?: number
+          vat_amount?: number
+          total?: number
+          cost?: number
+          unit_cost?: number
+          lots?: Json
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          sale_id?: string
+          sort_order?: number
+          item_id?: string
+          unit?: string
+          qty?: number
+          price?: number
+          discount_pct?: number
+          price_source?: string
+          amount?: number
+          vat_amount?: number
+          total?: number
+          cost?: number
+          unit_cost?: number
+          lots?: Json
+        }
+        Relationships: []
+      }
+      prod_sale_returns: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          sale_id: string
+          customer_id: string
+          warehouse_id: string
+          reason: string | null
+          note: string | null
+          subtotal: number
+          vat_amount: number
+          total: number
+          cost_total: number
+          loss_cost: number
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          sale_id?: string
+          customer_id?: string
+          warehouse_id?: string
+          reason?: string | null
+          note?: string | null
+          subtotal?: number
+          vat_amount?: number
+          total?: number
+          cost_total?: number
+          loss_cost?: number
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          sale_id?: string
+          customer_id?: string
+          warehouse_id?: string
+          reason?: string | null
+          note?: string | null
+          subtotal?: number
+          vat_amount?: number
+          total?: number
+          cost_total?: number
+          loss_cost?: number
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_sale_return_items: {
+        Row: {
+          id: string
+          company_id: string
+          return_id: string
+          sale_item_id: string
+          item_id: string
+          sort_order: number
+          qty: number
+          restock: boolean
+          price: number
+          discount_pct: number
+          amount: number
+          vat_amount: number
+          total: number
+          cost: number
+          lots: Json
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          return_id?: string
+          sale_item_id?: string
+          item_id?: string
+          sort_order?: number
+          qty?: number
+          restock?: boolean
+          price?: number
+          discount_pct?: number
+          amount?: number
+          vat_amount?: number
+          total?: number
+          cost?: number
+          lots?: Json
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          return_id?: string
+          sale_item_id?: string
+          item_id?: string
+          sort_order?: number
+          qty?: number
+          restock?: boolean
+          price?: number
+          discount_pct?: number
+          amount?: number
+          vat_amount?: number
+          total?: number
+          cost?: number
+          lots?: Json
+        }
+        Relationships: []
+      }
+      prod_customer_payments: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          customer_id: string
+          amount: number
+          method: string
+          pay_date: string
+          note: string | null
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+          // Cash & bank (migration 20261110000016); undefined before it.
+          account_id?: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          customer_id?: string
+          amount?: number
+          method?: string
+          pay_date?: string
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          account_id?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          customer_id?: string
+          amount?: number
+          method?: string
+          pay_date?: string
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          account_id?: string | null
+        }
+        Relationships: []
+      }
+      prod_writeoffs: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          warehouse_id: string
+          reason: string
+          note: string | null
+          total_cost: number
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          warehouse_id?: string
+          reason?: string
+          note?: string | null
+          total_cost?: number
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          warehouse_id?: string
+          reason?: string
+          note?: string | null
+          total_cost?: number
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_writeoff_items: {
+        Row: {
+          id: string
+          company_id: string
+          writeoff_id: string
+          item_id: string
+          qty: number
+          unit_cost: number
+          total: number
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          writeoff_id?: string
+          item_id?: string
+          qty?: number
+          unit_cost?: number
+          total?: number
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          writeoff_id?: string
+          item_id?: string
+          qty?: number
+          unit_cost?: number
+          total?: number
+        }
+        Relationships: []
+      }
+      prod_stock_counts: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          warehouse_id: string
+          note: string | null
+          status: string
+          shortage_value: number
+          surplus_value: number
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          updated_at: string
+          posted_at: string | null
+          posted_by: string | null
+          posted_by_name: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          warehouse_id?: string
+          note?: string | null
+          status?: string
+          shortage_value?: number
+          surplus_value?: number
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          updated_at?: string
+          posted_at?: string | null
+          posted_by?: string | null
+          posted_by_name?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          warehouse_id?: string
+          note?: string | null
+          status?: string
+          shortage_value?: number
+          surplus_value?: number
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          updated_at?: string
+          posted_at?: string | null
+          posted_by?: string | null
+          posted_by_name?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_stock_count_items: {
+        Row: {
+          id: string
+          company_id: string
+          count_id: string
+          item_id: string
+          counted_qty: number
+          system_qty: number | null
+          diff_qty: number | null
+          unit_cost: number | null
+          diff_value: number | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          count_id?: string
+          item_id?: string
+          counted_qty?: number
+          system_qty?: number | null
+          diff_qty?: number | null
+          unit_cost?: number | null
+          diff_value?: number | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          count_id?: string
+          item_id?: string
+          counted_qty?: number
+          system_qty?: number | null
+          diff_qty?: number | null
+          unit_cost?: number | null
+          diff_value?: number | null
+        }
+        Relationships: []
+      }
+      prod_openings: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          warehouse_id: string
+          note: string | null
+          total: number
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          warehouse_id?: string
+          note?: string | null
+          total?: number
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          warehouse_id?: string
+          note?: string | null
+          total?: number
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_opening_items: {
+        Row: {
+          id: string
+          company_id: string
+          opening_id: string
+          item_id: string
+          lot_id: string
+          sort_order: number
+          qty: number
+          unit_cost: number
+          total: number
+          fat_pct: number | null
+          protein_pct: number | null
+          expiry_date: string | null
+          supplier_id: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          opening_id?: string
+          item_id?: string
+          lot_id?: string
+          sort_order?: number
+          qty?: number
+          unit_cost?: number
+          total?: number
+          fat_pct?: number | null
+          protein_pct?: number | null
+          expiry_date?: string | null
+          supplier_id?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          opening_id?: string
+          item_id?: string
+          lot_id?: string
+          sort_order?: number
+          qty?: number
+          unit_cost?: number
+          total?: number
+          fat_pct?: number | null
+          protein_pct?: number | null
+          expiry_date?: string | null
+          supplier_id?: string | null
+        }
+        Relationships: []
+      }
+      prod_price_corrections: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          receipt_id: string
+          receipt_item_id: string
+          item_id: string
+          warehouse_id: string
+          supplier_id: string | null
+          qty: number
+          old_price: number
+          new_price: number
+          debt_delta: number
+          stock_qty: number
+          stock_delta: number
+          consumed_qty: number
+          consumed_variance: number
+          lots: Json
+          note: string | null
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          receipt_id?: string
+          receipt_item_id?: string
+          item_id?: string
+          warehouse_id?: string
+          supplier_id?: string | null
+          qty?: number
+          old_price?: number
+          new_price?: number
+          debt_delta?: number
+          stock_qty?: number
+          stock_delta?: number
+          consumed_qty?: number
+          consumed_variance?: number
+          lots?: Json
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          receipt_id?: string
+          receipt_item_id?: string
+          item_id?: string
+          warehouse_id?: string
+          supplier_id?: string | null
+          qty?: number
+          old_price?: number
+          new_price?: number
+          debt_delta?: number
+          stock_qty?: number
+          stock_delta?: number
+          consumed_qty?: number
+          consumed_variance?: number
+          lots?: Json
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_recipe_versions: {
+        Row: {
+          id: string
+          company_id: string
+          recipe_id: string
+          version: number
+          output_item_id: string
+          output_qty: number
+          lines: Json
+          is_active: boolean | null
+          note: string | null
+          saved_by: string | null
+          saved_by_name: string | null
+          saved_at: string
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          recipe_id?: string
+          version?: number
+          output_item_id?: string
+          output_qty?: number
+          lines?: Json
+          is_active?: boolean | null
+          note?: string | null
+          saved_by?: string | null
+          saved_by_name?: string | null
+          saved_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          recipe_id?: string
+          version?: number
+          output_item_id?: string
+          output_qty?: number
+          lines?: Json
+          is_active?: boolean | null
+          note?: string | null
+          saved_by?: string | null
+          saved_by_name?: string | null
+          saved_at?: string
+        }
+        Relationships: []
+      }
+      prod_separations: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          warehouse_id: string
+          output_warehouse_id: string
+          milk_item_id: string
+          cream_item_id: string
+          skim_item_id: string
+          milk_qty: number
+          milk_fat: number
+          cream_fat: number
+          skim_fat: number
+          loss_pct: number
+          cream_qty_calc: number
+          skim_qty_calc: number
+          cream_qty: number
+          skim_qty: number
+          loss_qty: number
+          allocation_method: string
+          skim_price: number | null
+          cream_ref_price: number | null
+          skim_ref_price: number | null
+          milk_cost: number
+          cream_unit_cost: number
+          skim_unit_cost: number
+          note: string | null
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          warehouse_id?: string
+          output_warehouse_id?: string
+          milk_item_id?: string
+          cream_item_id?: string
+          skim_item_id?: string
+          milk_qty?: number
+          milk_fat?: number
+          cream_fat?: number
+          skim_fat?: number
+          loss_pct?: number
+          cream_qty_calc?: number
+          skim_qty_calc?: number
+          cream_qty?: number
+          skim_qty?: number
+          loss_qty?: number
+          allocation_method?: string
+          skim_price?: number | null
+          cream_ref_price?: number | null
+          skim_ref_price?: number | null
+          milk_cost?: number
+          cream_unit_cost?: number
+          skim_unit_cost?: number
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          warehouse_id?: string
+          output_warehouse_id?: string
+          milk_item_id?: string
+          cream_item_id?: string
+          skim_item_id?: string
+          milk_qty?: number
+          milk_fat?: number
+          cream_fat?: number
+          skim_fat?: number
+          loss_pct?: number
+          cream_qty_calc?: number
+          skim_qty_calc?: number
+          cream_qty?: number
+          skim_qty?: number
+          loss_qty?: number
+          allocation_method?: string
+          skim_price?: number | null
+          cream_ref_price?: number | null
+          skim_ref_price?: number | null
+          milk_cost?: number
+          cream_unit_cost?: number
+          skim_unit_cost?: number
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
       supply_agents: {
         Row: {
           id: string
@@ -3273,6 +4503,8 @@ export type Database = {
           created_by: string | null
           created_by_name: string | null
           created_at: string
+          // Cash & bank (migration 20261110000016); undefined before it.
+          account_id?: string | null
         }
         Insert: {
           id?: string
@@ -3287,6 +4519,7 @@ export type Database = {
           created_by?: string | null
           created_by_name?: string | null
           created_at?: string
+          account_id?: string | null
         }
         Update: {
           id?: string
@@ -3301,6 +4534,230 @@ export type Database = {
           created_by?: string | null
           created_by_name?: string | null
           created_at?: string
+          account_id?: string | null
+        }
+        Relationships: []
+      }
+      // Cash & bank accounts (migration 20261110000016_production_cash.sql).
+      prod_cash_accounts: {
+        Row: {
+          id: string
+          company_id: string
+          name: string
+          kind: string
+          currency: string
+          bank_name: string | null
+          account_no: string | null
+          mfo: string | null
+          opening_balance: number
+          opening_date: string | null
+          is_default_for: string[] | null
+          is_active: boolean
+          note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          name?: string
+          kind?: string
+          currency?: string
+          bank_name?: string | null
+          account_no?: string | null
+          mfo?: string | null
+          opening_balance?: number
+          opening_date?: string | null
+          is_default_for?: string[] | null
+          is_active?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          name?: string
+          kind?: string
+          currency?: string
+          bank_name?: string | null
+          account_no?: string | null
+          mfo?: string | null
+          opening_balance?: number
+          opening_date?: string | null
+          is_default_for?: string[] | null
+          is_active?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      prod_cash_movements: {
+        Row: {
+          id: string
+          company_id: string
+          account_id: string
+          move_date: string
+          amount: number
+          source_type: string
+          source_id: string | null
+          counterparty_type: string | null
+          counterparty_id: string | null
+          counterparty_name: string | null
+          category_id: string | null
+          note: string | null
+          is_reversal: boolean
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          account_id?: string
+          move_date?: string
+          amount?: number
+          source_type?: string
+          source_id?: string | null
+          counterparty_type?: string | null
+          counterparty_id?: string | null
+          counterparty_name?: string | null
+          category_id?: string | null
+          note?: string | null
+          is_reversal?: boolean
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          account_id?: string
+          move_date?: string
+          amount?: number
+          source_type?: string
+          source_id?: string | null
+          counterparty_type?: string | null
+          counterparty_id?: string | null
+          counterparty_name?: string | null
+          category_id?: string | null
+          note?: string | null
+          is_reversal?: boolean
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      prod_cash_orders: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          direction: string
+          doc_date: string
+          account_id: string
+          amount: number
+          category_id: string | null
+          counterparty_name: string | null
+          purpose: string | null
+          note: string | null
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          direction?: string
+          doc_date?: string
+          account_id?: string
+          amount?: number
+          category_id?: string | null
+          counterparty_name?: string | null
+          purpose?: string | null
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          direction?: string
+          doc_date?: string
+          account_id?: string
+          amount?: number
+          category_id?: string | null
+          counterparty_name?: string | null
+          purpose?: string | null
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Relationships: []
+      }
+      prod_cash_transfers: {
+        Row: {
+          id: string
+          company_id: string
+          number: number
+          doc_date: string
+          from_account_id: string
+          to_account_id: string
+          amount: number
+          note: string | null
+          status: string
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+        }
+        Insert: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          from_account_id?: string
+          to_account_id?: string
+          amount?: number
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          number?: number
+          doc_date?: string
+          from_account_id?: string
+          to_account_id?: string
+          amount?: number
+          note?: string | null
+          status?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
         }
         Relationships: []
       }
@@ -3542,6 +4999,49 @@ export type Database = {
         }
         Relationships: []
       }
+      prod_stock_quality: {
+        Row: {
+          company_id: string | null
+          warehouse_id: string | null
+          item_id: string | null
+          qty: number | null
+          avg_fat: number | null
+          avg_protein: number | null
+        }
+        Relationships: []
+      }
+      prod_lot_stock: {
+        Row: {
+          id: string | null
+          company_id: string | null
+          warehouse_id: string | null
+          warehouse_name: string | null
+          item_id: string | null
+          item_name: string | null
+          item_unit: string | null
+          lot_no: string | null
+          received_at: string | null
+          opening_qty: number | null
+          unit_cost: number | null
+          fat_pct: number | null
+          protein_pct: number | null
+          supplier_id: string | null
+          supplier_name: string | null
+          source_doc_type: string | null
+          source_doc_id: string | null
+          origin_lot_id: string | null
+          expiry_date: string | null
+          is_opening: boolean | null
+          created_at: string | null
+          remaining_qty: number | null
+          value: number | null
+          hold_status: string | null
+          hold_reason: string | null
+          hold_at: string | null
+          hold_by: string | null
+        }
+        Relationships: []
+      }
       supply_agent_balances: {
         Row: {
           agent_id: string | null
@@ -3550,6 +5050,165 @@ export type Database = {
           returned: number | null
           spent: number | null
           balance: number | null
+        }
+        Relationships: []
+      }
+      // Wholesale sales views (migration 20261110000015).
+      prod_item_prices: {
+        Row: {
+          price_list_id: string | null
+          company_id: string | null
+          price_list_name: string | null
+          is_default: boolean | null
+          is_active: boolean | null
+          item_id: string | null
+          item_name: string | null
+          item_unit: string | null
+          group_id: string | null
+          item_is_active: boolean | null
+          list_price: number | null
+          default_price: number | null
+          item_sale_price: number | null
+          price: number | null
+        }
+        Relationships: []
+      }
+      // Cash & bank (migration 20261110000016).
+      prod_cash_balances: {
+        Row: {
+          account_id: string | null
+          company_id: string | null
+          name: string | null
+          kind: string | null
+          currency: string | null
+          bank_name: string | null
+          account_no: string | null
+          mfo: string | null
+          is_default_for: string[] | null
+          is_active: boolean | null
+          note: string | null
+          opening_balance: number | null
+          opening_date: string | null
+          total_in: number | null
+          total_out: number | null
+          balance: number | null
+          last_move_at: string | null
+          move_count: number | null
+        }
+        Relationships: []
+      }
+      prod_cash_movements_v: {
+        Row: {
+          id: string | null
+          company_id: string | null
+          account_id: string | null
+          account_name: string | null
+          account_kind: string | null
+          move_date: string | null
+          amount: number | null
+          amount_in: number | null
+          amount_out: number | null
+          source_type: string | null
+          source_id: string | null
+          source_number: number | null
+          source_status: string | null
+          order_direction: string | null
+          peer_account_id: string | null
+          peer_account_name: string | null
+          counterparty_type: string | null
+          counterparty_id: string | null
+          counterparty_name: string | null
+          category_id: string | null
+          category_name: string | null
+          note: string | null
+          is_reversal: boolean | null
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string | null
+          running_balance: number | null
+        }
+        Relationships: []
+      }
+      prod_customer_balances: {
+        Row: {
+          customer_id: string | null
+          company_id: string | null
+          name: string | null
+          sales_total: number | null
+          returns_total: number | null
+          payments_total: number | null
+          balance: number | null
+          last_sale_at: string | null
+          last_payment_at: string | null
+          credit_limit: number | null
+        }
+        Relationships: []
+      }
+      prod_customer_ageing: {
+        Row: {
+          customer_id: string | null
+          company_id: string | null
+          name: string | null
+          balance: number | null
+          not_due: number | null
+          overdue_1_15: number | null
+          overdue_16_30: number | null
+          overdue_31_plus: number | null
+        }
+        Relationships: []
+      }
+      prod_sales_lines_v: {
+        Row: {
+          row_kind: string | null
+          company_id: string | null
+          sale_id: string | null
+          sale_number: number | null
+          return_id: string | null
+          return_number: number | null
+          sale_item_id: string | null
+          doc_date: string | null
+          customer_id: string | null
+          customer_name: string | null
+          warehouse_id: string | null
+          item_id: string | null
+          item_name: string | null
+          item_unit: string | null
+          group_id: string | null
+          group_name: string | null
+          qty: number | null
+          price: number | null
+          discount_pct: number | null
+          amount: number | null
+          vat_amount: number | null
+          total: number | null
+          cost: number | null
+          margin: number | null
+        }
+        Relationships: []
+      }
+      prod_sale_item_returnable: {
+        Row: {
+          sale_item_id: string | null
+          company_id: string | null
+          sale_id: string | null
+          item_id: string | null
+          qty: number | null
+          returned_qty: number | null
+          returnable_qty: number | null
+          returned_amount: number | null
+          returnable_amount: number | null
+        }
+        Relationships: []
+      }
+      prod_supplier_ageing: {
+        Row: {
+          supplier_id: string | null
+          company_id: string | null
+          balance: number | null
+          not_due: number | null
+          overdue_1_15: number | null
+          overdue_16_30: number | null
+          overdue_31_plus: number | null
         }
         Relationships: []
       }
@@ -3631,6 +5290,7 @@ export type Database = {
       prod_create_production: { Args: { p_data: Json }; Returns: Json }
       prod_create_processing: { Args: { p_data: Json }; Returns: Json }
       prod_create_transfer: { Args: { p_data: Json }; Returns: Json }
+      prod_create_separation: { Args: { p_data: Json }; Returns: Json }
       prod_cancel_document: { Args: { p_doc_type: string; p_id: string }; Returns: undefined }
       supply_save_agent: {
         Args: { p_id: string | null; p_is_active: boolean; p_name: string; p_phone: string | null; p_telegram_id: string | null }
@@ -3641,6 +5301,31 @@ export type Database = {
       prod_create_supplier_payment: { Args: { p_data: Json }; Returns: Json }
       prod_cancel_supplier_payment: { Args: { p_id: string }; Returns: undefined }
       prod_save_recipe: { Args: { p_data: Json; p_id: string | null }; Returns: string }
+      prod_save_milk_settings: { Args: { p_data: Json }; Returns: undefined }
+      prod_create_milk_intake: { Args: { p_data: Json }; Returns: Json }
+      prod_record_milk_lab: { Args: { p_data: Json; p_id: string }; Returns: Json }
+      prod_cancel_milk_intake: { Args: { p_id: string }; Returns: undefined }
+      prod_create_writeoff: { Args: { p_data: Json }; Returns: Json }
+      prod_save_stock_count: { Args: { p_data: Json; p_id: string | null }; Returns: string }
+      prod_post_stock_count: { Args: { p_id: string }; Returns: Json }
+      prod_delete_stock_count_draft: { Args: { p_id: string }; Returns: undefined }
+      prod_create_opening: { Args: { p_data: Json }; Returns: Json }
+      // Wholesale sales (migration 20261110000015).
+      prod_save_customer: { Args: { p_data: Json; p_id: string | null }; Returns: string }
+      prod_save_price_list: { Args: { p_data: Json; p_id: string | null }; Returns: string }
+      prod_create_sale: { Args: { p_data: Json }; Returns: Json }
+      prod_create_sale_return: { Args: { p_data: Json }; Returns: Json }
+      prod_create_customer_payment: { Args: { p_data: Json }; Returns: Json }
+      prod_cancel_customer_payment: { Args: { p_id: string }; Returns: undefined }
+      // Cash & bank (migration 20261110000016).
+      prod_save_cash_account: { Args: { p_data: Json; p_id: string | null }; Returns: string }
+      prod_create_cash_order: { Args: { p_data: Json }; Returns: Json }
+      prod_create_cash_transfer: { Args: { p_data: Json }; Returns: Json }
+      prod_cancel_cash_doc: { Args: { p_id: string; p_type: string }; Returns: undefined }
+      prod_create_price_correction: { Args: { p_data: Json }; Returns: Json }
+      prod_set_lot_hold: { Args: { p_lot_id: string; p_reason: string | null; p_status: string }; Returns: undefined }
+      prod_amend_milk_lab: { Args: { p_intake_id: string; p_lab: Json }; Returns: Json }
+      prod_change_item_unit: { Args: { p_item_id: string; p_new_unit: string; p_factor: number; p_note: string | null }; Returns: string }
       branch_overview: {
         Args: never
         Returns: {

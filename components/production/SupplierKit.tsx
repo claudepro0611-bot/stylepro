@@ -18,10 +18,12 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { NoteField, Segmented, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
+import { AccountSelect, useAccountChoice, useCashAccounts, useCashErrorText } from '@/components/production/CashKit'
 import {
   PROD_PAYMENT_METHODS, canCancelDocuments, fetchProdSuppliers, parseDecimal, paymentMethodKey, prodErrorKey, round2,
   type ProdPaymentMethod, type ProdSupplier,
 } from '@/lib/production'
+import { parseIntInRange, probeInventoryDocs } from '@/lib/inventory'
 
 export function useProdSuppliers() {
   const [suppliers, setSuppliers] = useState<ProdSupplier[]>([])
@@ -104,7 +106,7 @@ export function useCancelSupplierPayment(onDone: () => void) {
     setBusyId(id)
     const { error } = await createClient().rpc('prod_cancel_supplier_payment', { p_id: id })
     setBusyId(null)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     toast.success(t('production.suppliers.paymentCancelled'))
     onDone()
   }
@@ -125,21 +127,36 @@ export function SupplierFormDialog({ open, onOpenChange, supplier, initialName, 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
+  const [milkPrice, setMilkPrice] = useState('')
   const [note, setNote] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [terms, setTerms] = useState('')
+  // payment_terms_days exists after migration 20261110000014.
+  const [termsAvailable, setTermsAvailable] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
+    let cancelled = false
+    probeInventoryDocs(createClient()).then(ok => { if (!cancelled) setTermsAvailable(ok) })
+    return () => { cancelled = true }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    setTerms(supplier?.paymentTermsDays != null ? String(supplier.paymentTermsDays) : '')
     setName(supplier?.name ?? initialName ?? '')
     setPhone(supplier?.phone ?? '')
     setAddress(supplier?.address ?? '')
+    setMilkPrice(supplier?.milkPricePerKg != null ? String(supplier.milkPricePerKg) : '')
     setNote(supplier?.note ?? '')
     setIsActive(supplier?.isActive ?? true)
   }, [open, supplier, initialName])
 
   async function save() {
     if (!name.trim()) { toast.error(t('production.common.nameRequired')); return }
+    const termsDays = parseIntInRange(terms, 0, 365)
+    if (termsAvailable && termsDays === undefined) { toast.error(t('prodInventory.ageing.termsError')); return }
     setSaving(true)
     const { data, error } = await createClient().rpc('prod_save_supplier', {
       p_id: supplier?.id ?? null,
@@ -147,12 +164,15 @@ export function SupplierFormDialog({ open, onOpenChange, supplier, initialName, 
         name: name.trim(),
         phone: phone.trim() || null,
         address: address.trim() || null,
+        // Empty = use the default price from Sut qabuli settings.
+        milk_price_per_kg: milkPrice.trim() ? round2(parseDecimal(milkPrice)) : null,
         note: note.trim() || null,
         is_active: isActive,
+        ...(termsAvailable ? { payment_terms_days: termsDays ?? null } : {}),
       },
     })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     toast.success(t('production.common.saved'))
     onSaved(typeof data === 'string' ? data : (supplier?.id ?? ''))
   }
@@ -176,6 +196,18 @@ export function SupplierFormDialog({ open, onOpenChange, supplier, initialName, 
             <span className={prodLabelCls}>{t('production.suppliers.address')}</span>
             <input value={address} onChange={e => setAddress(e.target.value)} className={prodFieldCls} />
           </label>
+          <label className="block">
+            <span className={prodLabelCls}>{t('production.suppliers.milkPrice')}</span>
+            <input inputMode="decimal" value={milkPrice} onChange={e => setMilkPrice(e.target.value)} placeholder="0" className={cn(prodFieldCls, 'tabular-nums')} />
+            <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">{t('production.suppliers.milkPriceHint')}</span>
+          </label>
+          {termsAvailable && (
+            <label className="block">
+              <span className={prodLabelCls}>{t('prodInventory.ageing.paymentTerms')}</span>
+              <input inputMode="numeric" value={terms} onChange={e => setTerms(e.target.value.replace(/\D/g, '').slice(0, 3))} placeholder="—" className={cn(prodFieldCls, 'tabular-nums')} />
+              <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">{t('prodInventory.ageing.paymentTermsHint')}</span>
+            </label>
+          )}
           <NoteField value={note} onChange={setNote} />
           <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2.5">
             <span className="text-sm text-gray-700 dark:text-gray-300">{t('production.common.active')}</span>
@@ -208,6 +240,12 @@ export function SupplierPaymentDialog({ open, onOpenChange, suppliers, supplierI
   const [date, setDate] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  // Cash & bank (migration 20261110000016): the paying account, default by method.
+  const { available: cashAvailable, accounts, reload: reloadAccounts } = useCashAccounts()
+  const [accountId, setAccountId] = useAccountChoice(open, accounts, method)
+  const errorText = useCashErrorText(accounts)
+
+  useEffect(() => { if (open && cashAvailable) reloadAccounts() }, [open, cashAvailable, reloadAccounts])
 
   useEffect(() => {
     if (!open) return
@@ -237,10 +275,11 @@ export function SupplierPaymentDialog({ open, onOpenChange, suppliers, supplierI
         method,
         pay_date: date || localYmd(),
         note: note.trim() || null,
+        ...(cashAvailable && accountId ? { account_id: accountId } : {}),
       },
     })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(errorText(error)); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }
@@ -279,6 +318,7 @@ export function SupplierPaymentDialog({ open, onOpenChange, suppliers, supplierI
               onChange={setMethod}
             />
           </div>
+          {cashAvailable && <AccountSelect accounts={accounts} value={accountId} onChange={setAccountId} outflow={value} />}
           {supplier && value > 0 && (
             <div className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm">
               <span className="text-gray-500 dark:text-gray-400">{t('production.suppliers.afterPayment')}</span>

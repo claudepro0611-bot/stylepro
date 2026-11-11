@@ -14,8 +14,13 @@ import {
   BackLink, DisabledSelect, FormFooter, NoteField, PageHeader, TotalsBox,
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
-import { useProdRefs, useWarehouseStock } from '@/components/production/useProdRefs'
-import { formatQty, localDateTimeToIso, nowHm, parseDecimal, prodErrorKey, round2, round3, unitKey } from '@/lib/production'
+import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
+import { LotPicker } from '@/components/production/LotPicker'
+import {
+  activePicks, formatQty, lineAllocation, lineCost, localDateTimeToIso, makeLinePicks, nowHm, parseDecimal, picksPayload,
+  prodErrorKey, round2, round3, unitKey,
+  type LinePicks,
+} from '@/lib/production'
 
 interface OutputLine { itemId: string; qty: string; price: string }
 
@@ -33,10 +38,13 @@ export default function NewProcessingPage() {
   const [sourceItemId, setSourceItemId] = useState('')
   const [sourceQty, setSourceQty] = useState('')
   const [lines, setLines] = useState<OutputLine[]>([])
+  // Manually picked source lots; dropped automatically when warehouse/item/qty change.
+  const [sourcePicks, setSourcePicks] = useState<LinePicks | null>(null)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
 
   const { stock, loading: stockLoading } = useWarehouseStock(warehouseId)
+  const { lotsOf, available: lotsAvailable } = useWarehouseLots(warehouseId)
 
   // Client clock only (avoids a server/client hydration mismatch).
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
@@ -63,7 +71,11 @@ export default function NewProcessingPage() {
   const available = sourceStock?.qty ?? 0
   const avg = sourceStock?.avgCost ?? 0
   const over = qty > available
-  const processingCost = round2(qty * avg)
+  // Exact cost from the source lots (picked, else the FEFO preview); avg_cost without lots.
+  const sourceLots = sourceItemId ? lotsOf(sourceItemId) : null
+  const picks = activePicks(sourcePicks, warehouseId, sourceItemId, qty)
+  const processingCost = lineCost(lineAllocation(sourceLots, picks, round3(qty)), round3(qty), avg)
+  const unitPrice = round3(qty) > 0 ? round2(processingCost / round3(qty)) : avg
 
   const computed = lines.map(l => {
     const q = parseDecimal(l.qty)
@@ -101,12 +113,13 @@ export default function NewProcessingPage() {
         output_warehouse_id: outputWarehouseId,
         source_item_id: sourceItemId,
         source_qty: round3(qty),
+        source_lots: picksPayload(picks),
         note: note.trim() || null,
         outputs: computed.map(c => ({ item_id: c.itemId, qty: round3(c.qtyNum), price: round2(c.priceNum) })),
       },
     })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(t(prodErrorKey(error))); return }
     const id = (data as { id?: string } | null)?.id
     toast.success(t('production.common.saved'))
     router.push(id ? `/qayta-ishlash/${id}` : '/qayta-ishlash')
@@ -178,6 +191,17 @@ export default function NewProcessingPage() {
               {source && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{sourceUnit}</span>}
             </div>
             {over && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{t('productionErrors.insufficient_stock')}</p>}
+            {source && lotsAvailable && (
+              <div className="mt-1.5 flex justify-end">
+                <LotPicker
+                  lots={sourceLots}
+                  qty={round3(qty)}
+                  unit={source.unit}
+                  picks={picks}
+                  onChange={p => setSourcePicks(makeLinePicks(warehouseId, sourceItemId, qty, p))}
+                />
+              </div>
+            )}
           </label>
         </div>
 
@@ -187,7 +211,7 @@ export default function NewProcessingPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <label className="block">
               <span className={prodLabelCls}>{t('production.processings.unitPrice')}</span>
-              <input readOnly disabled value={formatPrice(avg)} className={cn(prodFieldCls, 'tabular-nums')} />
+              <input readOnly disabled value={formatPrice(unitPrice)} className={cn(prodFieldCls, 'tabular-nums')} />
             </label>
             <label className="block">
               <span className={prodLabelCls}>{t('production.common.qty')}</span>

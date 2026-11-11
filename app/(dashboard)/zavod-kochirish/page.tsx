@@ -20,6 +20,8 @@ import {
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { rangeToIsoBounds } from '@/lib/production'
+import { ExportButton } from '@/components/production/ReportKit'
+import { dateTimeCell, downloadXlsx, x2 } from '@/lib/production-reports'
 
 const PAGE_SIZE = 25
 // Keeps the .in() filter well below URL length limits.
@@ -111,6 +113,16 @@ export default function TransferListPage() {
     { key: 'author', label: t('production.common.author') },
   ]
 
+  function exportXlsx() {
+    downloadXlsx('zavod_kochirish', [
+      t('production.common.number'), t('production.common.date'), t('production.transfers.from'), t('production.transfers.to'),
+      t('production.transfers.itemsCount'), `${t('production.common.total')} (UZS)`, t('production.common.status'), t('production.common.author'), t('production.common.note'),
+    ], filtered.map(r => [
+      r.number, dateTimeCell(r.doc_date), nameOf(r.from_warehouse_id), nameOf(r.to_warehouse_id), lineCounts.get(r.id) ?? 0,
+      x2(Number(r.total)), r.status === 'cancelled' ? t('production.common.statusCancelled') : t('production.common.statusPosted'), r.created_by_name ?? '', r.note ?? '',
+    ]), t('production.transfers.title'))
+  }
+
   function reset() {
     setRange(monthToDate())
     setWarehouseId('')
@@ -127,7 +139,7 @@ export default function TransferListPage() {
         actionHref="/zavod-kochirish/yangi"
       />
 
-      <FilterBar onReset={reset} columns={<ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} />}>
+      <FilterBar onReset={reset} columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}>
         <DateRangeFilter value={range} onChange={setRange} />
         <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
           <option value="">{t('production.common.allWarehouses')}</option>

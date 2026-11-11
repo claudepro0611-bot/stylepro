@@ -20,6 +20,8 @@ import {
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { formatQty, rangeToIsoBounds, unitKey, warehousePairLabel } from '@/lib/production'
+import { ExportButton } from '@/components/production/ReportKit'
+import { dateTimeCell, downloadXlsx, x2, x3 } from '@/lib/production-reports'
 
 const PAGE_SIZE = 25
 
@@ -96,6 +98,22 @@ export default function ProcessingListPage() {
     { key: 'status', label: t('production.common.status') },
   ]
 
+  function exportXlsx() {
+    downloadXlsx('qayta_ishlash', [
+      t('production.common.number'), t('production.common.date'), t('production.common.item'), t('production.common.qty'), t('production.common.unit'),
+      `${t('production.processings.processingCost')} (UZS)`, `${t('production.processings.recoveryCost')} (UZS)`, `${t('production.processings.profit')} (UZS)`,
+      t('production.common.warehouse'), t('production.common.status'), t('production.common.author'),
+    ], filtered.map(r => {
+      const item = itemById.get(r.source_item_id)
+      return [
+        r.number, dateTimeCell(r.doc_date), item?.name ?? '', x3(Number(r.source_qty)), item ? t(unitKey(item.unit)) : '',
+        x2(Number(r.processing_cost)), x2(Number(r.recovery_cost)), x2(Number(r.profit)),
+        warehousePairLabel(warehouseById.get(r.warehouse_id)?.name ?? '', r.output_warehouse_id ? warehouseById.get(r.output_warehouse_id)?.name : null),
+        r.status === 'cancelled' ? t('production.common.statusCancelled') : t('production.common.statusPosted'), r.created_by_name ?? '',
+      ]
+    }), t('production.processings.title'))
+  }
+
   function reset() {
     setRange(monthToDate())
     setWarehouseId('')
@@ -112,7 +130,7 @@ export default function ProcessingListPage() {
         actionHref="/qayta-ishlash/yangi"
       />
 
-      <FilterBar onReset={reset} columns={<ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} />}>
+      <FilterBar onReset={reset} columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}>
         <DateRangeFilter value={range} onChange={setRange} />
         <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
           <option value="">{t('production.common.allWarehouses')}</option>

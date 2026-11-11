@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Banknote, Eye, Pencil, Search, Truck, Users, Wallet } from 'lucide-react'
+import { AlarmClock, Banknote, Eye, Pencil, Search, Truck, Users, Wallet } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase/helpers'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -17,6 +17,9 @@ import {
 } from '@/components/production/ProdKit'
 import { DebtValue, SupplierFormDialog, SupplierPaymentDialog, useProdSuppliers } from '@/components/production/SupplierKit'
 import type { ProdSupplier } from '@/lib/production'
+import { ExportButton } from '@/components/production/ReportKit'
+import { dateTimeCell, downloadXlsx, x2 } from '@/lib/production-reports'
+import { fetchSupplierAgeing, type SupplierAgeing } from '@/lib/inventory'
 
 const iconBtn = 'flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors'
 
@@ -35,6 +38,14 @@ export default function ProdSuppliersPage() {
   const [payOpen, setPayOpen] = useState(false)
   const [paidThisMonth, setPaidThisMonth] = useState(0)
   const [monthTick, setMonthTick] = useState(0)
+  // prod_supplier_ageing (migration 20261110000014); null = not available.
+  const [ageing, setAgeing] = useState<Map<string, SupplierAgeing> | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSupplierAgeing(createClient()).then(a => { if (!cancelled) setAgeing(a) })
+    return () => { cancelled = true }
+  }, [suppliers])
 
   // Posted payments since the 1st of the current month.
   useEffect(() => {
@@ -60,6 +71,29 @@ export default function ProdSuppliersPage() {
   }, [suppliers, search, status, onlyDebtors])
 
   const totalDebt = useMemo(() => suppliers.reduce((s, x) => s + (x.debt > 0 ? x.debt : 0), 0), [suppliers])
+  const totalOverdue = useMemo(() => (ageing ? [...ageing.values()].reduce((s, a) => s + a.d1_15 + a.d16_30 + a.d31, 0) : 0), [ageing])
+  const ageCell = (n: number | undefined, tone: 'none' | 'amber' | 'red') => (
+    <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap', !n ? 'text-gray-400 dark:text-gray-500'
+      : tone === 'red' ? 'text-red-600 dark:text-red-400' : tone === 'amber' ? 'text-amber-700 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100')}>
+      {n ? formatPrice(n) : '—'}
+    </td>
+  )
+
+  function exportXlsx() {
+    downloadXlsx('zavod_yetkazuvchilar', [
+      t('production.common.name'), t('production.suppliers.phone'), t('production.suppliers.address'), t('production.common.status'),
+      `${t('production.suppliers.purchased')} (UZS)`, `${t('production.suppliers.paid')} (UZS)`, `${t('production.suppliers.debt')} (UZS)`,
+      t('production.suppliers.lastReceipt'), t('production.suppliers.lastPayment'),
+      ...(ageing ? [t('prodInventory.ageing.notDue'), t('prodInventory.ageing.d1_15'), t('prodInventory.ageing.d16_30'), t('prodInventory.ageing.d31')] : []),
+    ], filtered.map(s => {
+      const a = ageing?.get(s.id)
+      return [
+        s.name, s.phone, s.address, s.isActive ? t('production.common.active') : t('production.common.inactive'),
+        x2(s.purchased), x2(s.paid), x2(s.debt), s.lastReceiptAt ? dateTimeCell(s.lastReceiptAt) : '', s.lastPaymentAt ?? '',
+        ...(ageing ? [x2(a?.notDue ?? 0), x2(a?.d1_15 ?? 0), x2(a?.d16_30 ?? 0), x2(a?.d31 ?? 0)] : []),
+      ]
+    }), t('production.suppliers.title'))
+  }
 
   function reset() {
     setSearch('')
@@ -80,9 +114,10 @@ export default function ProdSuppliersPage() {
         { label: t('production.suppliers.totalDebt'), value: formatPrice(totalDebt), icon: Wallet, tone: totalDebt > 0 ? 'negative' : undefined },
         { label: t('production.suppliers.paidThisMonth'), value: formatPrice(paidThisMonth), icon: Banknote },
         { label: t('production.suppliers.count'), value: String(suppliers.length), icon: Users },
+        ...(ageing ? [{ label: t('prodInventory.ageing.overdue'), value: formatPrice(totalOverdue), icon: AlarmClock, tone: totalOverdue > 0 ? 'negative' as const : undefined }] : []),
       ]} />
 
-      <FilterBar onReset={search || status || onlyDebtors ? reset : undefined}>
+      <FilterBar onReset={search || status || onlyDebtors ? reset : undefined} columns={<ExportButton onClick={exportXlsx} disabled={filtered.length === 0} />}>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('production.suppliers.search')} className={cn(prodFieldCls, 'pl-9')} />
@@ -107,6 +142,14 @@ export default function ProdSuppliersPage() {
               <th className={thRightCls}>{t('production.suppliers.purchased')}</th>
               <th className={thRightCls}>{t('production.suppliers.paid')}</th>
               <th className={thRightCls}>{t('production.suppliers.debt')}</th>
+              {ageing && (
+                <>
+                  <th className={thRightCls}>{t('prodInventory.ageing.notDue')}</th>
+                  <th className={thRightCls}>{t('prodInventory.ageing.d1_15')}</th>
+                  <th className={thRightCls}>{t('prodInventory.ageing.d16_30')}</th>
+                  <th className={thRightCls}>{t('prodInventory.ageing.d31')}</th>
+                </>
+              )}
               <th className={thCls}>{t('production.suppliers.lastReceipt')}</th>
               <th className={thCls}>{t('production.common.status')}</th>
               <th className={thRightCls}>{t('production.common.actions')}</th>
@@ -120,6 +163,14 @@ export default function ProdSuppliersPage() {
                 <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap text-gray-900 dark:text-gray-100')}>{formatPrice(s.purchased)}</td>
                 <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400')}>{formatPrice(s.paid)}</td>
                 <td className={cn(tdCls, 'text-right')}><DebtValue debt={s.debt} /></td>
+                {ageing && (
+                  <>
+                    {ageCell(ageing.get(s.id)?.notDue, 'none')}
+                    {ageCell(ageing.get(s.id)?.d1_15, 'amber')}
+                    {ageCell(ageing.get(s.id)?.d16_30, 'red')}
+                    {ageCell(ageing.get(s.id)?.d31, 'red')}
+                  </>
+                )}
                 <td className={cn(tdCls, 'whitespace-nowrap text-gray-500 dark:text-gray-400')}>{s.lastReceiptAt ? formatDate(s.lastReceiptAt) : '—'}</td>
                 <td className={tdCls}><ActiveBadge active={s.isActive} /></td>
                 <td className={tdCls}>

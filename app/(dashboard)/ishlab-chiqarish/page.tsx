@@ -20,6 +20,8 @@ import {
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { formatQty, rangeToIsoBounds, unitKey, warehousePairLabel } from '@/lib/production'
+import { ExportButton } from '@/components/production/ReportKit'
+import { dateTimeCell, downloadXlsx, x2, x3 } from '@/lib/production-reports'
 
 const PAGE_SIZE = 25
 
@@ -97,6 +99,22 @@ export default function ProductionListPage() {
     { key: 'author', label: t('production.common.author') },
   ]
 
+  function exportXlsx() {
+    downloadXlsx('ishlab_chiqarish', [
+      t('production.common.number'), t('production.common.date'), t('production.productions.outputItem'), t('production.common.qty'), t('production.common.unit'),
+      t('production.productions.recipe'), `${t('production.productions.totalCost')} (UZS)`, `${t('production.productions.unitCost')} (UZS)`,
+      t('production.common.warehouse'), t('production.common.status'), t('production.common.author'),
+    ], filtered.map(r => {
+      const item = itemById.get(r.output_item_id)
+      return [
+        r.number, dateTimeCell(r.doc_date), item?.name ?? '', x3(Number(r.output_qty)), item ? t(unitKey(item.unit)) : '',
+        r.recipe_version === null ? '' : `v${r.recipe_version}`, x2(Number(r.total_cost)), x2(Number(r.unit_cost)),
+        warehousePairLabel(warehouseById.get(r.warehouse_id)?.name ?? '', r.output_warehouse_id ? warehouseById.get(r.output_warehouse_id)?.name : null),
+        r.status === 'cancelled' ? t('production.common.statusCancelled') : t('production.common.statusPosted'), r.created_by_name ?? '',
+      ]
+    }), t('production.productions.title'))
+  }
+
   function reset() {
     setRange(monthToDate())
     setWarehouseId('')
@@ -113,7 +131,7 @@ export default function ProductionListPage() {
         actionHref="/ishlab-chiqarish/yangi"
       />
 
-      <FilterBar onReset={reset} columns={<ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} />}>
+      <FilterBar onReset={reset} columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}>
         <DateRangeFilter value={range} onChange={setRange} />
         <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
           <option value="">{t('production.common.allWarehouses')}</option>

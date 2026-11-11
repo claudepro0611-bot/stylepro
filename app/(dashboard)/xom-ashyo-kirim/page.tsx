@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { PackagePlus, Search } from 'lucide-react'
+import { Milk, PackagePlus, Search } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/supabase/helpers'
@@ -21,6 +22,10 @@ import { useProdRefs } from '@/components/production/useProdRefs'
 import { useCancelDoc } from '@/components/production/useCancelDoc'
 import { useProdSuppliers } from '@/components/production/SupplierKit'
 import { rangeToIsoBounds } from '@/lib/production'
+import { localYmd } from '@/lib/utils/date'
+import { formatYmd } from '@/components/production/LotPicker'
+import { ExportButton } from '@/components/production/ReportKit'
+import { dateTimeCell, downloadXlsx, x2 } from '@/lib/production-reports'
 
 const PAGE_SIZE = 25
 
@@ -35,7 +40,11 @@ interface Row {
   total: number
   status: string
   created_by_name: string | null
+  /** Migration 20261110000014; undefined while the column does not exist. */
+  due_date?: string | null
 }
+
+const RECEIPT_COLS = 'id, number, doc_date, warehouse_id, supplier_id, supplier_name, note, total, status, created_by_name'
 
 export default function ReceiptListPage() {
   const { t } = useLanguage()
@@ -59,14 +68,17 @@ export default function ReceiptListPage() {
     setLoading(true)
     const supabase = createClient()
     const bounds = range ? rangeToIsoBounds(range) : null
-    const { data, error } = await fetchAllRows<Row>((from, to) => {
-      let q = supabase.from('prod_receipts')
-        .select('id, number, doc_date, warehouse_id, supplier_id, supplier_name, note, total, status, created_by_name')
+    const read = (cols: string) => fetchAllRows<Row>((from, to) => {
+      let q = supabase.from('prod_receipts').select(cols)
       if (bounds) q = q.gte('doc_date', bounds.fromIso).lt('doc_date', bounds.toIso)
       if (warehouseId) q = q.eq('warehouse_id', warehouseId)
       if (status) q = q.eq('status', status)
-      return q.order('number', { ascending: false }).range(from, to)
+      return q.order('number', { ascending: false }).range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>
     })
+    // due_date exists after migration 20261110000014; older schema -> without it.
+    let res = await read(`${RECEIPT_COLS}, due_date`)
+    if (res.error) res = await read(RECEIPT_COLS)
+    const { data, error } = res
     if (error) toast.error(t('productionErrors.unknown'))
     setRows(data)
     setPage(1)
@@ -88,15 +100,43 @@ export default function ReceiptListPage() {
   const safePage = Math.min(page, totalPages)
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
+  // Receipts posted by Sut qabuli are cancelled through the intake
+  // (prod_cancel_document rejects them): receipt id -> intake id.
+  const [intakeByReceipt, setIntakeByReceipt] = useState<Map<string, string>>(new Map())
+  const pageIds = paginated.map(r => r.id).join(',')
+  useEffect(() => {
+    if (!pageIds) { setIntakeByReceipt(new Map()); return }
+    let cancelled = false
+    createClient().from('prod_milk_intakes').select('id, receipt_id').in('receipt_id', pageIds.split(',')).neq('status', 'cancelled')
+      .then(({ data }) => {
+        if (cancelled) return
+        setIntakeByReceipt(new Map((data ?? []).filter(i => i.receipt_id).map(i => [i.receipt_id as string, i.id])))
+      })
+    return () => { cancelled = true }
+  }, [pageIds])
+
+  const hasDue = rows.some(r => r.due_date)
+  const today = localYmd()
   const columns = [
     { key: 'date', label: t('production.common.date') },
     { key: 'supplier', label: t('production.receipts.supplier') },
     { key: 'warehouse', label: t('production.common.warehouse') },
     { key: 'total', label: t('production.common.total') },
+    ...(hasDue ? [{ key: 'due', label: t('prodInventory.ageing.dueDate') }] : []),
     { key: 'status', label: t('production.common.status') },
     { key: 'author', label: t('production.common.author') },
     { key: 'note', label: t('production.common.note') },
   ]
+
+  function exportXlsx() {
+    downloadXlsx('xom_ashyo_kirim', [
+      t('production.common.number'), t('production.common.date'), t('production.receipts.supplier'), t('production.common.warehouse'),
+      `${t('production.common.total')} (UZS)`, t('production.common.status'), t('production.common.author'), t('production.common.note'),
+    ], filtered.map(r => [
+      r.number, dateTimeCell(r.doc_date), supplierLabel(r), warehouseById.get(r.warehouse_id)?.name ?? '', x2(Number(r.total)),
+      r.status === 'cancelled' ? t('production.common.statusCancelled') : t('production.common.statusPosted'), r.created_by_name ?? '', r.note ?? '',
+    ]), t('production.receipts.title'))
+  }
 
   function reset() {
     setRange(monthToDate())
@@ -114,7 +154,7 @@ export default function ReceiptListPage() {
         actionHref="/xom-ashyo-kirim/yangi"
       />
 
-      <FilterBar onReset={reset} columns={<ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} />}>
+      <FilterBar onReset={reset} columns={<><ExportButton onClick={exportXlsx} disabled={filtered.length === 0} /><ColumnSettings columns={columns} isVisible={isVisible} toggle={toggle} /></>}>
         <DateRangeFilter value={range} onChange={setRange} />
         <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={cn(prodFieldCls, 'w-48')}>
           <option value="">{t('production.common.allWarehouses')}</option>
@@ -140,6 +180,7 @@ export default function ReceiptListPage() {
               {isVisible('supplier') && <th className={thCls}>{t('production.receipts.supplier')}</th>}
               {isVisible('warehouse') && <th className={thCls}>{t('production.common.warehouse')}</th>}
               {isVisible('total') && <th className={thRightCls}>{t('production.common.total')}</th>}
+              {hasDue && isVisible('due') && <th className={thCls}>{t('prodInventory.ageing.dueDate')}</th>}
               {isVisible('status') && <th className={thCls}>{t('production.common.status')}</th>}
               {isVisible('author') && <th className={thCls}>{t('production.common.author')}</th>}
               {isVisible('note') && <th className={thCls}>{t('production.common.note')}</th>}
@@ -154,17 +195,35 @@ export default function ReceiptListPage() {
                 {isVisible('supplier') && <td className={cn(tdCls, 'text-gray-900 dark:text-gray-100')}>{supplierLabel(r) || '—'}</td>}
                 {isVisible('warehouse') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{warehouseById.get(r.warehouse_id)?.name ?? '—'}</td>}
                 {isVisible('total') && <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap font-medium text-gray-900 dark:text-gray-100')}>{formatPrice(Number(r.total))}</td>}
+                {hasDue && isVisible('due') && (
+                  <td className={cn(tdCls, 'whitespace-nowrap', r.due_date && r.status === 'posted' && r.due_date < today ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400')}>
+                    {r.due_date ? formatYmd(r.due_date) : '—'}
+                  </td>
+                )}
                 {isVisible('status') && <td className={tdCls}><DocStatusBadge status={r.status} /></td>}
                 {isVisible('author') && <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{r.created_by_name ?? '—'}</td>}
                 {isVisible('note') && <td className={cn(tdCls, 'max-w-[220px] truncate text-gray-500 dark:text-gray-400')}>{r.note ?? ''}</td>}
                 <td className={tdCls}>
-                  <DocActions
-                    viewHref={`/xom-ashyo-kirim/${r.id}`}
-                    canCancel={canCancel}
-                    posted={r.status === 'posted'}
-                    busy={busyId === r.id}
-                    onCancel={() => cancel(r.id)}
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    {intakeByReceipt.has(r.id) && (
+                      <Link
+                        href={`/sut-qabuli/${intakeByReceipt.get(r.id)}`}
+                        onClick={e => e.stopPropagation()}
+                        title={t('production.milk.openIntake')}
+                        aria-label={t('production.milk.openIntake')}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                      >
+                        <Milk className="h-3.5 w-3.5" />
+                      </Link>
+                    )}
+                    <DocActions
+                      viewHref={`/xom-ashyo-kirim/${r.id}`}
+                      canCancel={canCancel && !intakeByReceipt.has(r.id)}
+                      posted={r.status === 'posted'}
+                      busy={busyId === r.id}
+                      onCancel={() => cancel(r.id)}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}

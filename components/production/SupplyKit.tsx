@@ -22,7 +22,8 @@ import {
   ColumnSettings, FilterBar, NoteField, PageHeader, Segmented, TableCard, useHiddenColumns,
   prodFieldCls, prodLabelCls, tdCls, thCls, thRightCls, trCls,
 } from '@/components/production/ProdKit'
-import { parseDecimal, prodErrorKey, round2 } from '@/lib/production'
+import { parseDecimal, round2 } from '@/lib/production'
+import { AccountName, AccountSelect, useAccountChoice, useCashAccounts, useCashErrorText } from '@/components/production/CashKit'
 import type { TranslationKey } from '@/lib/i18n/translations'
 
 export type SupplyMoveKind = 'issue' | 'return' | 'expense'
@@ -83,6 +84,8 @@ const KIND_KEY: Record<SupplyMoveKind, TranslationKey> = {
 interface MoveRow {
   id: string
   agent_id: string
+  /** Cash & bank (migration 20261110000016); undefined before it. */
+  account_id?: string | null
   kind: string
   amount: number
   purpose: string | null
@@ -100,6 +103,8 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
   const { formatPrice } = useCurrency()
   const { agents, reload: reloadAgents } = useSupplyAgents()
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const { available: cashAvailable, accounts, reload: reloadAccounts } = useCashAccounts()
+  const showAccount = mode === 'cash' && !!cashAvailable
 
   const [rows, setRows] = useState<MoveRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -122,9 +127,8 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
     const supabase = createClient()
     const kinds = mode === 'cash' ? ['issue', 'return'] : ['expense']
     const { data, error } = await fetchAllRows<MoveRow>((from, to) => {
-      let q = supabase.from('supply_cash_moves')
-        .select('id, agent_id, kind, amount, purpose, expense_category_id, move_date, note, created_by_name')
-        .in('kind', kinds)
+      // select('*') so account_id comes along once migration 20261110000016 adds it.
+      let q = supabase.from('supply_cash_moves').select('*').in('kind', kinds)
       if (range) q = q.gte('move_date', range.from).lte('move_date', range.to)
       if (agentId) q = q.eq('agent_id', agentId)
       return q.order('move_date', { ascending: false }).order('created_at', { ascending: false }).order('id').range(from, to)
@@ -161,6 +165,7 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
 
   const columns = [
     ...(mode === 'cash' ? [{ key: 'kind', label: t('production.supply.kind') }] : [{ key: 'category', label: t('production.supply.category') }]),
+    ...(showAccount ? [{ key: 'account', label: t('prodCash.common.account') }] : []),
     { key: 'purpose', label: t('production.supply.purpose') },
     { key: 'note', label: t('production.common.note') },
     { key: 'author', label: t('production.common.author') },
@@ -203,6 +208,7 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
               <th className={thCls}>{t('production.supply.agent')}</th>
               {mode === 'cash' && isVisible('kind') && <th className={thCls}>{t('production.supply.kind')}</th>}
               {mode === 'expense' && isVisible('category') && <th className={thCls}>{t('production.supply.category')}</th>}
+              {showAccount && isVisible('account') && <th className={thCls}>{t('prodCash.common.account')}</th>}
               <th className={thRightCls}>{t('production.supply.amount')}</th>
               {isVisible('purpose') && <th className={thCls}>{t('production.supply.purpose')}</th>}
               {isVisible('note') && <th className={thCls}>{t('production.common.note')}</th>}
@@ -224,6 +230,7 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
                 {mode === 'expense' && isVisible('category') && (
                   <td className={cn(tdCls, 'text-gray-500 dark:text-gray-400')}>{(r.expense_category_id && categoryById.get(r.expense_category_id)) || '—'}</td>
                 )}
+                {showAccount && isVisible('account') && <td className={tdCls}><AccountName accounts={accounts} id={r.account_id} /></td>}
                 <td className={cn(tdCls, 'text-right tabular-nums whitespace-nowrap font-medium', r.kind === 'return' ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100')}>
                   {r.kind === 'return' ? '−' : ''}{formatPrice(Number(r.amount))}
                 </td>
@@ -264,7 +271,7 @@ export function SupplyMovesPage({ mode }: { mode: 'cash' | 'expense' }) {
         mode={mode}
         agents={agents}
         categories={categories}
-        onSaved={() => { setDialogOpen(false); load(); reloadAgents() }}
+        onSaved={() => { setDialogOpen(false); load(); reloadAgents(); reloadAccounts() }}
       />
     </div>
   )
@@ -288,6 +295,14 @@ function SupplyMoveDialog({ open, onOpenChange, mode, agents, categories, onSave
   const [date, setDate] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  // Cash & bank (migration 20261110000016): an issue takes money from, a return puts it into
+  // an account (default: the cash desk). Spending is the agent's own cash: no account.
+  const { available: cashAvailable, accounts, reload: reloadAccounts } = useCashAccounts()
+  const [accountId, setAccountId] = useAccountChoice(open, accounts, 'cash')
+  const errorText = useCashErrorText(accounts)
+  const usesAccount = !!cashAvailable && kind !== 'expense'
+
+  useEffect(() => { if (open && cashAvailable && mode === 'cash') reloadAccounts() }, [open, cashAvailable, mode, reloadAccounts])
 
   useEffect(() => {
     if (!open) return
@@ -318,10 +333,11 @@ function SupplyMoveDialog({ open, onOpenChange, mode, agents, categories, onSave
         expense_category_id: kind === 'expense' ? (categoryId || null) : null,
         move_date: date || localYmd(),
         note: note.trim() || null,
+        ...(usesAccount && accountId ? { account_id: accountId } : {}),
       },
     })
     setSaving(false)
-    if (error) { toast.error(t(prodErrorKey(error.message))); return }
+    if (error) { toast.error(errorText(error)); return }
     toast.success(t('production.common.saved'))
     onSaved()
   }
@@ -372,6 +388,9 @@ function SupplyMoveDialog({ open, onOpenChange, mode, agents, categories, onSave
             </label>
           </div>
           {overBalance && <p className="text-[12px] text-red-600 dark:text-red-400">{t('productionErrors.negative_balance')}</p>}
+          {usesAccount && (
+            <AccountSelect accounts={accounts} value={accountId} onChange={setAccountId} outflow={kind === 'issue' ? value : undefined} />
+          )}
           {kind === 'expense' && (
             <label className="block">
               <span className={prodLabelCls}>{t('production.supply.category')}</span>
