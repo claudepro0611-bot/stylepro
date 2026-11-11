@@ -8,8 +8,8 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
-import { Ban, Check, FileText, FlaskConical, Loader2, PencilLine, Tags, Truck, X } from 'lucide-react'
+import { useParams, useRouter } from 'next/navigation'
+import { Ban, Check, FileText, FlaskConical, Loader2, PencilLine, Tablet, Tags, Truck, X } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -26,6 +26,8 @@ import {
   useCancelMilkIntake, useHasPermission, useMilkSettings, type LabDraft,
 } from '@/components/production/MilkKit'
 import { ControlHint, DocOverrides, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { useTabletMode } from '@/components/production/TabletKit'
+import { Term } from '@/components/production/Term'
 import { formatQty } from '@/lib/production'
 import {
   antibioticKey, focusNextField, formatDensity, formatPct, isStockStatus, milkStatusKey, numInput, parseOverride, pricingModeKey, previewConditional,
@@ -52,6 +54,8 @@ export default function MilkIntakeViewPage() {
   const { settings } = useMilkSettings()
   const canLab = useHasPermission('prod_lab')
   const canReceipts = useHasPermission('prod_receipts')
+  const router = useRouter()
+  const tablet = useTabletMode()
 
   const [doc, setDoc] = useState<MilkIntakeRow | null>(null)
   const [loading, setLoading] = useState(true)
@@ -95,6 +99,12 @@ export default function MilkIntakeViewPage() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  // Tablet mode: a weighed intake opens in the touch lab.
+  const weighedForLab = !!doc && doc.status === 'weighed' && canLab
+  useEffect(() => {
+    if (tablet && weighedForLab) router.replace(`/sut-qabuli/laboratoriya?id=${id}`)
+  }, [tablet, weighedForLab, router, id])
 
   const { canCancel, cancel, busyId } = useCancelMilkIntake(load)
   const approval = useApprovalRetry()
@@ -193,6 +203,11 @@ export default function MilkIntakeViewPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <PrintButton />
+          {weighed && canLab && (
+            <Link href={`/sut-qabuli/laboratoriya?id=${doc.id}`} className={secondaryBtnCls}>
+              <Tablet className="h-3.5 w-3.5" /> {t('prodOps.tablet.openLab')}
+            </Link>
+          )}
           {doc.receipt_id && (
             <Link href={`/xom-ashyo-kirim/${doc.receipt_id}`} className={secondaryBtnCls}>
               <FileText className="h-3.5 w-3.5" /> {t('production.milk.openReceipt')}
@@ -269,6 +284,7 @@ export default function MilkIntakeViewPage() {
                 <p className={prodLabelCls}>{t('production.milk.checks')}</p>
                 <ThresholdChecks values={values} settings={settings} />
               </div>
+              <Term k="shartliQabul" className="text-[13px] text-gray-500 dark:text-gray-400" />
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <Button onClick={() => decide('accepted')} loading={saving === 'accepted'} disabled={!!saving || lab.antibiotic === 'positive'}>
                   <Check className="h-4 w-4" /> {t('production.milk.accept')}

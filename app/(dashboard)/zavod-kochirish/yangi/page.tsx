@@ -15,6 +15,8 @@ import {
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { useFormDraft } from '@/lib/useFormDraft'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
@@ -51,6 +53,12 @@ export default function NewTransferPage() {
   const [lines, setLines] = useState<Line[]>([])
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Local draft (useFormDraft): autosaved 2 s after a change, offered when the form opens.
+  const draftState = { date, time, fromId, toId, lines, note }
+  const draft = useFormDraft('transfer', draftState, (d: typeof draftState) => {
+    setDate(d.date); setTime(d.time); setFromId(d.fromId); setToId(d.toId); setLines(d.lines); setNote(d.note)
+  }, { isEmpty: d => d.lines.length === 0 && !d.note })
 
   // Client clock and ?from=<warehouseId> (from the warehouse page) only on the client.
   useEffect(() => {
@@ -125,6 +133,7 @@ export default function NewTransferPage() {
     remember0(fromId)
     remember1(toId)
     const id = (data as { id?: string } | null)?.id
+    draft.clear()
     toast.success(t('production.common.saved'))
     router.push(id ? `/zavod-kochirish/${id}` : '/zavod-kochirish')
   }
@@ -133,6 +142,7 @@ export default function NewTransferPage() {
     <div className="space-y-5">
       <BackLink href="/zavod-kochirish" label={t('production.transfers.title')} />
       <PageHeader title={t('production.transfers.newTitle')} />
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
 
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">

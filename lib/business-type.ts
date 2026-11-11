@@ -50,6 +50,11 @@ export const PRODUCTION_PREFIXES = [
   '/zavod-audit',
   // Accounting (migration 20261110000018); role-gated in proxy.ts.
   '/zavod-xarajat-taqsimoti',
+  // Approval queue (migration 20261110000019): every role (requesters see
+  // their own requests); RLS + prod_decide_approval re-check owner / admin.
+  '/zavod-tasdiqlar',
+  // Daily production plan (migration 20261110000019).
+  '/zavod-reja',
 ] as const
 
 /** Routes both business types may open. */

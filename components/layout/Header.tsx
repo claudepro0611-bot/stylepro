@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, Fragment } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, Menu, LogOut, Sun, Moon, KeyRound } from 'lucide-react'
+import { Bell, Menu, LogOut, Sun, Moon, KeyRound, SlidersHorizontal } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
@@ -13,6 +13,9 @@ import { cn } from '@/lib/utils'
 import { PaymentModal } from '@/components/PaymentModal'
 import { ChangePasswordForm } from '@/components/sozlamalar/ChangePasswordForm'
 import { BranchSwitcher } from '@/components/layout/BranchSwitcher'
+import { NotificationBell } from '@/components/layout/NotificationBell'
+import { CommandPalette } from '@/components/layout/CommandPalette'
+import { useProductionEnabled } from '@/components/layout/useProdNotifications'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Breadcrumb,
@@ -85,6 +88,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
+  // Production firms / the add-on: live notification feed (migration 20261110000019).
+  const productionEnabled = useProductionEnabled()
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -148,11 +153,14 @@ export function Header({ onMenuClick }: HeaderProps) {
             production firms have no branch UI at all. */}
         {company?.businessType !== 'production' && <BranchSwitcher />}
 
-        {/* Notification bell */}
-        <button className="relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-          <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 ring-1 ring-white dark:ring-gray-900" />
-        </button>
+        {/* Notification bell: the live feed for production firms (hidden
+            until it is available), the old placeholder for retail firms. */}
+        {productionEnabled ? <NotificationBell /> : (
+          <button className="relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 ring-1 ring-white dark:ring-gray-900" />
+          </button>
+        )}
 
         {/* Currency switch */}
         <div
@@ -222,6 +230,16 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {profileOpen && (
             <div className="absolute right-0 top-10 z-50 w-52 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden">
+              {!isSuperAdmin && (
+                <Link
+                  href="/sozlamalar/interfeys"
+                  onClick={() => setProfileOpen(false)}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-[13px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  {t('prodShell.prefs.menu')}
+                </Link>
+              )}
               <button
                 onClick={() => { setProfileOpen(false); setPasswordDialogOpen(true) }}
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-[13px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -249,6 +267,8 @@ export function Header({ onMenuClick }: HeaderProps) {
           <ChangePasswordForm onSuccess={() => setPasswordDialogOpen(false)} />
         </DialogContent>
       </Dialog>
+
+      <CommandPalette />
 
       {!isSuperAdmin && (
         <PaymentModal open={paymentModalOpen} onOpenChange={setPaymentModalOpen} monthlyFee={monthlyFee} />

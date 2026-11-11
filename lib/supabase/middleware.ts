@@ -76,6 +76,8 @@ const ROUTE_PERMISSIONS: Record<string, PermissionKey> = {
   // Production firms (business_type = 'production'). Retail firms never get
   // this far for these paths: the business-type check redirects them first.
   '/ishlab-chiqarish': 'prod_production',
+  // Daily production plan (migration 20261110000019).
+  '/zavod-reja': 'prod_production',
   '/separatsiya': 'prod_production',
   '/qayta-ishlash': 'prod_processing',
   '/xom-ashyo-kirim': 'prod_receipts',

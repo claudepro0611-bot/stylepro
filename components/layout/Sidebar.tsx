@@ -10,7 +10,8 @@ import {
   Database, Tag, Building2, Briefcase, User, Target, LineChart, Crown, UserCog, Archive,
   Receipt, Warehouse, Store, Wallet, TrendingUp, ClipboardList, ClipboardCheck, RotateCcw, CreditCard, Contact, ListOrdered, Truck, ArrowLeftRight, PackagePlus,
   Factory, Recycle, BookOpen, HandCoins, Banknote, Milk, Split, FileBarChart, PackageOpen, Tags, Undo2,
-  Landmark, ReceiptText, ArrowRightLeft, Boxes, ShieldCheck, CalendarCheck, History, PieChart,
+  Landmark, ReceiptText, ArrowRightLeft, Boxes, ShieldCheck, CalendarCheck, CalendarDays, History, PieChart,
+  BadgeCheck, Search, Star, Eye, EyeOff, SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -21,6 +22,9 @@ import { DEFAULT_PERMISSIONS, withDefaultPermissions, type Permissions, type Per
 import { useFeatures } from '@/lib/features'
 import { isAllBranchRole } from '@/lib/branches'
 import type { TranslationKey } from '@/lib/i18n/translations'
+import { usePrefs, FAVORITES_MAX } from '@/lib/prefs'
+import { openCommandPalette } from '@/components/layout/commandPaletteEvents'
+import { useProdNotifications } from '@/components/layout/useProdNotifications'
 
 
 export interface NavLeaf {
@@ -55,12 +59,15 @@ interface SidebarProps {
 // get them under a "Zavod" section (see PRODUCTION_ADDON_ITEMS). Group hrefs
 // are synthetic keys (noLink) and never collide with real routes or with the
 // retail groups ('/moliya', '/reports', ...), so their open state is separate.
+const APPROVALS_HREF = '/zavod-tasdiqlar'
+
 const PRODUCTION_GROUPS: NavEntry[] = [
   {
     href: '/zavod-ishlab-chiqarish-bolimi', labelKey: 'production.nav.production', icon: Factory, noLink: true,
     children: [
       { href: '/sut-qabuli', labelKey: 'production.nav.milk', icon: Milk, permKey: 'prod_milk' },
       { href: '/ishlab-chiqarish', labelKey: 'production.nav.production', icon: Factory, permKey: 'prod_production' },
+      { href: '/zavod-reja', labelKey: 'prodHome.nav.plan', icon: CalendarDays, permKey: 'prod_production' },
       { href: '/separatsiya', labelKey: 'production.nav.separation', icon: Split, permKey: 'prod_production' },
       { href: '/qayta-ishlash', labelKey: 'production.nav.processing', icon: Recycle, permKey: 'prod_processing' },
     ],
@@ -120,6 +127,9 @@ const PRODUCTION_GROUPS: NavEntry[] = [
   },
   // Single entry: the reports index lists every report (incl. the cash report).
   { href: '/zavod-hisobotlar', labelKey: 'prodReports.nav', icon: FileBarChart, permKey: 'prod_stock' },
+  // Approval queue (migration 20261110000019): owner / admin decide, everyone
+  // sees their own requests. Hidden while the migration is not applied.
+  { href: APPROVALS_HREF, labelKey: 'prodShell.nav.approvals', icon: BadgeCheck },
   {
     href: '/zavod-malumotnomalar', labelKey: 'production.nav.catalog', icon: BookOpen, noLink: true,
     children: [
@@ -263,7 +273,35 @@ function groupActive(pathname: string, item: NavEntry) {
   return isActive(pathname, item.href) || (item.children?.some(c => isActive(pathname, c.href, c.exact)) ?? false)
 }
 
-function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: boolean, features: Record<string, boolean>, isAllBranchUser: boolean): NavEntry[] {
+/** Drops the user's hidden leaves (prefs.hidden_menu); a link-less group left empty disappears. */
+function withoutHidden(items: NavEntry[], hidden: Set<string>, drop: (href: string) => boolean): NavEntry[] {
+  return items.reduce<NavEntry[]>((acc, item) => {
+    if (item.children) {
+      const children = item.children.filter(c => !hidden.has(c.href) && !drop(c.href))
+      if (item.noLink && children.length === 0) return acc
+      acc.push({ ...item, children })
+    } else if (!hidden.has(item.href) && !drop(item.href)) {
+      acc.push(item)
+    }
+    return acc
+  }, [])
+}
+
+/** Every linkable leaf of the visible nav (favorites resolve against this, so permissions apply). */
+function navLeaves(items: NavEntry[]): NavLeaf[] {
+  const out: NavLeaf[] = []
+  for (const item of items) {
+    if (item.children) {
+      if (!item.noLink) out.push(item)
+      out.push(...item.children)
+    } else {
+      out.push(item)
+    }
+  }
+  return out
+}
+
+export function filterNavItems(items: NavEntry[], permissions: Permissions, isOwner: boolean, features: Record<string, boolean>, isAllBranchUser: boolean): NavEntry[] {
   return items.reduce<NavEntry[]>((acc, item) => {
     if (item.featureKey && !features[item.featureKey]) return acc
     if (item.allBranchRolesOnly && !isAllBranchUser) return acc
@@ -306,8 +344,31 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
 
   const collapsed = forceExpanded ? false : storedCollapsed
 
-  const filteredNavItems = filterNavItems(isProduction ? PRODUCTION_NAV_ITEMS : NAV_ITEMS, permissions, isOwner, features, isAllBranchUser)
+  // Menu favorites / hidden leaves (lib/prefs.ts) and the approvals badge.
+  const { prefs, save: savePrefs } = usePrefs()
+  const [editMenu, setEditMenu] = useState(false)
+  const notif = useProdNotifications()
+  const pendingApprovals = notif.items.find(n => n.kind === 'pending_approvals')?.count ?? 0
+  const hiddenSet = new Set(editMenu ? [] : prefs.hiddenMenu)
+  const dropHref = (href: string) => href === APPROVALS_HREF && !notif.available
+
+  const permittedNavItems = filterNavItems(isProduction ? PRODUCTION_NAV_ITEMS : NAV_ITEMS, permissions, isOwner, features, isAllBranchUser)
+  const filteredNavItems = withoutHidden(permittedNavItems, hiddenSet, dropHref)
   const filteredSettingsItem = filterNavItems([SETTINGS_NAV_ITEM], permissions, isOwner, features, isAllBranchUser)[0]
+  const leafByHref = new Map(navLeaves([...withoutHidden(permittedNavItems, new Set(), dropHref), ...(filteredSettingsItem ? [filteredSettingsItem] : [])]).map(l => [l.href, l]))
+  const favoriteLeaves = prefs.favorites.map(h => leafByHref.get(h)).filter((l): l is NavLeaf => !!l)
+  const favSet = new Set(prefs.favorites)
+  const hiddenPrefSet = new Set(prefs.hiddenMenu)
+
+  function toggleFavorite(href: string) {
+    const next = favSet.has(href) ? prefs.favorites.filter(h => h !== href) : [...prefs.favorites, href].slice(-FAVORITES_MAX)
+    void savePrefs({ favorites: next })
+  }
+
+  function toggleHidden(href: string) {
+    const next = hiddenPrefSet.has(href) ? prefs.hiddenMenu.filter(h => h !== href) : [...prefs.hiddenMenu, href]
+    void savePrefs({ hiddenMenu: next })
+  }
   const navItems = isAdmin ? [...filteredNavItems, ADMIN_NAV_ITEM] : filteredNavItems
   const groups = [...navItems, ...(filteredSettingsItem ? [filteredSettingsItem] : [])].filter(i => i.children)
 
@@ -373,21 +434,49 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
 
   // ─── Expanded leaf item ──────────────────────────────────────────────────────
   function renderExpandedLeaf(key: string, href: string, icon: LucideIcon, label: string, active: boolean, small = false) {
+    const isFav = favSet.has(href)
+    const isHidden = hiddenPrefSet.has(href)
+    const badge = href === APPROVALS_HREF && pendingApprovals > 0 ? pendingApprovals : 0
     return (
-      <Link
-        key={key}
-        href={href}
-        className={cn(
-          'flex items-center gap-2.5 rounded-lg transition-colors',
-          small ? 'py-1.5 pl-9 pr-2.5 text-[12.5px]' : 'py-2 px-2.5 text-[13.5px]',
-          active
-            ? 'bg-sidebar-accent dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border text-sidebar-accent-foreground dark:text-gray-100 font-medium'
-            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60',
+      <div key={key} className={cn('group/leaf relative', editMenu && isHidden && 'opacity-50')}>
+        <Link
+          href={href}
+          className={cn(
+            'flex items-center gap-2.5 rounded-lg transition-colors',
+            small ? 'py-1.5 pl-9 pr-8 text-[12.5px]' : 'py-2 pl-2.5 pr-8 text-[13.5px]',
+            active
+              ? 'bg-sidebar-accent dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 border-l-2 border-l-sidebar-accent-border text-sidebar-accent-foreground dark:text-gray-100 font-medium'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60',
+          )}
+        >
+          {renderIcon(icon, active, small)}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {badge > 0 && (
+            <span className="rounded-full bg-amber-100 dark:bg-amber-500/10 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 group-hover/leaf:invisible">{badge}</span>
+          )}
+        </Link>
+        {editMenu ? (
+          <button
+            type="button"
+            onClick={() => toggleHidden(href)}
+            title={t(isHidden ? 'prodShell.menu.show' : 'prodShell.menu.hide')}
+            aria-label={t(isHidden ? 'prodShell.menu.show' : 'prodShell.menu.hide')}
+            className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+          >
+            {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => toggleFavorite(href)}
+            title={t(isFav ? 'prodShell.menu.unfavorite' : 'prodShell.menu.favorite')}
+            aria-label={t(isFav ? 'prodShell.menu.unfavorite' : 'prodShell.menu.favorite')}
+            className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-gray-400 opacity-0 group-hover/leaf:opacity-100 focus-visible:opacity-100 hover:text-gray-900 dark:hover:text-gray-100 transition-opacity"
+          >
+            <Star className={cn('h-3.5 w-3.5', isFav && 'fill-current text-gray-700 dark:text-gray-300')} />
+          </button>
         )}
-      >
-        {renderIcon(icon, active, small)}
-        {label}
-      </Link>
+      </div>
     )
   }
 
@@ -503,8 +592,46 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
         )}
       </div>
 
+      {/* ── Search (opens the Ctrl+K command palette) ─────────────────────────── */}
+      <div className={cn('shrink-0 pt-2', collapsed ? 'px-2' : 'px-3')}>
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={openCommandPalette}
+            title={t('prodShell.cmdk.open')}
+            className="flex h-9 w-full items-center justify-center rounded-lg text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={openCommandPalette}
+            className="flex h-9 w-full items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 text-left text-[13px] text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 truncate">{t('prodShell.cmdk.open')}</span>
+            <kbd className="rounded border border-gray-200 dark:border-gray-700 px-1 font-sans text-[10px] text-gray-400 dark:text-gray-500">Ctrl K</kbd>
+          </button>
+        )}
+      </div>
+
       {/* ── Nav ──────────────────────────────────────────────────────────────── */}
       <nav className={cn('flex-1 py-2 space-y-0.5 overflow-y-auto', collapsed ? 'px-2' : 'px-2.5')}>
+        {favoriteLeaves.length > 0 && !editMenu && (
+          <>
+            {!collapsed && (
+              <div className="mb-1 flex items-center gap-2 px-2.5">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">{t('prodShell.menu.favorites')}</span>
+                <span className="h-px flex-1 bg-gray-100 dark:bg-gray-800" />
+              </div>
+            )}
+            {favoriteLeaves.map(leaf => collapsed
+              ? renderCollapsedItem(`fav:${leaf.href}`, leaf.icon, t(leaf.labelKey), isActive(pathname, leaf.href, leaf.exact), undefined, leaf.href)
+              : renderExpandedLeaf(`fav:${leaf.href}`, leaf.href, leaf.icon, t(leaf.labelKey), isActive(pathname, leaf.href, leaf.exact)))}
+            <div className="my-2 border-t border-gray-100 dark:border-gray-800" />
+          </>
+        )}
         {filteredNavItems.map((item, i) => {
           const sectionStart = !!item.section && filteredNavItems[i - 1]?.section !== item.section
           const sectionEnd = !!item.section && i < filteredNavItems.length - 1 && !filteredNavItems[i + 1]?.section
@@ -529,6 +656,22 @@ export function Sidebar({ forceExpanded = false }: SidebarProps) {
             <div className="my-2 border-t border-gray-100 dark:border-gray-800" />
             {renderItem(filteredSettingsItem)}
           </>
+        )}
+
+        {!collapsed && !isAdmin && (
+          <button
+            type="button"
+            onClick={() => setEditMenu(v => !v)}
+            className={cn(
+              'mt-1 flex w-full items-center gap-2.5 rounded-lg py-1.5 px-2.5 text-[12.5px] transition-colors',
+              editMenu
+                ? 'bg-white dark:bg-gray-900 shadow-sm border border-gray-100 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-medium'
+                : 'text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-gray-100',
+            )}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+            {t(editMenu ? 'prodShell.menu.done' : 'prodShell.menu.customize')}
+          </button>
         )}
       </nav>
     </aside>

@@ -20,6 +20,9 @@ import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/p
 import { LotPicker } from '@/components/production/LotPicker'
 import { useMilkSettings } from '@/components/production/MilkKit'
 import { ControlHint, DocDateInput, useApprovalRetry, useControls, useProdErrorText } from '@/components/production/ControlKit'
+import { Term } from '@/components/production/Term'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { useFormDraft } from '@/lib/useFormDraft'
 import { useAccounting } from '@/components/production/AccountingKit'
 import { fillText } from '@/lib/production-controls'
 import {
@@ -105,11 +108,42 @@ export default function NewProductionPage() {
   const [mainShare, setMainShare] = useState('')
   const recipeReq = useRef(0)
 
+  // A form opened from a link (?item= from the daily plan) does not offer a draft.
+  const [draftUrlChecked, setDraftUrlChecked] = useState(false)
+  const [draftFromLink, setDraftFromLink] = useState(false)
+  useEffect(() => {
+    setDraftFromLink(new URLSearchParams(window.location.search).has('item'))
+    setDraftUrlChecked(true)
+  }, [])
+
+  // Local draft (useFormDraft): autosaved 2 s after a change, offered when the form opens.
+  const draftState = { date, time, warehouseId, outputWarehouseChoice, outputItemId, outputQty, lines, recipe, note, coRows, allocMethod, mainRef, mainShare }
+  const draft = useFormDraft('production', draftState, (d: typeof draftState) => {
+    setDate(d.date); setTime(d.time); setWarehouseId(d.warehouseId); setOutputWarehouseChoice(d.outputWarehouseChoice); setOutputItemId(d.outputItemId); setOutputQty(d.outputQty); setLines(d.lines); setRecipe(d.recipe); setNote(d.note); setCoRows(d.coRows); setAllocMethod(d.allocMethod); setMainRef(d.mainRef); setMainShare(d.mainShare)
+  }, { ready: draftUrlChecked && itemById.size > 0, enabled: !draftFromLink, isEmpty: d => !d.outputItemId && d.lines.length === 0 && !d.note })
+
   const { stock, loading: stockLoading } = useWarehouseStock(warehouseId)
   const { lotsOf, available: lotsAvailable } = useWarehouseLots(warehouseId)
 
   // Client clock only (avoids a server/client hydration mismatch).
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
+
+  // Opened from the daily plan (/zavod-reja): ?plan=&item=&qty=&recipe= prefill
+  // the output (its active recipe loads as usual); plan_id marks the line done.
+  const [planLink, setPlanLink] = useState<{ id: string; itemId: string } | null>(null)
+  const planParamsDone = useRef(false)
+  useEffect(() => {
+    if (planParamsDone.current || itemById.size === 0) return
+    planParamsDone.current = true
+    const params = new URLSearchParams(window.location.search)
+    const item = params.get('item')
+    if (!item || !itemById.has(item)) return
+    const plan = params.get('plan')
+    if (plan) setPlanLink({ id: plan, itemId: item })
+    const qty = params.get('qty')
+    if (qty) setOutputQty(qty)
+    void changeOutput(item)
+  }, [itemById]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Components come from a raw/production warehouse, the output goes to a
   // finished/production one (both fall back to every active warehouse).
@@ -294,6 +328,7 @@ export default function NewProductionPage() {
         output_qty: round3(outQty),
         note: note.trim() || null,
         recipe_id: recipe?.id ?? null,
+        ...(planLink && planLink.itemId === outputItemId ? { plan_id: planLink.id } : {}),
         ...(hasCo ? {
           allocation_method: allocMethod,
           outputs: [
@@ -318,6 +353,7 @@ export default function NewProductionPage() {
     rememberRaw(warehouseId)
     rememberOut(outputWarehouseId)
     const id = (data as { id?: string } | null)?.id
+    draft.clear()
     toast.success(t('production.common.saved'))
     router.push(id ? `/ishlab-chiqarish/${id}` : '/ishlab-chiqarish')
   }
@@ -348,6 +384,7 @@ export default function NewProductionPage() {
     <div className="space-y-5">
       <BackLink href="/ishlab-chiqarish" label={t('production.productions.title')} />
       <PageHeader title={t('production.productions.newTitle')} />
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
 
       <div className={cn(prodCardCls, 'p-4 sm:p-6 space-y-5')}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -572,7 +609,7 @@ export default function NewProductionPage() {
       <div className={cn(prodCardCls, 'overflow-hidden')}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-3">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('production.productions.components')}</h2>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100"><Term k="fifo">{t('production.productions.components')}</Term></h2>
             {canReset && (
               <button
                 type="button"

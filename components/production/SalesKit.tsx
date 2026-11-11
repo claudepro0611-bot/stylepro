@@ -20,6 +20,7 @@ import { Switch } from '@/components/ui/switch'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { NoteField, Segmented, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
 import { DocDateInput, useApprovalRetry } from '@/components/production/ControlKit'
+import { Term } from '@/components/production/Term'
 import { prodErrorText } from '@/lib/production-controls'
 import { AccountSelect, useAccountChoice, useCashAccounts, useCashErrorText } from '@/components/production/CashKit'
 import {
@@ -128,7 +129,7 @@ export function CustomerSummary({ customer, ageing }: { customer: ProdCustomer; 
   const overdue = overdueOf(ageing)
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-gray-500 dark:text-gray-400">
-      <span className="inline-flex items-center gap-1">{t('prodSales.common.balance')}: <BalanceValue balance={customer.balance} className="text-[12px]" /></span>
+      <span className="inline-flex items-center gap-1"><Term k="debitorlik">{t('prodSales.common.balance')}</Term>: <BalanceValue balance={customer.balance} className="text-[12px]" /></span>
       <span className="tabular-nums">{t('prodSales.common.creditLimit')}: {customer.creditLimit === null ? '—' : formatPrice(customer.creditLimit)}</span>
       {overdue > 0 && <span className="tabular-nums font-medium text-red-600 dark:text-red-400">{t('prodSales.common.overdueDebt')}: {formatPrice(overdue)}</span>}
     </div>
@@ -405,4 +406,61 @@ export function useCancelCustomerPayment(onDone: () => void) {
   }
 
   return { canCancel: canCancelDocuments(profile?.role), cancel, busyId }
+}
+
+// ---------------------------------------------------------------------------
+// Repeat last sale (migration 20261110000019: prod_last_sale_lines)
+
+export interface LastSaleLine { itemId: string; qty: number; price: number; currentPrice: number | null }
+export interface LastSale { saleId: string; number: number | null; warehouseId: string | null; priceListId: string | null; lines: LastSaleLine[] }
+
+type UntypedRpc = (fn: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>
+
+/**
+ * The customer's last posted sale lines: prod_last_sale_lines, or (before
+ * migration 19) a direct read of the last posted prod_sales row + its lines.
+ * null = no posted sale; undefined = could not load.
+ */
+export async function fetchLastSale(customerId: string): Promise<LastSale | null | undefined> {
+  const supabase = createClient()
+  const rpc = supabase.rpc.bind(supabase) as unknown as UntypedRpc
+  const r = await rpc('prod_last_sale_lines', { p_customer: customerId })
+  if (!r.error) {
+    const d = r.data as {
+      sale_id?: string; number?: number; warehouse_id?: string | null; price_list_id?: string | null
+      lines?: { item_id: string; qty: number; price: number; current_price?: number | null }[]
+    } | null
+    if (!d || !d.sale_id) return null
+    return {
+      saleId: d.sale_id,
+      number: d.number ?? null,
+      warehouseId: d.warehouse_id ?? null,
+      priceListId: d.price_list_id ?? null,
+      lines: (d.lines ?? []).map(l => ({ itemId: l.item_id, qty: Number(l.qty), price: Number(l.price), currentPrice: l.current_price == null ? null : Number(l.current_price) })),
+    }
+  }
+  if (/not_found|forbidden/.test(r.error.message ?? '')) return r.error.message?.includes('not_found') ? null : undefined
+  // Fallback while the RPC is not deployed.
+  const { data: sale, error } = await supabase.from('prod_sales')
+    .select('id, number, warehouse_id, price_list_id')
+    .eq('customer_id', customerId)
+    .eq('status', 'posted')
+    .order('doc_date', { ascending: false })
+    .order('number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) return undefined
+  if (!sale) return null
+  const { data: lines, error: linesError } = await supabase.from('prod_sale_items')
+    .select('item_id, qty, price')
+    .eq('sale_id', sale.id)
+    .order('sort_order')
+  if (linesError) return undefined
+  return {
+    saleId: sale.id,
+    number: sale.number,
+    warehouseId: sale.warehouse_id,
+    priceListId: sale.price_list_id,
+    lines: (lines ?? []).map(l => ({ itemId: l.item_id, qty: Number(l.qty), price: Number(l.price), currentPrice: null })),
+  }
 }

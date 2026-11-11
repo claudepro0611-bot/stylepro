@@ -5,11 +5,13 @@
 // driver and lines with auto-filled prices, discount, FIFO cost preview and
 // margin (owner/admin only), lot picks ('strict': free lots only). Saves
 // through prod_create_sale; the server recomputes prices, VAT, cost and the
-// credit warning.
+// credit warning. "Oxirgi sotuvni takrorlash" (button next to the customer
+// or ?repeat=1&customer=<id>) prefills the lines of the customer's last posted
+// sale; the form is autosaved as a local draft (useFormDraft).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, RotateCcw, X } from 'lucide-react'
+import { History, Loader2, RotateCcw, X } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -28,8 +30,13 @@ import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/p
 import { LotPicker } from '@/components/production/LotPicker'
 import { NotAvailableNote } from '@/components/production/InventoryKit'
 import {
-  CreditWarningBanner, CustomerSummary, usePriceLists, useProdCustomers, useSalesAvailable, useSeesMargin,
+  CreditWarningBanner, CustomerSummary, fetchLastSale, usePriceLists, useProdCustomers, useSalesAvailable, useSeesMargin,
+  type LastSale,
 } from '@/components/production/SalesKit'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { Term } from '@/components/production/Term'
+import { useFormDraft } from '@/lib/useFormDraft'
+import { fillText } from '@/lib/production-controls'
 import {
   activePicks, expiryWarnDaysOf, formatQty, isLotFree, lineAllocation, lineCost, localDateTimeToIso, makeLinePicks, nowHm,
   picksPayload, round2, round3, toInputString, unitKey, warehousesFor,
@@ -51,6 +58,11 @@ interface Line {
 }
 
 type VatMode = '0' | '12' | 'custom'
+
+interface SaleDraft {
+  date: string; time: string; customerId: string; warehouseId: string; priceListId: string; vatMode: VatMode; vatCustom: string
+  vehicle: string; driver: string; lines: Line[]; note: string
+}
 
 const numIn = (v: string) => {
   const n = Number(v.replace(',', '.').replace(/\s/g, ''))
@@ -82,20 +94,39 @@ export default function NewSalePage() {
   const [lines, setLines] = useState<Line[]>([])
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [repeatLoading, setRepeatLoading] = useState(false)
+  const [pendingRepeat, setPendingRepeat] = useState<LastSale | null>(null)
+  const [repeatParam, setRepeatParam] = useState(false)
+  // A restored draft keeps its price list / VAT (the customer effect below would reset them).
+  const skipCustomerReset = useRef(false)
 
-  // Client clock and ?customer=<id> (from the customer card) only on the client.
+  // Client clock, ?customer=<id> (from the customer card) and ?repeat=1 only on the client.
   useEffect(() => {
     setDate(localYmd())
     setTime(nowHm())
-    const c = new URLSearchParams(window.location.search).get('customer')
+    const params = new URLSearchParams(window.location.search)
+    const c = params.get('customer')
     if (c) setCustomerId(c)
+    if (c && params.get('repeat') === '1') setRepeatParam(true)
   }, [])
+
+  const draft = useFormDraft<SaleDraft>('sale', {
+    date, time, customerId, warehouseId, priceListId, vatMode, vatCustom, vehicle, driver, lines, note,
+  }, d => {
+    skipCustomerReset.current = true
+    setDate(d.date); setTime(d.time); setCustomerId(d.customerId); setWarehouseId(d.warehouseId); setPriceListId(d.priceListId)
+    setVatMode(d.vatMode); setVatCustom(d.vatCustom); setVehicle(d.vehicle); setDriver(d.driver); setLines(d.lines ?? []); setNote(d.note)
+  }, {
+    ready: !customersLoading,
+    isEmpty: d => !d.customerId && (d.lines ?? []).length === 0 && !d.note && !d.vehicle && !d.driver,
+  })
 
   const customer = customers.find(c => c.id === customerId)
   // A new customer resets the list to "automatic" (= the customer's list, else
   // the default list, as prod_create_sale resolves it) and VAT to 12% for VAT payers.
   useEffect(() => {
     if (!customer) return
+    if (skipCustomerReset.current) { skipCustomerReset.current = false; return }
     setPriceListId('')
     setVatMode(customer.vatPayer ? '12' : '0')
   }, [customer])
@@ -122,6 +153,46 @@ export default function NewSalePage() {
     if (!lots) return stock.get(itemId)?.qty ?? 0
     return round3(lots.filter(isLotFree).reduce((s, l) => s + l.remainingQty, 0))
   }
+
+  async function repeatLastSale(id = customerId) {
+    if (!id || repeatLoading) return
+    if (lines.length > 0 && !window.confirm(t('prodOps.repeat.confirmReplace'))) return
+    setRepeatLoading(true)
+    const last = await fetchLastSale(id)
+    setRepeatLoading(false)
+    if (last === undefined) { toast.error(t('productionErrors.unknown')); return }
+    if (!last || last.lines.length === 0) { toast.info(t('prodOps.repeat.none')); return }
+    // The last sale's warehouse when it is still a sale warehouse and none is chosen.
+    if (!sourceId && last.warehouseId && saleWarehouses.some(w => w.id === last.warehouseId)) setWarehouseId(last.warehouseId)
+    setPendingRepeat(last)
+  }
+
+  // ?repeat=1&customer=<id>: once the customer list is loaded.
+  useEffect(() => {
+    if (!repeatParam || customersLoading || !customerId) return
+    setRepeatParam(false)
+    void repeatLastSale(customerId)
+  }, [repeatParam, customersLoading, customerId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lines of the pending repeat go in once the warehouse stock is loaded;
+  // prices stay automatic (price list) unless the item has no list price now.
+  useEffect(() => {
+    if (!pendingRepeat || !sourceId || stockLoading) return
+    const last = pendingRepeat
+    setPendingRepeat(null)
+    const next: Line[] = []
+    let skipped = 0
+    for (const l of last.lines.slice(0, SALE_MAX_LINES)) {
+      const item = itemById.get(l.itemId)
+      if (!item || !stock.has(l.itemId) || next.some(n => n.itemId === l.itemId)) { skipped += 1; continue }
+      const auto = priceOf(l.itemId)
+      next.push({ itemId: l.itemId, value: toInputString(l.qty), unit: item.unit, price: auto === null ? toInputString(l.price) || '0' : null, discount: '' })
+    }
+    setLines(next)
+    const head = last.number ? fillText(t('prodOps.repeat.loadedFrom'), { n: next.length, number: last.number }) : fillText(t('prodOps.repeat.loaded'), { n: next.length })
+    if (skipped > 0) toast.warning(head, { description: fillText(t('prodOps.repeat.skipped'), { n: skipped }) })
+    else toast.success(head)
+  }, [pendingRepeat, sourceId, stockLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const customerListId = customer?.priceListId ?? null
   // Not wrapped in useMemo: the React Compiler memoizes this component.
@@ -210,6 +281,7 @@ export default function NewSalePage() {
     const { data, error } = rpcRes
     if (error) { toast.error(errorText(error)); return }
     rememberWarehouse(sourceId)
+    draft.clear()
     const res = data as { id?: string; credit_warning?: unknown } | null
     const cw = parseCreditWarning(res?.credit_warning)
     if (cw) toast.warning(t('prodSales.sales.creditWarnPosted'), { description: `${t('prodSales.common.creditLimit')}: ${formatPrice(cw.limit)} · ${t('prodSales.sales.balanceAfter')}: ${formatPrice(cw.balanceAfter)}` })
@@ -237,6 +309,7 @@ export default function NewSalePage() {
     <div className="space-y-5">
       <BackLink href="/zavod-sotuv" label={t('prodSales.sales.title')} />
       <PageHeader title={t('prodSales.sales.newTitle')} />
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
 
       <div className={cn(prodCardCls, 'p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <div className="md:col-span-2" data-autofocus>
@@ -247,6 +320,16 @@ export default function NewSalePage() {
             <SearchSelect options={customerOptions} value={customerId} onChange={setCustomerId} placeholder={t('prodSales.common.selectCustomer')} />
           )}
           {customer && <CustomerSummary customer={customer} ageing={ageing?.get(customer.id)} />}
+          {customer && (
+            <button
+              type="button"
+              onClick={() => repeatLastSale()}
+              disabled={repeatLoading}
+              className="mt-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50 transition-colors"
+            >
+              {repeatLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />} {t('prodOps.repeat.button')}
+            </button>
+          )}
           {!customer && lines.length > 0 && <FieldError>{t('prodUx.required')}</FieldError>}
         </div>
         <label className="block">
@@ -273,7 +356,7 @@ export default function NewSalePage() {
           </select>
         </label>
         <div>
-          <span className={prodLabelCls}>{t('prodSales.common.vatRate')}</span>
+          <span className={prodLabelCls}><Term k="qqs">{t('prodSales.common.vatRate')}</Term></span>
           <div className="flex items-center gap-2">
             <Segmented
               options={[
@@ -346,8 +429,8 @@ export default function NewSalePage() {
                   <th className="px-4 py-2.5 text-right font-medium w-40">{t('prodSales.common.priceNoVat')}</th>
                   <th className="px-4 py-2.5 text-right font-medium w-24">{t('prodSales.common.discount')}</th>
                   <th className="px-4 py-2.5 text-right font-medium">{t('prodSales.common.amount')}</th>
-                  {seesMargin && <th className="px-4 py-2.5 text-right font-medium">{t('prodSales.sales.fifoCost')}</th>}
-                  {seesMargin && <th className="px-4 py-2.5 text-right font-medium">{t('prodSales.common.margin')}</th>}
+                  {seesMargin && <th className="px-4 py-2.5 text-right font-medium"><Term k="fifo" className="justify-end">{t('prodSales.sales.fifoCost')}</Term></th>}
+                  {seesMargin && <th className="px-4 py-2.5 text-right font-medium"><Term k="marja" className="justify-end">{t('prodSales.common.margin')}</Term></th>}
                   <th className="px-4 py-2.5 w-10" />
                 </tr>
               </thead>

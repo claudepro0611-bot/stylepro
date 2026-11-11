@@ -8,7 +8,7 @@
 // server enforces every rule; this only explains and re-sends.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Send, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useSession } from '@/lib/session/SessionContext'
@@ -18,6 +18,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Button } from '@/components/ui/button'
 import { prodCardCls, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
 import { prodErrorKey, type ProdRpcError } from '@/lib/production'
+import { APPROVAL_LABEL_MAX, isApprovableRpc, isMissingError, requestApproval, requestPayload, rpcNameKey } from '@/lib/approvals'
+import { toast } from '@/lib/toast'
 import {
   DEFAULT_CONTROL_SETTINGS, OVERRIDE_NOTE_MAX, OVERRIDE_NOTE_MIN, addDaysYmd, backdateDaysFor, fetchControls, fetchDocOverrides,
   fillText, formatYmdDots, isOwnerAdminRole, needsApprovalRule, prodErrorText, ruleLabelKey, ruleMessage, todayYmd,
@@ -82,11 +84,47 @@ export function useRole(): string | null {
 
 type RpcResult = { error: ProdRpcError | null }
 
+/** The RPC a `call(null)` made (captured for an approval request, migration 20261110000019). */
+interface CapturedRpc { name: string; args: Record<string, unknown> | undefined }
+
 interface Pending {
   rule: string
   vars: RuleVars
   retry: (ctl: OverrideCtl) => PromiseLike<RpcResult>
   resolve: (r: RpcResult | null) => void
+  request: CapturedRpc | null
+  label?: string
+}
+
+type RpcFn = (this: unknown, name: string, args?: Record<string, unknown>, ...rest: unknown[]) => unknown
+
+/**
+ * Runs `fn` and records the first supabase.rpc(name, args) it starts
+ * synchronously. Every caller writes `ctl => createClient().rpc(...)`, so the
+ * request is captured without changing the call sites. The prototype method
+ * is patched only for the synchronous part of `fn` (JS is single-threaded,
+ * nothing else can run in between) and always restored.
+ */
+function captureRpc<T>(fn: () => T): { value: T; rpc: CapturedRpc | null } {
+  let rpc: CapturedRpc | null = null
+  let proto: { rpc: RpcFn } | null = null
+  let original: RpcFn | null = null
+  try {
+    proto = Object.getPrototypeOf(createClient()) as { rpc: RpcFn }
+    original = proto.rpc
+    const orig = original
+    proto.rpc = function (this: unknown, name: string, args?: Record<string, unknown>, ...rest: unknown[]) {
+      if (!rpc && typeof name === 'string') rpc = { name, args }
+      return orig.call(this, name, args, ...rest)
+    }
+  } catch {
+    proto = null
+  }
+  try {
+    return { value: fn(), rpc }
+  } finally {
+    if (proto && original) proto.rpc = original
+  }
 }
 
 /**
@@ -95,7 +133,9 @@ interface Pending {
  * RPC expects it (top level of p_data, the lab object, or p_ctl). On
  * 'needs_approval' an owner / admin gets the approval dialog (reason >= 5
  * chars, "Tasdiqlab saqlash" re-sends with the override); staff / manager see
- * the explanation and "Egasidan tasdiq so'rang".
+ * the explanation and "Tasdiqlashga yuborish": the captured RPC + payload go
+ * to the owner / admin queue (/zavod-tasdiqlar; before migration
+ * 20261110000019 the old "Egasidan tasdiq so'rang" hint).
  *
  * Resolves with the final RPC result, or null when the dialog was closed
  * without saving. Render `dialog` once in the component (inside the parent
@@ -105,11 +145,17 @@ export function useApprovalRetry() {
   const [pending, setPending] = useState<Pending | null>(null)
   const pendingRef = useRef<Pending | null>(null)
 
+  /**
+   * `label`: optional human summary of the document for the approval queue
+   * ("Ishlab chiqarish: Qaymoq 100 kg"); default = document type + rule text.
+   */
   const run = useCallback(async <R extends RpcResult>(
     call: (ctl: OverrideCtl | null) => PromiseLike<R>,
     vars?: RuleVars,
+    label?: string,
   ): Promise<R | null> => {
-    const first = await call(null)
+    const captured = captureRpc(() => call(null))
+    const first = await captured.value
     const rule = needsApprovalRule(first.error)
     if (!rule) return first
     return new Promise<R | null>(resolve => {
@@ -118,6 +164,8 @@ export function useApprovalRetry() {
         vars: vars ?? {},
         retry: ctl => call(ctl),
         resolve: r => resolve(r as R | null),
+        request: captured.rpc,
+        label,
       }
       pendingRef.current = p
       setPending(p)
@@ -143,6 +191,9 @@ function ApprovalDialog({ pending, onDone }: { pending: Pending | null; onDone: 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const canApprove = isOwnerAdminRole(role)
+  // Staff / manager: send the document to the owner / admin queue (migration 20261110000019).
+  const [requestUnavailable, setRequestUnavailable] = useState(false)
+  const canRequest = !canApprove && !!pending?.request && isApprovableRpc(pending.request.name) && !requestUnavailable
 
   // A fresh request (new pending object) starts with an empty reason.
   useEffect(() => {
@@ -154,6 +205,26 @@ function ApprovalDialog({ pending, onDone }: { pending: Pending | null; onDone: 
   const explanation = pending ? ruleMessage(t, pending.rule, settings, role, pending.vars) : ''
   const trimmed = note.trim()
   const noteOk = trimmed.length >= OVERRIDE_NOTE_MIN && trimmed.length <= OVERRIDE_NOTE_MAX
+
+  async function sendRequest() {
+    if (!pending?.request || busy) return
+    setBusy(true)
+    setError('')
+    const docType = t(rpcNameKey(pending.request.name))
+    const label = (pending.label?.trim() || `${docType}: ${explanation}`).slice(0, APPROVAL_LABEL_MAX)
+    const { error: err } = await requestApproval(
+      createClient(), pending.request.name, requestPayload(pending.request.name, pending.request.args),
+      pending.rule === 'unknown' ? null : pending.rule, label,
+    )
+    setBusy(false)
+    if (err) {
+      if (isMissingError(err)) { setRequestUnavailable(true); return }
+      setError(prodErrorText(t, err))
+      return
+    }
+    toast.success(t('prodShell.approvals.sent'))
+    onDone(null)
+  }
 
   async function approve() {
     if (!pending || !noteOk || busy) return
@@ -207,6 +278,11 @@ function ApprovalDialog({ pending, onDone }: { pending: Pending | null; onDone: 
               </label>
               <p className="text-[12px] text-gray-500 dark:text-gray-400">{t('prodControls.approval.logged')}</p>
             </>
+          ) : canRequest ? (
+            <div className="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-3 py-2.5">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('prodShell.approvals.requestTitle')}</p>
+              <p className="mt-1 text-[12px] text-gray-500 dark:text-gray-400">{t('prodShell.approvals.requestHint')}</p>
+            </div>
           ) : (
             <div className="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-3 py-2.5">
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('prodControls.approval.askOwner')}</p>
@@ -221,6 +297,11 @@ function ApprovalDialog({ pending, onDone }: { pending: Pending | null; onDone: 
           </Button>
           {canApprove && (
             <Button onClick={approve} loading={busy} disabled={busy || !noteOk}>{t('prodControls.approval.confirm')}</Button>
+          )}
+          {canRequest && (
+            <Button onClick={sendRequest} loading={busy} disabled={busy}>
+              <Send className="h-3.5 w-3.5" /> {t('prodShell.approvals.send')}
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

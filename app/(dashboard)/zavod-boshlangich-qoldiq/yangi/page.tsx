@@ -18,6 +18,9 @@ import {
   BackLink, DisabledSelect, FormFooter, MoreFields, NoteField, PageHeader, TotalsBox, useRememberedDefault, prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { Term } from '@/components/production/Term'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { useFormDraft } from '@/lib/useFormDraft'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import { useProdSuppliers } from '@/components/production/SupplierKit'
@@ -68,6 +71,12 @@ export default function NewOpeningPage() {
   const [lines, setLines] = useState<Line[]>([])
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Local draft (useFormDraft): autosaved 2 s after a change, offered when the form opens.
+  const draftState = { date, time, warehouseId, lines, note }
+  const draft = useFormDraft('opening', draftState, (d: typeof draftState) => {
+    setDate(d.date); setTime(d.time); setWarehouseId(d.warehouseId); setLines(d.lines); setNote(d.note)
+  }, { isEmpty: d => d.lines.length === 0 && !d.note })
 
   useEffect(() => {
     setDate(localYmd())
@@ -123,6 +132,7 @@ export default function NewOpeningPage() {
     if (error) { toast.error(errorText(error)); return }
     remember0(warehouseId)
     const id = (data as { id?: string } | null)?.id
+    draft.clear()
     toast.success(t('production.common.saved'))
     router.push(id ? `/zavod-boshlangich-qoldiq/${id}` : '/zavod-boshlangich-qoldiq')
   }
@@ -142,6 +152,7 @@ export default function NewOpeningPage() {
     <div className="space-y-5">
       <BackLink href="/zavod-boshlangich-qoldiq" label={t('prodInventory.openings.title')} />
       <PageHeader title={t('prodInventory.openings.newTitle')} subtitle={t('prodInventory.openings.lotHint')} />
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
 
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-1 md:grid-cols-3 gap-4')}>
         <label className="block">
@@ -190,7 +201,7 @@ export default function NewOpeningPage() {
                 <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
                   <th className="px-3 py-2.5 text-left font-medium">{t('production.common.item')}</th>
                   <th className="px-3 py-2.5 text-right font-medium w-48">{t('production.common.qty')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium w-32">{t('production.lots.unitCost')}</th>
+                  <th className="px-3 py-2.5 text-right font-medium w-32"><Term k="tannarx" className="justify-end">{t('production.lots.unitCost')}</Term></th>
                   <th className="px-3 py-2.5 text-right font-medium w-24">{t('prodInventory.openings.fat')}</th>
                   <th className="px-3 py-2.5 text-right font-medium w-24">{t('prodInventory.openings.protein')}</th>
                   <th className="px-3 py-2.5 text-left font-medium w-40" title={t('prodInventory.openings.expiryHint')}>{t('prodInventory.openings.expiry')}</th>

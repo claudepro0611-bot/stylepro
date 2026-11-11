@@ -23,6 +23,9 @@ import {
 } from '@/components/production/ProdKit'
 import { CountStatusBadge } from '@/components/production/InventoryKit'
 import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { Term } from '@/components/production/Term'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { useFormDraft } from '@/lib/useFormDraft'
 import { PrintButton, PrintFields, PrintSheet, PrintTable } from '@/components/production/PrintKit'
 import { useProdRefs } from '@/components/production/useProdRefs'
 import {
@@ -64,6 +67,12 @@ export function StockCountEditor({ draft }: { draft?: CountDraft }) {
   const [search, setSearch] = useState('')
   const [onlyDiff, setOnlyDiff] = useState(false)
   const [busy, setBusy] = useState<'save' | 'post' | 'delete' | null>(null)
+
+  // Local draft (useFormDraft) on top of the server draft: unsaved edits survive a reload.
+  const draftState = { date, time, warehouseId, note, lines }
+  const localDraft = useFormDraft(`stock-count:${draft?.id ?? 'new'}`, draftState, (d: typeof draftState) => {
+    setDate(d.date); setTime(d.time); setWarehouseId(d.warehouseId); setNote(d.note); setLines(d.lines)
+  }, { ready: date !== '', isEmpty: d => !draft && d.lines.length === 0 && !d.note })
 
   useEffect(() => {
     if (draft) {
@@ -156,6 +165,7 @@ export function StockCountEditor({ draft }: { draft?: CountDraft }) {
       },
     })
     if (error) { toast.error(t(prodErrorKey(error))); return null }
+    localDraft.clear()
     return typeof data === 'string' ? data : draft?.id ?? null
   }
 
@@ -205,9 +215,11 @@ export function StockCountEditor({ draft }: { draft?: CountDraft }) {
     <>
     <div className="space-y-5 print:hidden">
       <BackLink href="/zavod-inventarizatsiya" label={t('prodInventory.counts.title')} />
+      <DraftBanner offer={localDraft.offer} onRestore={localDraft.restore} onDiscard={localDraft.discard} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <PageHeader title={draft ? `${t('prodInventory.counts.docTitle')} #${draft.number}` : t('prodInventory.counts.newTitle')} />
+          <Term k="inventarizatsiya" bare />
           {draft && <CountStatusBadge status="draft" />}
         </div>
         <div className="flex flex-wrap items-center gap-2">

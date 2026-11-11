@@ -25,7 +25,7 @@ import {
   prodFieldCls, secondaryBtnCls, tdCls, thCls, thRightCls, trCls,
 } from '@/components/production/ProdKit'
 import { useProdSuppliers } from '@/components/production/SupplierKit'
-import { AntibioticBadge, MilkKpi, MilkSetupBanner, MilkStatusBadge, useCancelMilkIntake, useMilkSettings } from '@/components/production/MilkKit'
+import { AntibioticBadge, MilkKpi, MilkSetupBanner, MilkStatusBadge, useCancelMilkIntake, useHasPermission, useMilkSettings } from '@/components/production/MilkKit'
 import { formatQty, rangeToIsoBounds, round2, round3 } from '@/lib/production'
 import { MILK_STATUSES, antibioticKey, formatPct, isStockStatus, milkStatusKey, type MilkIntakeRow } from '@/lib/milk'
 import { ExportButton } from '@/components/production/ReportKit'
@@ -49,6 +49,7 @@ export default function MilkIntakeListPage() {
   const { suppliers } = useProdSuppliers()
   const { configured, loading: settingsLoading } = useMilkSettings()
   const supplierNameById = useMemo(() => new Map(suppliers.map(s => [s.id, s.name])), [suppliers])
+  const canLab = useHasPermission('prod_lab')
 
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -165,6 +166,11 @@ export default function MilkIntakeListPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('production.milk.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
+          {canLab && (
+            <Link href="/sut-qabuli/laboratoriya" className={secondaryBtnCls}>
+              <FlaskConical className="h-3.5 w-3.5" /> {t('prodOps.tablet.labTitle')}
+            </Link>
+          )}
           <Link href="/sut-qabuli/sozlamalar" className={secondaryBtnCls}>
             <Settings className="h-3.5 w-3.5" /> {t('production.milk.settings')}
           </Link>

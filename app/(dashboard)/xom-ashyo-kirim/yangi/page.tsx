@@ -17,6 +17,9 @@ import {
   prodCardCls, prodFieldCls, prodLabelCls, useRememberedDefault,
 } from '@/components/production/ProdKit'
 import { ControlHint, DocDateInput, useApprovalRetry, useControls, useProdErrorText } from '@/components/production/ControlKit'
+import { Term } from '@/components/production/Term'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { useFormDraft } from '@/lib/useFormDraft'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { SupplierFormDialog, useProdSuppliers } from '@/components/production/SupplierKit'
 import { VatRateInput, defaultVatRate, useAccounting } from '@/components/production/AccountingKit'
@@ -56,6 +59,12 @@ export default function NewReceiptPage() {
   const [pricesIncludeVat, setPricesIncludeVat] = useState(false)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Local draft (useFormDraft): autosaved 2 s after a change, offered when the form opens.
+  const draftState = { date, time, warehouseId, supplierId, lines, pricesIncludeVat, note }
+  const draft = useFormDraft('receipt', draftState, (d: typeof draftState) => {
+    setDate(d.date); setTime(d.time); setWarehouseId(d.warehouseId); setSupplierId(d.supplierId); setLines(d.lines); setPricesIncludeVat(d.pricesIncludeVat); setNote(d.note)
+  }, { isEmpty: d => !d.supplierId && d.lines.length === 0 && !d.note })
 
   // Current stock is shown next to each line for context only.
   const { stock } = useWarehouseStock(warehouseId)
@@ -134,6 +143,7 @@ export default function NewReceiptPage() {
     rememberWarehouse(warehouseId)
     rememberSupplier(supplierId)
     const id = (data as { id?: string } | null)?.id
+    draft.clear()
     toast.success(t('production.common.saved'))
     router.push(id ? `/xom-ashyo-kirim/${id}` : '/xom-ashyo-kirim')
   }
@@ -142,6 +152,7 @@ export default function NewReceiptPage() {
     <div className="space-y-5">
       <BackLink href="/xom-ashyo-kirim" label={t('production.receipts.title')} />
       <PageHeader title={t('production.receipts.newTitle')} />
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
 
       <div className={cn(prodCardCls, 'p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">
@@ -185,7 +196,7 @@ export default function NewReceiptPage() {
       <div className={cn(prodCardCls, 'overflow-hidden')}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-3">
           <div className="flex flex-wrap items-center gap-4">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('production.receipts.items')}</h2>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100"><Term k="partiya">{t('production.receipts.items')}</Term></h2>
             {vatOn && (
               <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-gray-700 dark:text-gray-300" title={t('prodAcct.vat.pricesIncludeHint')}>
                 <input

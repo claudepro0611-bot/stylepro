@@ -16,6 +16,7 @@ import { useSession } from '@/lib/session/SessionContext'
 import { withDefaultPermissions, type PermissionKey, type Permissions } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { Segmented, prodCardCls, prodFieldCls, prodLabelCls } from '@/components/production/ProdKit'
+import { Term } from '@/components/production/Term'
 import { canCancelDocuments, formatQty } from '@/lib/production'
 import { prodErrorText } from '@/lib/production-controls'
 import {
@@ -321,7 +322,7 @@ export function LabFields({ draft, onChange, settings }: {
   settings: MilkSettings
 }) {
   const { t } = useLanguage()
-  const field = (key: Exclude<keyof LabDraft, 'antibiotic'>, label: string, placeholder: string) => (
+  const field = (key: Exclude<keyof LabDraft, 'antibiotic'>, label: ReactNode, placeholder: string) => (
     <label className="block">
       <span className={prodLabelCls}>{label}</span>
       <input
@@ -339,7 +340,7 @@ export function LabFields({ draft, onChange, settings }: {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {field('fat', t('production.milk.fat'), String(settings.baseFat))}
         {field('protein', t('production.milk.protein'), String(settings.baseProtein))}
-        {field('snf', t('production.milk.snf'), '8.5')}
+        {field('snf', <Term k="somo">{t('production.milk.snf')}</Term>, '8.5')}
         {field('density', t('production.milk.density'), settings.defaultDensity.toFixed(3))}
         {field('acidity', t('production.milk.acidity'), '17')}
         {field('temperature', t('production.milk.temperature'), '6')}

@@ -15,6 +15,8 @@ import {
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { useFormDraft } from '@/lib/useFormDraft'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
 import {
@@ -45,6 +47,12 @@ export default function NewProcessingPage() {
   const [sourcePicks, setSourcePicks] = useState<LinePicks | null>(null)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Local draft (useFormDraft): autosaved 2 s after a change, offered when the form opens.
+  const draftState = { date, time, warehouseId, outputWarehouseChoice, sourceItemId, sourceQty, lines, sourcePicks, note }
+  const draft = useFormDraft('processing', draftState, (d: typeof draftState) => {
+    setDate(d.date); setTime(d.time); setWarehouseId(d.warehouseId); setOutputWarehouseChoice(d.outputWarehouseChoice); setSourceItemId(d.sourceItemId); setSourceQty(d.sourceQty); setLines(d.lines); setSourcePicks(d.sourcePicks); setNote(d.note)
+  }, { isEmpty: d => !d.sourceItemId && d.lines.length === 0 && !d.note })
 
   const { stock, loading: stockLoading } = useWarehouseStock(warehouseId)
   const { lotsOf, available: lotsAvailable } = useWarehouseLots(warehouseId)
@@ -130,6 +138,7 @@ export default function NewProcessingPage() {
     if (error) { toast.error(errorText(error)); return }
     remember0(warehouseId)
     const id = (data as { id?: string } | null)?.id
+    draft.clear()
     toast.success(t('production.common.saved'))
     router.push(id ? `/qayta-ishlash/${id}` : '/qayta-ishlash')
   }
@@ -138,6 +147,7 @@ export default function NewProcessingPage() {
     <div className="space-y-5">
       <BackLink href="/qayta-ishlash" label={t('production.processings.title')} />
       <PageHeader title={t('production.processings.newTitle')} />
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
 
       <div className={cn(prodCardCls, 'p-6 space-y-5')}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

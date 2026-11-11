@@ -19,6 +19,8 @@ import {
   prodCardCls, prodFieldCls, prodLabelCls,
 } from '@/components/production/ProdKit'
 import { DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { useFormDraft } from '@/lib/useFormDraft'
 import { UnitQtyInput, entryToBase, useQtyFormat } from '@/components/production/RecipeKit'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
@@ -54,6 +56,12 @@ export default function NewWriteoffPage() {
   const [lines, setLines] = useState<Line[]>([])
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Local draft (useFormDraft): autosaved 2 s after a change, offered when the form opens.
+  const draftState = { date, time, warehouseId, reason, lines, note }
+  const draft = useFormDraft('writeoff', draftState, (d: typeof draftState) => {
+    setDate(d.date); setTime(d.time); setWarehouseId(d.warehouseId); setReason(d.reason); setLines(d.lines); setNote(d.note)
+  }, { isEmpty: d => d.lines.length === 0 && !d.note })
 
   useEffect(() => {
     setDate(localYmd())
@@ -114,6 +122,7 @@ export default function NewWriteoffPage() {
     if (error) { toast.error(errorText(error)); return }
     remember0(warehouseId)
     const id = (data as { id?: string } | null)?.id
+    draft.clear()
     toast.success(t('production.common.saved'))
     router.push(id ? `/zavod-hisobdan-chiqarish/${id}` : '/zavod-hisobdan-chiqarish')
   }
@@ -131,6 +140,7 @@ export default function NewWriteoffPage() {
     <div className="space-y-5">
       <BackLink href="/zavod-hisobdan-chiqarish" label={t('prodInventory.writeoffs.title')} />
       <PageHeader title={t('prodInventory.writeoffs.newTitle')} />
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
 
       <div className={cn(prodCardCls, 'p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">

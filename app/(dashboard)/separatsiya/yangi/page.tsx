@@ -22,6 +22,9 @@ import {
   prodCardCls, prodFieldCls, prodLabelCls, type TotalRow,
 } from '@/components/production/ProdKit'
 import { ControlHint, DocDateInput, useApprovalRetry, useControls, useProdErrorText } from '@/components/production/ControlKit'
+import { Term } from '@/components/production/Term'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { useFormDraft } from '@/lib/useFormDraft'
 import { fillText } from '@/lib/production-controls'
 import { useProdRefs, useWarehouseLots, useWarehouseStock } from '@/components/production/useProdRefs'
 import { LotPicker } from '@/components/production/LotPicker'
@@ -79,6 +82,12 @@ export default function NewSeparationPage() {
   const [fatByKey, setFatByKey] = useState<Map<string, number>>(new Map())
   // Manually picked milk lots; dropped automatically when warehouse/item/qty change.
   const [milkPicks, setMilkPicks] = useState<LinePicks | null>(null)
+
+  // Local draft (useFormDraft): autosaved 2 s after a change, offered when the form opens.
+  const draftState = { date, time, warehouseChoice, outputWarehouseChoice, milkItemChoice, mode, milkQtyText, creamTargetText, milkFatText, skimFatText, lossText, creamActualText, skimActualText, note, milkPicks }
+  const draft = useFormDraft('separation', draftState, (d: typeof draftState) => {
+    setDate(d.date); setTime(d.time); setWarehouseChoice(d.warehouseChoice); setOutputWarehouseChoice(d.outputWarehouseChoice); setMilkItemChoice(d.milkItemChoice); setMode(d.mode); setMilkQtyText(d.milkQtyText); setCreamTargetText(d.creamTargetText); setMilkFatText(d.milkFatText); setSkimFatText(d.skimFatText); setLossText(d.lossText); setCreamActualText(d.creamActualText); setSkimActualText(d.skimActualText); setNote(d.note); setMilkPicks(d.milkPicks)
+  }, { isEmpty: d => !d.milkQtyText && !d.creamTargetText && !d.note })
 
   // Client clock only (avoids a server/client hydration mismatch).
   useEffect(() => { setDate(localYmd()); setTime(nowHm()) }, [])
@@ -250,6 +259,7 @@ export default function NewSeparationPage() {
     const { data, error } = res
     if (error) { toast.error(errorText(error)); return }
     const id = (data as { id?: string } | null)?.id
+    draft.clear()
     toast.success(t('production.common.saved'))
     router.push(id ? `/separatsiya/${id}` : '/separatsiya')
   }
@@ -266,6 +276,7 @@ export default function NewSeparationPage() {
     <div className="space-y-5">
       <BackLink href="/separatsiya" label={t('production.separation.title')} />
       <PageHeader title={t('production.separation.newTitle')} subtitle={t('production.separation.newSubtitle')} />
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
 
       <div className={cn(prodCardCls, 'p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4')}>
         <label className="block">
@@ -297,7 +308,7 @@ export default function NewSeparationPage() {
           <SepSection title={t('production.separation.milkBlock')} hint={t('production.separation.milkBlockHint')}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <span className={prodLabelCls}>{t('production.separation.milkItem')}</span>
+                <span className={prodLabelCls}><Term k="separatsiya">{t('production.separation.milkItem')}</Term></span>
                 <SearchSelect options={milkOptions} value={milkItemId} onChange={changeMilkItem} placeholder={t('production.common.selectItem')} />
                 {milkItemId && warehouseId && (
                   <p className="mt-1.5 text-[12px] tabular-nums text-gray-500 dark:text-gray-400">
@@ -395,7 +406,7 @@ export default function NewSeparationPage() {
 
             <SepSection title={t('production.separation.skimBlock')} hint={t('production.separation.skimBlockHint')}>
               <div>
-                <span className={prodLabelCls}>{t('production.separation.skimItem')}</span>
+                <span className={prodLabelCls}><Term k="obrat">{t('production.separation.skimItem')}</Term></span>
                 <SearchSelect options={skimOptions} value={skimItemId} onChange={setSkimItemStored} placeholder={t('production.common.selectItem')} />
                 {!hasSkimLikeItem && items.length > 0 ? (
                   <p className="mt-1.5 flex flex-wrap items-center gap-1 text-[12px] text-amber-700 dark:text-amber-400">
@@ -474,7 +485,7 @@ export default function NewSeparationPage() {
         <div className="xl:col-span-2 space-y-5 xl:sticky xl:top-5">
           <div className={cn(prodCardCls, 'p-5 space-y-5')}>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('production.separation.result')}</h2>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100"><Term k="yogBalansi">{t('production.separation.result')}</Term></h2>
               <p className="mt-0.5 text-[12px] text-gray-500 dark:text-gray-400">{t('production.separation.resultHint')}</p>
             </div>
             {calcReady ? (

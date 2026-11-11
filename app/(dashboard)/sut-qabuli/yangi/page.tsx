@@ -3,13 +3,14 @@
 // New raw milk intake ("Tarozi"). Built for the plant gate: Enter walks the
 // fields, Ctrl+Enter saves, net kg / litres are shown large and live. The
 // lab block can be filled in right away (same transaction on the server) or
-// later on /sut-qabuli/[id].
+// later on /sut-qabuli/[id]. Tablet mode (prefs.tablet_mode or ?tablet=1)
+// renders the full-screen touch weigh station instead. Network failures go to
+// the offline queue; the form state is autosaved as a local draft.
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus } from 'lucide-react'
+import { Loader2, Plus, Tablet } from 'lucide-react'
 import { toast } from '@/lib/toast'
-import { createClient } from '@/lib/supabase/client'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
 import { useCurrency } from '@/lib/currency/CurrencyContext'
 import { localYmd } from '@/lib/utils/date'
@@ -25,6 +26,14 @@ import {
   useHasPermission, useMilkSettings, type LabDraft,
 } from '@/components/production/MilkKit'
 import { ControlHint, DocDateInput, useApprovalRetry, useProdErrorText } from '@/components/production/ControlKit'
+import { DraftBanner } from '@/components/production/DraftBanner'
+import { OfflineQueueBar, saveIntakeOrQueue } from '@/components/production/MilkOffline'
+import { TabletWeighStation } from '@/components/production/MilkTablet'
+import { useTabletMode } from '@/components/production/TabletKit'
+import { Term } from '@/components/production/Term'
+import { useFormDraft } from '@/lib/useFormDraft'
+import { useMilkOfflineQueue } from '@/lib/milk-offline'
+import { fillText } from '@/lib/production-controls'
 import { formatQty, localDateTimeToIso, nowHm, parseDecimal, round3, warehousesFor } from '@/lib/production'
 import {
   focusNextField, isMilkItemCandidate, litresOf, numInput, parseDensity, parseOverride, suggestDecision, thresholdChecks, type MilkDecision,
@@ -35,6 +44,22 @@ type ScaleMode = 'truck' | 'net'
 const bigFieldCls = cn(prodFieldCls, 'h-12 text-lg font-medium text-right tabular-nums')
 
 export default function NewMilkIntakePage() {
+  const router = useRouter()
+  const tablet = useTabletMode()
+  if (tablet === null) {
+    return <div className="flex h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
+  }
+  if (tablet) return <TabletWeighStation onExit={() => router.push('/sut-qabuli')} />
+  return <MilkIntakeForm />
+}
+
+interface MilkDraft {
+  date: string; time: string; supplierId: string; warehouseId: string; itemId: string; vehicleNo: string; driver: string
+  scaleMode: ScaleMode; gross: string; tare: string; net: string; density: string; note: string
+  labNow: boolean; lab: LabDraft; decision: MilkDecision | null; overridePrice: string; decisionNote: string
+}
+
+function MilkIntakeForm() {
   const { t } = useLanguage()
   const approval = useApprovalRetry()
   const errorText = useProdErrorText()
@@ -69,6 +94,22 @@ export default function NewMilkIntakePage() {
   const [overridePrice, setOverridePrice] = useState('')
   const [decisionNote, setDecisionNote] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const onPosted = useCallback((n: number) => toast.success(fillText(t('prodOps.offline.synced'), { n })), [t])
+  const queue = useMilkOfflineQueue(onPosted)
+  const draftState: MilkDraft = {
+    date, time, supplierId, warehouseId, itemId, vehicleNo, driver, scaleMode, gross, tare, net, density, note,
+    labNow, lab, decision, overridePrice, decisionNote,
+  }
+  const draft = useFormDraft<MilkDraft>('milk-intake', draftState, d => {
+    setDate(d.date); setTime(d.time); setSupplierId(d.supplierId); setWarehouseId(d.warehouseId); setItemId(d.itemId)
+    setVehicleNo(d.vehicleNo); setDriver(d.driver); setScaleMode(d.scaleMode); setGross(d.gross); setTare(d.tare); setNet(d.net)
+    setDensity(d.density); setNote(d.note); setLabNow(d.labNow); setLab({ ...EMPTY_LAB, ...d.lab }); setDecision(d.decision)
+    setOverridePrice(d.overridePrice); setDecisionNote(d.decisionNote)
+  }, {
+    ready: !settingsLoading,
+    isEmpty: d => !d.supplierId && !d.gross && !d.tare && !d.net && !d.vehicleNo && !d.driver && !d.note,
+  })
 
   // Client clock only (avoids a server/client hydration mismatch); the
   // supplier picker gets focus first (date / time default to now).
@@ -154,32 +195,35 @@ export default function NewMilkIntakePage() {
     const weights = scaleMode === 'truck'
       ? { gross_kg: round3(grossNum), tare_kg: round3(tareNum) }
       : { net_kg: netKg }
-    const rpcRes = await approval.run(ctl => createClient().rpc('prod_create_milk_intake', {
-      p_data: {
-        ...ctl,
-        intake_date: localDateTimeToIso(date, time),
-        supplier_id: supplierId,
-        warehouse_id: warehouseId,
-        item_id: itemId,
-        vehicle_no: vehicleNo.trim() || null,
-        driver: driver.trim() || null,
-        ...weights,
-        density: densityNum,
-        note: note.trim() || null,
-        ...(labNow && canLab ? { lab: labPayload(lab, effectiveDecision, overrideNum, decisionNote) } : {}),
-      },
-    }))
+    const payload = {
+      intake_date: localDateTimeToIso(date, time),
+      supplier_id: supplierId,
+      warehouse_id: warehouseId,
+      item_id: itemId,
+      vehicle_no: vehicleNo.trim() || null,
+      driver: driver.trim() || null,
+      ...weights,
+      density: densityNum,
+      note: note.trim() || null,
+      ...(labNow && canLab ? { lab: labPayload(lab, effectiveDecision, overrideNum, decisionNote) } : {}),
+    }
+    // Network failure: kept in the offline queue (lib/milk-offline.ts); the form is ready for the next truck.
+    const res = await saveIntakeOrQueue(approval, queue, payload, supplier?.name ?? '')
     setSaving(false)
-    if (!rpcRes) return
-    const { data, error } = rpcRes
-    if (error) { toast.error(errorText(error)); return }
-    const res = data as { id?: string; number?: number } | null
-    toast.success(res?.number ? `${t('production.common.saved')}: #${res.number}` : t('production.common.saved'))
+    if (res.kind === 'cancelled') return
+    if (res.kind === 'error') { toast.error(errorText(res.error)); return }
+    draft.clear()
+    if (res.kind === 'queued') {
+      toast.warning(t('prodOps.offline.savedOffline'))
+      resetForNext()
+      return
+    }
+    toast.success(res.number ? `${t('production.common.saved')}: #${res.number}` : t('production.common.saved'))
     if (andNew) {
       resetForNext()
       return
     }
-    router.push(res?.id ? `/sut-qabuli/${res.id}` : '/sut-qabuli')
+    router.push(res.id ? `/sut-qabuli/${res.id}` : '/sut-qabuli')
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -203,9 +247,20 @@ export default function NewMilkIntakePage() {
       <BackLink href="/sut-qabuli" label={t('production.milk.title')} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <PageHeader title={t('production.milk.newTitle')} />
-        <p className="text-[12px] text-gray-400 dark:text-gray-500">{t('production.milk.keyboardHint')}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-[12px] text-gray-400 dark:text-gray-500">{t('production.milk.keyboardHint')}</p>
+          <button
+            type="button"
+            onClick={() => router.push('/sut-qabuli/yangi?tablet=1')}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            <Tablet className="h-3.5 w-3.5" /> {t('prodOps.tablet.enter')}
+          </button>
+        </div>
       </div>
 
+      <DraftBanner offer={draft.offer} onRestore={draft.restore} onDiscard={draft.discard} />
+      <OfflineQueueBar queue={queue} />
       {!settingsLoading && !configured && <MilkSetupBanner />}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-stretch">
@@ -336,7 +391,7 @@ export default function NewMilkIntakePage() {
                     <ThresholdChecks values={values} settings={settings} />
                   </div>
                   <div>
-                    <p className={prodLabelCls}>{t('production.milk.decision')}</p>
+                    <p className={prodLabelCls}><Term k="shartliQabul">{t('production.milk.decision')}</Term></p>
                     <Segmented
                       options={[
                         { value: 'accepted' as MilkDecision, label: t('production.milk.accept'), disabled: antibioticPositive, title: antibioticPositive ? t('prodControls.hints.antibioticAccept') : undefined },

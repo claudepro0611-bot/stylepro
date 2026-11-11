@@ -30,7 +30,10 @@ import { formatDateTime } from '@/lib/utils/formatters'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar'
-import { ProductionDashboard } from '@/components/production/ProductionDashboard'
+import { ProductionHome } from '@/components/production/home/ProductionHome'
+import { Segmented } from '@/components/production/ProdKit'
+import { useFeatures } from '@/lib/features'
+import { PRODUCTION_PERMISSION_KEYS, withDefaultPermissions, type Permissions } from '@/lib/permissions'
 import type { TranslationKey } from '@/lib/i18n/translations'
 import type { Transaction } from '@/lib/types'
 
@@ -427,10 +430,19 @@ function mapTx(tx: TxRow): Transaction {
   }
 }
 
-// Production firms get their own dashboard; none of the retail loading below
-// runs for them. Waits for the session so the right one mounts first time.
+// Production firms get their own role-based start page (ProductionHome); none
+// of the retail loading below runs for them. Waits for the session so the
+// right one mounts first time.
 export default function DashboardPage() {
-  const { loading, company } = useSession()
+  const { loading, company, profile } = useSession()
+  const { features } = useFeatures()
+  // Retail firm with the production add-on: "Do'kon | Zavod" tabs, last one remembered.
+  const [tab, setTab] = useLocalStorage<'shop' | 'plant'>('stylepro-dashboard-tab', 'shop')
+  const { t } = useLanguage()
+  const isProduction = company?.businessType === 'production'
+  const perms = withDefaultPermissions(profile?.permissions as Partial<Permissions> | null)
+  const seesPlant = !isProduction && !!features.production
+    && (profile?.role === 'owner' || PRODUCTION_PERMISSION_KEYS.some(k => perms[k]))
   if (loading) {
     return (
       <div className="space-y-5">
@@ -441,8 +453,21 @@ export default function DashboardPage() {
       </div>
     )
   }
-  if (company?.businessType === 'production') return <ProductionDashboard />
-  return <RetailDashboardPage />
+  if (isProduction) return <ProductionHome />
+  if (!seesPlant) return <RetailDashboardPage />
+  return (
+    <div className="min-w-0 space-y-5">
+      <Segmented<'shop' | 'plant'>
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'shop', label: t('prodHome.tabs.shop') },
+          { value: 'plant', label: t('prodHome.tabs.plant') },
+        ]}
+      />
+      {tab === 'plant' ? <ProductionHome /> : <RetailDashboardPage />}
+    </div>
+  )
 }
 
 function RetailDashboardPage() {
